@@ -30,6 +30,7 @@
       ripgrep
       fd
       git
+      tree-sitter              # main-branch nvim-treesitter expects the CLI on PATH
       # build deps some plugins / LSPs need
       gcc
       gnumake
