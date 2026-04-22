@@ -11,5 +11,6 @@
     ./system-utils.nix
     ./gpu.nix
     ./power.nix
+    ./wsl.nix
   ];
 }

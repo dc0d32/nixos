@@ -1,4 +1,7 @@
-{ pkgs, variables, ... }:
+{ pkgs, lib, variables, ... }:
+let
+  isWsl = variables.wsl.enable or false;
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -10,12 +13,15 @@
   i18n.defaultLocale = variables.locale;
   console.keyMap = variables.keymap;
 
-  # Bootloader: sensible UEFI default; override per-host if BIOS
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
+  # Bootloader: sensible UEFI default for bare-metal / VM installs.
+  # Forced off inside WSL — nixos-wsl owns the boot path.
+  boot.loader.systemd-boot.enable = lib.mkDefault (!isWsl);
+  boot.loader.efi.canTouchEfiVariables = lib.mkDefault (!isWsl);
 
-  # Primary user. Password must be set manually on first boot (`passwd`).
-  users.users.${variables.user} = {
+  # Primary user. Inside WSL, nixos-wsl creates the default user itself,
+  # so we skip the explicit user declaration there to avoid conflicting
+  # definitions.
+  users.users.${variables.user} = lib.mkIf (!isWsl) {
     isNormalUser = true;
     description = variables.user;
     extraGroups = [ "wheel" "networkmanager" "video" "audio" ];

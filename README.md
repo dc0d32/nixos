@@ -47,6 +47,42 @@ sudo nixos-rebuild switch --flake .#"$(hostname)"
 nix run home-manager/master -- switch --flake .#"$USER@$(hostname)"
 ```
 
+## Bootstrap: fresh NixOS in WSL (incl. Windows on ARM)
+
+This flake pulls the WSL module from
+[`dc0d32/nixos-aarch64-wsl`](https://github.com/dc0d32/nixos-aarch64-wsl),
+which publishes both x86_64-linux and aarch64-linux rootfs tarballs so
+Windows on ARM works out of the box. The same flake works on x86_64 WSL.
+
+```powershell
+# 1. In Windows (PowerShell):
+wsl --install --no-distribution
+# Download the rootfs tarball from the fork's Releases:
+#   https://github.com/dc0d32/nixos-aarch64-wsl/releases
+#   pick nixos-wsl.aarch64.tar.gz on Windows-on-ARM
+#   pick nixos-wsl.x86_64.tar.gz on Intel/AMD Windows
+wsl --import NixOS $HOME\wsl\nixos .\nixos-wsl.<arch>.tar.gz --version 2
+wsl -d NixOS
+```
+
+```sh
+# 2. Inside the NixOS WSL distro:
+nix-shell -p git
+git clone https://github.com/dc0d32/nixos ~/nixos && cd ~/nixos
+
+nix run .#new-host -- "$(hostname)" --wsl
+
+git add -A
+sudo nixos-rebuild switch --flake .#"$(hostname)"
+
+# 3. Back in Windows, restart the distro so systemd picks up cleanly:
+#    wsl --terminate NixOS
+```
+
+The `--wsl` flag detects ARM vs x86_64 via `uname -m`, sets
+`variables.wsl.enable = true`, turns off niri/waybar/pipewire/ly/idle/chrome,
+and sets `gpu.driver = "none"` (WSLg handles the GPU).
+
 ## Bootstrap: fresh macOS
 
 ```sh

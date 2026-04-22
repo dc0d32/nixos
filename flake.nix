@@ -18,6 +18,13 @@
       url = "github:nix-community/nixvim";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # NixOS inside WSL. Use dc0d32/nixos-aarch64-wsl
+    # aarch64-linux rootfs for Windows on ARM; also works fine on x86_64.
+    nixos-wsl = {
+      url = "github:dc0d32/nixos-aarch64-wsl";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ self, nixpkgs, home-manager, ... }:

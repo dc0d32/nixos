@@ -7,7 +7,9 @@ pkgs.writeShellApplication {
     set -euo pipefail
 
     usage() {
-      echo "Usage: nix run .#new-host -- <hostname> [--user <username>] [--mac]" >&2
+      echo "Usage: nix run .#new-host -- <hostname> [--user <name>] [--mac | --wsl]" >&2
+      echo "  --mac   target macOS (home-manager only)" >&2
+      echo "  --wsl   target NixOS inside WSL2 (x86_64 or aarch64)" >&2
       exit 1
     }
 
@@ -16,16 +18,23 @@ pkgs.writeShellApplication {
 
     USER_NAME="''${USER:-$(id -un)}"
     MAC=0
+    WSL=0
     while [ $# -gt 0 ]; do
       case "$1" in
         --user) USER_NAME="$2"; shift 2 ;;
         --mac)  MAC=1; shift ;;
+        --wsl)  WSL=1; shift ;;
         -h|--help) usage ;;
         *) echo "unknown arg: $1" >&2; usage ;;
       esac
     done
 
-    # Find the flake root (directory containing flake.nix). We walk up from $PWD.
+    if [ "$MAC" -eq 1 ] && [ "$WSL" -eq 1 ]; then
+      echo "error: --mac and --wsl are mutually exclusive" >&2
+      exit 1
+    fi
+
+    # Find the flake root (directory containing flake.nix). Walk up from $PWD.
     ROOT="$PWD"
     while [ "$ROOT" != "/" ] && [ ! -f "$ROOT/flake.nix" ]; do
       ROOT="$(dirname "$ROOT")"
@@ -60,20 +69,54 @@ pkgs.writeShellApplication {
       -e "s|user = \"CHANGEME\"|user = \"$USER_NAME\"|" \
       "$HOST_DIR/variables.nix"
 
+    ARCH="$(uname -m)"
+
     if [ "$MAC" -eq 1 ]; then
-      # Pick a darwin system based on uname
-      ARCH="$(uname -m)"
       case "$ARCH" in
         arm64|aarch64) SYSTEM="aarch64-darwin" ;;
         x86_64)        SYSTEM="x86_64-darwin" ;;
         *) echo "unknown mac arch: $ARCH" >&2; exit 1 ;;
       esac
       sed -i -e "s|system = \"x86_64-linux\"|system = \"$SYSTEM\"|" "$HOST_DIR/variables.nix"
-      # On mac we only need the homes entry; drop hardware-configuration.nix
       rm -f "$HOST_DIR/hardware-configuration.nix"
-      # Strip its import from configuration.nix
       sed -i -e '/hardware-configuration.nix/d' "$HOST_DIR/configuration.nix"
       echo ">> mac host — skipping nixos-generate-config"
+
+    elif [ "$WSL" -eq 1 ]; then
+      case "$ARCH" in
+        arm64|aarch64) SYSTEM="aarch64-linux" ;;
+        x86_64)        SYSTEM="x86_64-linux" ;;
+        *) echo "unknown WSL arch: $ARCH" >&2; exit 1 ;;
+      esac
+      sed -i -e "s|system = \"x86_64-linux\"|system = \"$SYSTEM\"|" "$HOST_DIR/variables.nix"
+
+      # Flip all WSL-sensitive defaults off, WSL on
+      sed -i \
+        -e "s|wsl = {|wsl = {\n    # (set by new-host --wsl)|" \
+        -e "s|enable = false;\n    # defaultUser|enable = true;\n    # defaultUser|" \
+        "$HOST_DIR/variables.nix" || true
+      # sed above is best-effort across platforms. Do authoritative replacements:
+      # Enable WSL
+      sed -i -e '/^  wsl = {/,/^  };/ s|enable = false;|enable = true;|' "$HOST_DIR/variables.nix"
+      # Disable niri + bars + chrome (no GUI in WSL base)
+      sed -i \
+        -e '/^  desktop = {/,/^  };/ s|niri.enable = true;|niri.enable = false;|' \
+        -e '/^  desktop = {/,/^  };/ s|waybar.enable = true;|waybar.enable = false;|' \
+        -e '/^  desktop = {/,/^  };/ s|quickshell.enable = true;|quickshell.enable = false;|' \
+        "$HOST_DIR/variables.nix"
+      sed -i -e '/^  audio\.pipewire\.enable/ s|true|false|' "$HOST_DIR/variables.nix"
+      sed -i -e '/^  login\.ly\.enable/ s|true|false|' "$HOST_DIR/variables.nix"
+      sed -i -e '/^  idle = {/,/^  };/ s|enable = true;|enable = false;|' "$HOST_DIR/variables.nix"
+      sed -i -e '/^  apps = {/,/^  };/ s|chrome.enable = true;|chrome.enable = false;|' "$HOST_DIR/variables.nix"
+      # GPU none (WSLg handles GPU itself)
+      sed -i -e '/^  gpu = {/,/^  };/ s|driver = "intel";|driver = "none";|' "$HOST_DIR/variables.nix"
+
+      # nixos-wsl supplies its own hardware-configuration equivalent; drop placeholder
+      rm -f "$HOST_DIR/hardware-configuration.nix"
+      sed -i -e '/hardware-configuration.nix/d' "$HOST_DIR/configuration.nix"
+
+      echo ">> WSL host ($SYSTEM) — skipping nixos-generate-config; nixos-wsl owns boot"
+
     else
       if command -v nixos-generate-config >/dev/null 2>&1; then
         echo ">> generating hardware-configuration.nix (requires sudo)"
@@ -92,6 +135,11 @@ pkgs.writeShellApplication {
     echo
     echo "Done. Next steps:"
     if [ "$MAC" -eq 1 ]; then
+      echo "  nix run home-manager/master -- switch --flake .#$USER_NAME@$HOSTNAME"
+    elif [ "$WSL" -eq 1 ]; then
+      echo "  sudo nixos-rebuild switch --flake .#$HOSTNAME"
+      echo "  # Inside WSL, restart the distro after the first switch:"
+      echo "  # (from Windows)  wsl --terminate <distro-name>"
       echo "  nix run home-manager/master -- switch --flake .#$USER_NAME@$HOSTNAME"
     else
       echo "  sudo nixos-rebuild switch --flake .#$HOSTNAME"

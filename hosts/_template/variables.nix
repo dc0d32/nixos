@@ -41,6 +41,15 @@
     suspendAfter = 900;   # 15 min
   };
 
+  # WSL (Windows Subsystem for Linux). Flip on for a WSL distro, including
+  # Windows-on-ARM (aarch64-linux). When enabled, modules/nixos/wsl.nix
+  # imports nixos-wsl and disables bootloader/DM/niri/pipewire/gpu/power.
+  wsl = {
+    enable = false;
+    # defaultUser = variables.user;   # falls back automatically
+    startMenuLaunchers = true;
+  };
+
   apps = {
     chrome.enable = true;   # linux only; no-op on mac
   };

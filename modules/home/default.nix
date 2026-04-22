@@ -1,6 +1,8 @@
-{ lib, pkgs, ... }:
+{ lib, pkgs, variables ? { }, ... }:
 let
   isLinux = pkgs.stdenv.hostPlatform.isLinux;
+  isWsl   = variables.wsl.enable or false;
+  hasDesktop = isLinux && !isWsl;
 in
 {
   imports = [
@@ -12,7 +14,7 @@ in
     ./git.nix
     ./tmux.nix
     ./direnv.nix
-  ] ++ lib.optionals isLinux [
+  ] ++ lib.optionals hasDesktop [
     ./desktop/niri.nix
     ./desktop/waybar.nix
     ./desktop/quickshell
