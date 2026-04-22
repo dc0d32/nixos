@@ -31,10 +31,10 @@
       pyright
       rust-analyzer
       gopls
-      nodePackages.typescript-language-server
-      nodePackages.bash-language-server
-      nodePackages.vscode-langservers-extracted   # html/css/json/eslint
-      nodePackages.yaml-language-server
+      typescript-language-server
+      bash-language-server
+      vscode-langservers-extracted   # html/css/json/eslint
+      yaml-language-server
       marksman                # markdown
       taplo                   # toml
 
