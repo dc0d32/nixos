@@ -20,6 +20,7 @@ in
     ./terminal/alacritty.nix
     ./tools/btop.nix
     ./tools/build-deps.nix
+    ./tools/gh.nix
     ./git.nix
     ./tmux.nix
     ./direnv.nix
