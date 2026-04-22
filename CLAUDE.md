@@ -27,6 +27,12 @@ decisions, and rationale live there.
 - Linux-only home modules must be wrapped in `lib.optionals isLinux` in
   `modules/home/default.nix`.
 - Format with `nix fmt` (nixpkgs-fmt).
+- Package overrides (pins, patches, upstream bumps awaiting nixpkgs) live in
+  `overlays/<name>.nix`, one per file, registered in `overlays/default.nix`.
+  Every overlay file MUST carry (1) a comment explaining *why* the override
+  exists and (2) a retirement condition — the trigger that says it's safe to
+  delete. Without (2) overlays accumulate forever. Prefer overlays over
+  in-module `overrideAttrs` / `let`-bindings so overrides are centralized.
 
 ## Appending to the session log
 
@@ -40,4 +46,5 @@ correct factual errors.
 - `flake.nix` — inputs and outputs, auto-discovers `hosts/` and `homes/`.
 - `lib/default.nix` — `mkHost`, `mkHome`, merge rules.
 - `apps/new-host.nix` — the scaffolder run by `nix run .#new-host`.
+- `overlays/` — package overrides (pins/patches); see Conventions.
 - `README.md` — user-facing install and day-to-day commands.

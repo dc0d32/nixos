@@ -3,9 +3,10 @@ let
   inherit (inputs) nixpkgs home-manager;
   lib = nixpkgs.lib;
 
-  # Flake-wide overlay set. Applied to both the home-manager pkgs instance
+  # Flake-wide overlay list. Applied to both the home-manager pkgs instance
   # and the NixOS pkgs via nixpkgs.overlays in modules/nixos/nix-settings.nix.
-  overlays = [ (import ../overlays) ];
+  # See overlays/default.nix for the per-overlay files and conventions.
+  overlays = import ../overlays;
 
   # Directories that aren't hosts/homes (templates, hidden dirs)
   isRealEntry = name: type:

@@ -10,7 +10,9 @@
 #   config files, but never call require("lspconfig") itself.
 # - Treesitter uses the main-branch API: grammars come from
 #   pkgs.vimPlugins.nvim-treesitter.withAllGrammars, enabled per-buffer on
-#   FileType via vim.treesitter.start.
+#   FileType via vim.treesitter.start. The plugin itself is currently pinned
+#   via overlays/nvim-treesitter-pin.nix to dodge the CLI version gate —
+#   that's transparent here; see the overlay for details.
 {
   programs.neovim = {
     enable = true;

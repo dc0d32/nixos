@@ -15,6 +15,6 @@
   # Pinned nixos-unstable: we deliberately update inputs and don't need
   # the shims.
   nixpkgs.config.allowAliases = false;
-  # Apply the flake-wide overlays (e.g. tree-sitter pin).
-  nixpkgs.overlays = [ (import ../../overlays) ];
+  # Apply the flake-wide overlays. See overlays/default.nix.
+  nixpkgs.overlays = import ../../overlays;
 }
