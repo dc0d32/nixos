@@ -5,10 +5,12 @@
 # Design:
 # - Uses home-manager's programs.neovim (not nixvim) to keep config portable
 #   and readable. Lua lives in a single initLua block.
-# - LSP servers are installed as pkgs and referenced by name; neovim auto-starts
-#   them via vim.lsp.config/vim.lsp.enable (nvim 0.11+ native API).
-# - Treesitter uses the `withAllGrammars` variant so every language works
-#   without nvim-treesitter juggling.
+# - LSP is wired via the nvim 0.11 native API: vim.lsp.config + vim.lsp.enable.
+#   We keep nvim-lspconfig on the runtimepath for its default `lsp/<name>.lua`
+#   config files, but never call require("lspconfig") itself.
+# - Treesitter uses the main-branch API: grammars come from
+#   pkgs.vimPlugins.nvim-treesitter.withAllGrammars, enabled per-buffer on
+#   FileType via vim.treesitter.start.
 {
   programs.neovim = {
     enable = true;
@@ -59,11 +61,17 @@
       nvim-web-devicons
       which-key-nvim
 
-      # Treesitter with all grammars
+      # Treesitter: main-branch flavor, all grammars on runtimepath.
+      # Intentionally NOT including nvim-treesitter-textobjects — its current
+      # setup path still hits the legacy nvim-treesitter attr and triggers
+      # the deprecation warning. Native textobjects can be added later via
+      # vim.treesitter if wanted.
       nvim-treesitter.withAllGrammars
-      nvim-treesitter-textobjects
 
-      # LSP + completion
+      # LSP + completion — nvim-lspconfig still ships the per-server
+      # `lsp/<name>.lua` default configs, which vim.lsp.enable() picks up
+      # off the runtimepath. We no longer call require("lspconfig"), so
+      # the deprecated "framework" code path is untouched.
       nvim-lspconfig
       nvim-cmp
       cmp-nvim-lsp
@@ -156,20 +164,10 @@
         end,
       })
 
-      -- Textobjects — nvim-treesitter-textobjects still ships a select API
-      -- compatible with the main branch; load it if present.
-      pcall(function()
-        require("nvim-treesitter-textobjects").setup({
-          select = {
-            lookahead = true,
-            keymaps = {
-              ["af"] = "@function.outer", ["if"] = "@function.inner",
-              ["ac"] = "@class.outer",    ["ic"] = "@class.inner",
-              ["aa"] = "@parameter.outer",["ia"] = "@parameter.inner",
-            },
-          },
-        })
-      end)
+      -- Textobjects: intentionally omitted. The nvim-treesitter-textobjects
+      -- plugin's setup path still resolves the legacy nvim-treesitter attr
+      -- and fires a deprecation warning. Drop it here; if textobjects come
+      -- back, switch to native queries via vim.treesitter.query.set.
 
       -- ---------- completion ----------
       local cmp = require("cmp")
@@ -198,28 +196,37 @@
         ),
       })
 
-      -- ---------- LSP ----------
+      -- ---------- LSP (nvim 0.11 native: vim.lsp.config + vim.lsp.enable) ----------
+      -- We no longer call `require("lspconfig")` — that path is deprecated and
+      -- will be removed in nvim-lspconfig v3.0.0. nvim-lspconfig still ships
+      -- `lsp/<name>.lua` default configs which vim.lsp.enable() auto-discovers
+      -- on the runtimepath, so those defaults (cmd, filetypes, root markers)
+      -- still apply. We add cmp capabilities via vim.lsp.config("*").
       local caps = require("cmp_nvim_lsp").default_capabilities()
-      local lspconfig = require("lspconfig")
-      local servers = {
-        nil_ls = {},
-        lua_ls = { settings = { Lua = { workspace = { checkThirdParty = false } } } },
-        pyright = {},
-        rust_analyzer = {},
-        gopls = {},
-        ts_ls = {},
-        bashls = {},
-        jsonls = {},
-        yamlls = {},
-        html = {},
-        cssls = {},
-        marksman = {},
-        taplo = {},
-      }
-      for name, cfg in pairs(servers) do
-        cfg.capabilities = caps
-        lspconfig[name].setup(cfg)
-      end
+      vim.lsp.config("*", { capabilities = caps })
+
+      -- Per-server overrides (merged with the default config shipped by
+      -- nvim-lspconfig's lsp/<name>.lua).
+      vim.lsp.config("lua_ls", {
+        settings = { Lua = { workspace = { checkThirdParty = false } } },
+      })
+
+      -- Turn servers on. nvim spawns each when a buffer's filetype matches.
+      vim.lsp.enable({
+        "nil_ls",
+        "lua_ls",
+        "pyright",
+        "rust_analyzer",
+        "gopls",
+        "ts_ls",
+        "bashls",
+        "jsonls",
+        "yamlls",
+        "html",
+        "cssls",
+        "marksman",
+        "taplo",
+      })
 
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(ev)
