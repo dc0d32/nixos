@@ -4,7 +4,7 @@
 #
 # Design:
 # - Uses home-manager's programs.neovim (not nixvim) to keep config portable
-#   and readable. Lua lives in a single extraLuaConfig block.
+#   and readable. Lua lives in a single initLua block.
 # - LSP servers are installed as pkgs and referenced by name; neovim auto-starts
 #   them via vim.lsp.config/vim.lsp.enable (nvim 0.11+ native API).
 # - Treesitter uses the `withAllGrammars` variant so every language works
@@ -15,6 +15,13 @@
     defaultEditor = true;
     viAlias = true;
     vimAlias = true;
+
+    # Opt out of the legacy ruby/python3 providers; they pull in large
+    # closures we don't need. home-manager warns when stateVersion < 26.05
+    # that these default to true — pin them off explicitly.
+    withRuby = false;
+    withPython3 = false;
+    withNodeJs = false;
 
     extraPackages = with pkgs; [
       # tools
@@ -85,7 +92,7 @@
       conform-nvim
     ];
 
-    extraLuaConfig = /* lua */ ''
+    initLua = /* lua */ ''
       -- ---------- options ----------
       vim.g.mapleader = " "
       vim.g.maplocalleader = " "
@@ -130,14 +137,30 @@
       require("nvim-surround").setup()
       require("which-key").setup()
 
-      -- ---------- treesitter ----------
-      require("nvim-treesitter.configs").setup({
-        highlight = { enable = true },
-        indent    = { enable = true },
-        incremental_selection = { enable = true },
-        textobjects = {
+      -- ---------- treesitter (nvim-treesitter main-branch API) ----------
+      -- The old `require("nvim-treesitter.configs").setup` was removed.
+      -- Grammars come from pkgs.vimPlugins.nvim-treesitter.withAllGrammars
+      -- (they're on the runtimepath). Highlighting + indent are enabled
+      -- per-buffer on FileType via the native vim.treesitter API.
+      vim.api.nvim_create_autocmd("FileType", {
+        callback = function(ev)
+          local ft = vim.bo[ev.buf].filetype
+          local lang = vim.treesitter.language.get_lang(ft) or ft
+          if lang and pcall(vim.treesitter.language.add, lang) then
+            pcall(vim.treesitter.start, ev.buf, lang)
+            -- Tree-sitter based indent (requires the indents query).
+            if vim.treesitter.query.get(lang, "indents") then
+              vim.bo[ev.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+            end
+          end
+        end,
+      })
+
+      -- Textobjects — nvim-treesitter-textobjects still ships a select API
+      -- compatible with the main branch; load it if present.
+      pcall(function()
+        require("nvim-treesitter-textobjects").setup({
           select = {
-            enable = true,
             lookahead = true,
             keymaps = {
               ["af"] = "@function.outer", ["if"] = "@function.inner",
@@ -145,8 +168,8 @@
               ["aa"] = "@parameter.outer",["ia"] = "@parameter.inner",
             },
           },
-        },
-      })
+        })
+      end)
 
       -- ---------- completion ----------
       local cmp = require("cmp")

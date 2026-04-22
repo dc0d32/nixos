@@ -17,7 +17,7 @@
       gd = "git diff";
       gl = "git log --oneline --graph --decorate";
     };
-    initExtra = ''
+    initContent = ''
       bindkey -e
       setopt AUTO_CD PROMPT_SUBST
     '';
