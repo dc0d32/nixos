@@ -1,0 +1,270 @@
+# Session: Initial scaffold — 2026-04-21
+
+This document captures the design discussion and decisions that produced the
+first commit of this repo. It exists so that a fresh Claude Code session, run
+from a different machine that clones this repo, can pick up the context without
+re-asking the same questions.
+
+If you are Claude Code reading this: **the user's preferences and the
+architectural rationale are final unless they explicitly ask you to revisit
+them.** Prefer extending the existing structure over proposing alternatives.
+
+---
+
+## User intent
+
+> "I need to better organize my linux dotfiles. I am getting into nixos, moving
+> from arch. Help me create a nix config system. I recently saw
+> https://github.com/Sly-Harvey/NixOS, which is a very good recipe to follow. I
+> don't want to copy this verbatim, just the setup. I want my own sane
+> defaults. Need ability to go to fresh nix install, pull down the nix repo on
+> my github (dc0d32), which will create a new host config, allow me to edit the
+> host specific variables, and replicate the setup. The configs that can be
+> generated from nix can stay on nix. For others, they would be in their own
+> repo on my github called dotfiles."
+
+### What survived into the design
+
+- **Host-based flake** inspired by Sly-Harvey/NixOS (hosts/ + modules/ +
+  per-host `variables.nix`).
+- **Clone → scaffold → edit → rebuild** bootstrap flow via `nix run
+  .#new-host -- <hostname>`.
+- **Own sane defaults**, not copied verbatim.
+
+### What changed during the conversation
+
+- The user decided to **not** split configs into a separate `dotfiles` repo.
+  Everything declarative lives inside this nix repo under `modules/home/*`.
+  A separate dotfiles repo was the initial thought but was dropped once the
+  user confirmed they want max coverage from nix / home-manager.
+
+---
+
+## Decisions (locked in)
+
+| Topic | Choice | Why |
+|---|---|---|
+| Compositor | **niri** (Wayland, scrollable-tiling) | Explicit user ask |
+| Shell | **zsh** | User preference |
+| Editor | **neovim** | User preference |
+| Terminal | **alacritty** | User preference |
+| Home Manager | **standalone** (not a NixOS module) | User wants the same HM modules to apply on macOS as well as NixOS |
+| macOS support | **home-manager only**, no nix-darwin | User only wants the user-scope overlap (shell, editor, git, tmux, ...) cross-platform; doesn't need declarative macOS system defaults |
+| Nix installer on Mac | **Determinate Systems** | Has a real uninstaller; handles APFS `Nix Store` volume, `_nixbld*` users, launchd daemon cleanly |
+| New host bootstrap | **Flake app** (`nix run .#new-host -- <name>`) | More idiomatic than a shell script at the repo root; self-contained via `writeShellApplication` |
+| Secrets | **Deferred** | Not needed yet. Structure leaves room for sops-nix or agenix later |
+| Config split | **All in nix**, no dotfiles repo | Maximize `programs.*` declarative coverage |
+
+### Pros/cons the user specifically asked about
+
+**nix-darwin vs home-manager-only on Mac** (summary of the discussion):
+
+- nix-darwin pros: declarative `defaults write` (Dock/Finder/trackpad),
+  declarative Homebrew cask management, launchd agents via a clean module,
+  Touch ID for sudo, symmetric mental model with NixOS.
+- nix-darwin cons: another moving part, modules lag, needs sudo and touches
+  system state, occasionally fights SIP / macOS upgrades.
+- home-manager-only pros: one tool across NixOS/macOS, no sudo, easy to
+  bootstrap, maximally portable to work/borrowed Macs.
+- home-manager-only cons: macOS system prefs stay imperative, no declarative
+  Homebrew, launchd agents less ergonomic.
+
+The user chose home-manager-only because the overlap they actually want shared
+across Linux and Mac is user-scope (shell, editor, git, tmux, CLI tools).
+
+**Does Nix on Mac do scary things at install time?** Yes: creates an APFS
+`Nix Store` volume (not a partition — APFS volumes share free space), creates
+`_nixbld1..32` users + `nixbld` group, installs an `org.nixos.nix-daemon`
+launchd daemon, edits `/etc/{zshrc,bashrc}`, optionally signs the volume. This
+is a **Nix install prerequisite**, not a nix-darwin concern. The
+Determinate Systems installer does the same thing but also provides
+`/nix/nix-installer uninstall` to reverse every change cleanly, plus enables
+flakes + nix-command by default. That's the recommended path.
+
+---
+
+## Architecture
+
+### Repository layout
+
+```
+flake.nix                   inputs + outputs, auto-discovers hosts/ and homes/
+lib/default.nix             mkHost, mkHome, mkAllHosts, mkAllHomes, forAllSystems
+hosts/_template/            Template that new hosts clone from
+hosts/<hostname>/           Per-machine NixOS system config
+  ├── variables.nix         hostname, user, timezone, feature flags
+  ├── configuration.nix     imports + host-level overrides
+  ├── host-packages.nix     per-host system packages
+  └── hardware-configuration.nix   generated by nixos-generate-config
+homes/_template/            Template for per-user HM profile
+homes/<user>@<hostname>/    Per-user HM profile (merged with host variables)
+modules/nixos/              Reusable NixOS modules, each gated on variables.*.enable
+  ├── default.nix (aggregator)
+  ├── desktop/niri.nix
+  ├── audio/pipewire.nix
+  ├── networking.nix
+  ├── fonts.nix
+  ├── locale.nix
+  ├── users.nix
+  └── nix-settings.nix
+modules/home/               Reusable home-manager modules
+  ├── default.nix (aggregator, conditionally imports linux-only desktop bits)
+  ├── shell/zsh.nix
+  ├── editor/neovim.nix
+  ├── terminal/alacritty.nix
+  ├── desktop/niri.nix     (linux only)
+  ├── desktop/waybar.nix   (linux only)
+  ├── git.nix
+  ├── tmux.nix
+  └── direnv.nix
+apps/new-host.nix           writeShellApplication for `nix run .#new-host`
+pkgs/default.nix            Custom package definitions (empty initially)
+overlays/default.nix        Custom overlays (empty initially)
+docs/sessions/              This directory; session notes
+```
+
+### flake.nix contract
+
+- `nixosConfigurations.<hostname>` — one per directory under `hosts/` (except
+  `_template` and anything starting with `_` or `.`). Built by
+  `lib.mkAllHosts`.
+- `homeConfigurations."<user>@<host>"` — one per directory under `homes/`.
+  Built by `lib.mkAllHomes`. Works on NixOS and macOS because it's standalone.
+- `apps.<system>.new-host` — scaffolder. Also `apps.<system>.default` alias.
+- `devShells.<system>.default` — minimal `nix + nixpkgs-fmt + git` shell.
+- `packages.<system>.*` — re-export from `pkgs/`.
+- `formatter.<system>` — `nixpkgs-fmt`.
+
+### Module convention
+
+Every module in `modules/` either:
+
+1. Always applies (safe system-wide defaults — e.g. `nix-settings.nix`,
+   `networking.nix`), OR
+2. Gates its `config` on `variables.<ns>.<name>.enable` using `lib.mkIf`.
+
+Hosts and user profiles opt in via their `variables.nix` / `home.nix`, not by
+editing imports. This keeps the graph flat and composable.
+
+### Auto-discovery
+
+`lib/default.nix :: listDirs` filters out directory entries that start with
+`_` or `.`. That's how `hosts/_template/` stays a template and doesn't
+accidentally become a configuration.
+
+### mkHome merges variables from host + user profile
+
+`lib.mkHome` reads `hosts/<host>/variables.nix` AND
+`homes/<user>@<host>/variables.nix` (if present) and merges the latter over
+the former. That way `git.name` / `git.email` can be user-scoped while
+`timezone` / `keymap` stay host-scoped.
+
+---
+
+## Installation flows
+
+**Fresh NixOS**
+```sh
+nix-shell -p git
+git clone https://github.com/dc0d32/nixos ~/nixos && cd ~/nixos
+nix run .#new-host -- "$(hostname)"
+# edit variables.nix that opened in $EDITOR
+git add -A
+sudo nixos-rebuild switch --flake .#"$(hostname)"
+nix run home-manager/master -- switch --flake .#"$USER@$(hostname)"  # optional standalone HM
+```
+
+**Fresh macOS**
+```sh
+curl -sSf -L https://install.determinate.systems/nix | sh -s -- install
+git clone https://github.com/dc0d32/nixos ~/nixos && cd ~/nixos
+nix run .#new-host -- "$(hostname -s)" --mac
+nix run home-manager/master -- switch --flake .#"$USER@$(hostname -s)"
+```
+
+---
+
+## Known caveats captured at scaffold time
+
+1. **niri-flake output names** may drift upstream
+   (`inputs.niri.nixosModules.niri`, `.homeModules.niri`). If they change,
+   update `modules/nixos/desktop/niri.nix` and `modules/home/desktop/niri.nix`.
+2. **Nerd Fonts** — nixpkgs recently namespaced these as
+   `pkgs.nerd-fonts.<name>` instead of `nerdfonts.override`. If
+   `nix flake check` complains in `modules/nixos/fonts.nix`, switch naming.
+3. **Darwin `homeManagerConfiguration`** needs a darwin-system `pkgs`.
+   `lib/default.nix :: mkHome` honors `variables.system`; always use
+   `new-host -- <name> --mac` for Macs.
+4. **Line endings** — `.gitattributes` forces LF. Do not disable; nix will
+   reject CRLF in some contexts.
+5. **Placeholder `hardware-configuration.nix`** in `hosts/_template/` is
+   intentionally non-bootable so a forgotten `nixos-generate-config` fails at
+   rebuild time instead of silently.
+
+---
+
+## Intentional non-goals (for this iteration)
+
+- **Secrets management** — no sops-nix / agenix. Add when needed.
+- **nix-darwin** — not wired up. Home-manager standalone covers the current
+  Mac needs. Adding nix-darwin later is additive (new flake output); modules
+  are already split into `nixos/` vs `home/`, so no restructuring.
+- **Per-host overlays** — `overlays/default.nix` exists but is empty.
+- **CI** — no `nix flake check` workflow yet.
+- **VM tests** — not set up.
+
+---
+
+## How to extend
+
+1. New system-level concern → `modules/nixos/<concern>.nix`, add to
+   `modules/nixos/default.nix`, define `variables.<concern>.enable`, use
+   `lib.mkIf`.
+2. New user-level concern → `modules/home/<concern>.nix`, add to
+   `modules/home/default.nix` (wrap in `lib.optionals isLinux` if the module
+   doesn't work on macOS).
+3. New host → `nix run .#new-host -- <hostname>`. Don't hand-create
+   directories unless you know why.
+4. New user on an existing host → copy `homes/_template` to
+   `homes/<user>@<host>` and edit, then
+   `home-manager switch --flake .#<user>@<host>`.
+
+---
+
+## Things the user said they'll handle themselves
+
+- Creating the GitHub repo at `github.com/dc0d32/nixos` and pushing.
+- Running `nix flake update` on a Nix-capable machine to produce `flake.lock`.
+- Actually testing a rebuild on real hardware.
+
+---
+
+## Turn-by-turn summary (short)
+
+1. User described intent (moving from arch, wants a nix config system inspired
+   by Sly-Harvey/NixOS, with a bootstrap flow).
+2. Plan agent asked four clarifying questions (DE, HM integration, stack,
+   config split). User chose niri / standalone HM / zsh+nvim+alacritty / all
+   in nix (no dotfiles repo).
+3. User asked for clarifying discussion on the remaining three (mac support,
+   bootstrap, secrets). They specifically wanted the pros/cons of nix-darwin
+   vs home-manager-only, and details on what Nix does to a Mac at install.
+4. After that discussion: chose home-manager-only on Mac, flake-app
+   bootstrap, deferred secrets.
+5. Plan written, approved, executed: scaffolded the whole repo, git init,
+   initial commit on branch `main`.
+6. User asked to fold follow-up steps and caveats into the README, and to
+   capture the session itself in the repo. → this file.
+
+---
+
+## Notes for future Claude sessions on this repo
+
+- This file is the canonical context. Prefer it over re-deriving decisions.
+- `docs/sessions/` is append-only: new sessions should add dated files
+  alongside this one rather than editing it, unless correcting a factual
+  error. Treat it like an ADR log.
+- When the user asks "why did we do X this way?", check here first.
+- The user is comfortable with nix fundamentals but is new to NixOS
+  specifically — err toward showing the commands rather than assuming
+  familiarity with the CLI surface.
