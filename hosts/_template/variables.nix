@@ -5,7 +5,7 @@
 
   # Architecture & release
   system = "x86_64-linux";
-  stateVersion = "24.11";
+  stateVersion = "25.11";
 
   # Locale / time
   timezone = "America/Los_Angeles";

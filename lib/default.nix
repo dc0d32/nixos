@@ -52,7 +52,18 @@ rec {
         inherit user hostname;
       };
       system = variables.system or "x86_64-linux";
-      pkgs = import inputs.nixpkgs { inherit system; config.allowUnfree = true; };
+      pkgs = import inputs.nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          # Aliases are backward-compat shims kept behind deprecation
+          # warnings. On pinned nixos-unstable we don't need the shims,
+          # and disabling them silences noise like the recurring
+          # `nvim-treesitter-legacy is deprecated` eval warning that
+          # some transitive dependency pulls in.
+          allowAliases = false;
+        };
+      };
     in
     home-manager.lib.homeManagerConfiguration {
       inherit pkgs;
@@ -66,7 +77,7 @@ rec {
             if lib.hasSuffix "darwin" system
             then "/Users/${user}"
             else "/home/${user}";
-          home.stateVersion = variables.stateVersion or "24.11";
+          home.stateVersion = variables.stateVersion or "25.11";
         }
       ];
     };
