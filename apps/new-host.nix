@@ -120,10 +120,10 @@ pkgs.writeShellApplication {
     else
       if command -v nixos-generate-config >/dev/null 2>&1; then
         echo ">> generating hardware-configuration.nix (requires sudo)"
-        sudo nixos-generate-config --show-hardware-config > "$HOST_DIR/hardware-configuration.nix"
+        sudo nixos-generate-config --show-hardware-config | sudo tee "$HOST_DIR/hardware-configuration.nix" >/dev/null
       else
         echo "!! nixos-generate-config not found — leaving placeholder. Run it manually before rebuild:" >&2
-        echo "   sudo nixos-generate-config --show-hardware-config > $HOST_DIR/hardware-configuration.nix" >&2
+        echo "   sudo nixos-generate-config --show-hardware-config | sudo tee $HOST_DIR/hardware-configuration.nix" >&2
       fi
     fi
 
