@@ -43,11 +43,11 @@
 
   # WSL (Windows Subsystem for Linux). Flip on for a WSL distro, including
   # Windows-on-ARM (aarch64-linux). When enabled, modules/nixos/wsl.nix
-  # imports nixos-wsl and disables bootloader/DM/niri/pipewire/gpu/power.
+  # imports the wsl.nix file from github:dc0d32/nixos-aarch64-wsl and
+  # disables bootloader/DM/niri/pipewire/gpu/power.
   wsl = {
     enable = false;
-    # defaultUser = variables.user;   # falls back automatically
-    startMenuLaunchers = true;
+    # defaultUser = variables.user;   # falls back to variables.user automatically
   };
 
   apps = {
