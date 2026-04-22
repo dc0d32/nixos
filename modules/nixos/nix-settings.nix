@@ -1,4 +1,4 @@
-{ ... }: {
+{ inputs, ... }: {
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
     auto-optimise-store = true;
@@ -15,4 +15,6 @@
   # Pinned nixos-unstable: we deliberately update inputs and don't need
   # the shims.
   nixpkgs.config.allowAliases = false;
+  # Apply the flake-wide overlays (e.g. tree-sitter pin).
+  nixpkgs.overlays = [ (import ../../overlays) ];
 }

@@ -3,6 +3,10 @@ let
   inherit (inputs) nixpkgs home-manager;
   lib = nixpkgs.lib;
 
+  # Flake-wide overlay set. Applied to both the home-manager pkgs instance
+  # and the NixOS pkgs via nixpkgs.overlays in modules/nixos/nix-settings.nix.
+  overlays = [ (import ../overlays) ];
+
   # Directories that aren't hosts/homes (templates, hidden dirs)
   isRealEntry = name: type:
     type == "directory" && !(lib.hasPrefix "_" name) && !(lib.hasPrefix "." name);
@@ -21,7 +25,7 @@ let
     (system: f system);
 in
 rec {
-  inherit forAllSystems listDirs loadVars;
+  inherit forAllSystems listDirs loadVars overlays;
 
   # Build a NixOS system config for hosts/<hostname>/
   mkHost = { hostname, hostsDir, modulesDir }:
@@ -53,7 +57,7 @@ rec {
       };
       system = variables.system or "x86_64-linux";
       pkgs = import inputs.nixpkgs {
-        inherit system;
+        inherit system overlays;
         config = {
           allowUnfree = true;
           # Aliases are backward-compat shims kept behind deprecation
