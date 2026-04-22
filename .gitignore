@@ -4,4 +4,3 @@ result-*
 .envrc
 *.swp
 .DS_Store
-flake.lock
