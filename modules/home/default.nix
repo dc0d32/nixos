@@ -13,6 +13,7 @@ in
   ] ++ lib.optionals isLinux [
     ./desktop/niri.nix
     ./desktop/waybar.nix
+    ./desktop/quickshell
   ];
 
   programs.home-manager.enable = true;

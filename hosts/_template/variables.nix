@@ -15,7 +15,9 @@
   # Feature flags consumed by modules/nixos/* and modules/home/*
   desktop = {
     niri.enable = true;
+    # Pick ONE status bar / shell. Enabling both will draw two panels.
     waybar.enable = true;
+    quickshell.enable = false;
   };
 
   audio.pipewire.enable = true;
