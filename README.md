@@ -9,8 +9,8 @@ flake.nix                   inputs + outputs, auto-discovers hosts/ and homes/
 lib/                        mkHost / mkHome helpers
 hosts/<hostname>/           NixOS system config (configuration.nix + variables.nix + hardware)
 homes/<user>@<hostname>/    home-manager user profile (works on NixOS and macOS)
-modules/nixos/              reusable system modules (niri, pipewire, networking, fonts, ...)
-modules/home/               reusable user modules (zsh, neovim, alacritty, niri, waybar/quickshell, git, tmux, direnv)
+modules/nixos/              reusable system modules (niri, ly login, pipewire, gpu, power, system-utils, networking, fonts, ...)
+modules/home/               reusable user modules (neovim+LSP, zsh, alacritty, btop, build-deps, niri, waybar/quickshell, idle, chrome, git, tmux, direnv)
 apps/new-host.nix           `nix run .#new-host -- <hostname>` scaffolder
 pkgs/ overlays/             custom packages and overlays
 docs/                       design notes and AI session history (see docs/sessions/)
