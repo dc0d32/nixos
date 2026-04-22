@@ -17,6 +17,11 @@
     python3
     nodejs
 
+    # tree-sitter CLI — lives in home.packages (not neovim's extraPackages)
+    # so :checkhealth nvim-treesitter finds it on PATH, and so it's available
+    # from the shell for grammar development / :TSInstall / :TSUpdate.
+    tree-sitter
+
     # Archive / transfer
     unzip
     zip

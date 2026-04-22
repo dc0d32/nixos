@@ -30,7 +30,10 @@
       ripgrep
       fd
       git
-      tree-sitter              # main-branch nvim-treesitter expects the CLI on PATH
+      # tree-sitter CLI + nodejs are provided via home.packages in
+      # modules/home/tools/build-deps.nix so they land in ~/.nix-profile/bin
+      # where :checkhealth nvim-treesitter actually looks. Keeping them out
+      # of extraPackages avoids duplication.
       # build deps some plugins / LSPs need
       gcc
       gnumake
