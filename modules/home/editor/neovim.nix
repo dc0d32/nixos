@@ -143,7 +143,7 @@
       }})
       vim.cmd.colorscheme("catppuccin")
 
-      require("lualine").setup({ options = { theme = "catppuccin", globalstatus = true } })
+      require("lualine").setup({ options = { theme = "catppuccin-mocha", globalstatus = true } })
       require("ibl").setup({ scope = { enabled = false } })
       require("gitsigns").setup()
       require("nvim-autopairs").setup()
