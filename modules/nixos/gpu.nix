@@ -19,12 +19,17 @@ in
   };
 
   # ---------- Intel ----------
+  # Modern Intel iGPU (Broadwell+, 2014+) uses the iHD VAAPI backend.
+  # For pre-Broadwell GPUs add `intel-vaapi-driver` (the renamed i965-va-driver).
+  # For legacy apps that only speak VDPAU, add `libvdpau-va-gl` as a bridge.
   hardware.graphics.extraPackages = lib.mkIf (driver == "intel") (with pkgs; [
-    intel-media-driver           # VAAPI driver for modern Intel (Broadwell+)
-    vaapiIntel                   # legacy fallback (older iGPUs)
-    vaapiVdpau
-    libvdpau-va-gl
+    intel-media-driver
   ]);
+
+  # Prefer the modern iHD VAAPI backend on Intel.
+  environment.sessionVariables = lib.mkIf (driver == "intel") {
+    LIBVA_DRIVER_NAME = "iHD";
+  };
 
   # AMD/Intel/NVIDIA xorg drivers. mkDefault so WSL can clear the list
   # without mkForce and hosts can override directly.
