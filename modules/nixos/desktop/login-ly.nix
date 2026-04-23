@@ -8,9 +8,11 @@ let cfg = variables.login.ly or { enable = false; };
 in
 lib.mkIf (cfg.enable or false) {
   # Use only one DM; disable others explicitly to avoid conflicts.
-  services.displayManager.gdm.enable    = lib.mkForce false;
-  services.displayManager.sddm.enable   = lib.mkForce false;
-  services.displayManager.lightdm.enable = lib.mkForce false;
+  # Note: gdm/sddm live under services.displayManager.* in current nixpkgs,
+  # but lightdm is still at services.xserver.displayManager.lightdm.
+  services.displayManager.gdm.enable          = lib.mkForce false;
+  services.displayManager.sddm.enable         = lib.mkForce false;
+  services.xserver.displayManager.lightdm.enable = lib.mkForce false;
 
   services.displayManager.ly = {
     enable = true;
