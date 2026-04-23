@@ -27,6 +27,11 @@ decisions, and rationale live there.
 - Linux-only home modules must be wrapped in `lib.optionals isLinux` in
   `modules/home/default.nix`.
 - Format with `nix fmt` (nixpkgs-fmt).
+- In shared base modules (`modules/nixos/*.nix`, `modules/home/*.nix`), set
+  policy options with `lib.mkDefault` so hosts and the upstream WSL fork can
+  override them with plain assignments without triggering "conflicting
+  definitions" errors. Reserve `mkForce` for modules that genuinely need to
+  override a downstream plain value (e.g. `wsl.nix` belt-and-suspenders).
 - Package overrides (pins, patches, upstream bumps awaiting nixpkgs) live in
   `overlays/<name>.nix`, one per file, registered in `overlays/default.nix`.
   Every overlay file MUST carry (1) a comment explaining *why* the override

@@ -25,8 +25,11 @@ in
     _module.args.defaultUser = wslUser;
 
     # --- Force-disable things our other modules might turn on ---
-    # (The fork's wsl.nix already handles boot/networking/firewall/power;
-    # these stay as belt-and-suspenders for modules we layer on top.)
+    # Base modules now use lib.mkDefault for policy options, so plain values
+    # from the upstream WSL fork already win without any intervention here.
+    # These mkForce entries are kept as belt-and-suspenders: they guarantee
+    # the value even if a host's variables.nix flips an `enable` flag that
+    # would otherwise re-enable a layer (e.g. niri, pipewire) on WSL.
 
     programs.niri.enable = lib.mkForce false;
     services.displayManager.ly.enable = lib.mkForce false;

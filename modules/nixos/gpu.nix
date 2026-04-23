@@ -12,9 +12,10 @@ let
 in
 {
   # Modern name in nixpkgs; also export hardware.graphics for compatibility.
+  # mkDefault so WSL / headless hosts can disable cleanly.
   hardware.graphics = {
-    enable = true;
-    enable32Bit = true;
+    enable = lib.mkDefault true;
+    enable32Bit = lib.mkDefault true;
   };
 
   # ---------- Intel ----------
@@ -25,13 +26,14 @@ in
     libvdpau-va-gl
   ]);
 
-  # ---------- AMD ----------
-  # xorg kept optional; niri is Wayland so xserver is not strictly required.
-  services.xserver.videoDrivers =
+  # AMD/Intel/NVIDIA xorg drivers. mkDefault so WSL can clear the list
+  # without mkForce and hosts can override directly.
+  services.xserver.videoDrivers = lib.mkDefault (
     if driver == "amd"    then [ "amdgpu" ]
     else if driver == "nvidia" then [ "nvidia" ]
     else if driver == "intel"  then [ "modesetting" ]
-    else [ ];
+    else [ ]
+  );
 
   # ---------- NVIDIA ----------
   hardware.nvidia = lib.mkIf (driver == "nvidia") {
