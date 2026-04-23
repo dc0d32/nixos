@@ -8,7 +8,7 @@
         decorations = "none";
       };
       font = {
-        normal.family = "JetBrainsMono Nerd Font";
+        normal.family = "RecMonoCasual Nerd Font";
         size = 12;
       };
       cursor.style.shape = "Beam";

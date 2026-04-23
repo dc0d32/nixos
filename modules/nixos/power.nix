@@ -2,22 +2,20 @@
 # System-level power/suspend behavior. Applies on laptops and desktops;
 # laptop-specific bits no-op on desktops.
 {
-  # Handle lid/power/suspend via logind. nixpkgs moved extraConfig to
-  # services.logind.settings.Login (structured INI) — use that.
-  services.logind = {
-    lidSwitch = "suspend";
-    lidSwitchDocked = "ignore";
-    lidSwitchExternalPower = "suspend";
-    powerKey = "suspend";          # short press power button -> suspend
-    powerKeyLongPress = "poweroff";
-    suspendKey = "suspend";
-    hibernateKey = "hibernate";
-    # idle target wired from the user-level swayidle (more flexible than
-    # logind's IdleAction), so keep logind idle disabled here.
-    settings.Login = {
-      HandleLidSwitch = "suspend";
-      IdleAction = "ignore";
-    };
+  # Handle lid/power/suspend via logind. The old top-level shortcuts
+  # (lidSwitch, powerKey, etc.) and extraConfig were all migrated into
+  # services.logind.settings.Login (structured INI) in current nixpkgs.
+  services.logind.settings.Login = {
+    HandleLidSwitch              = "suspend";
+    HandleLidSwitchDocked        = "ignore";
+    HandleLidSwitchExternalPower = "suspend";
+    HandlePowerKey               = "suspend";   # short press -> suspend
+    HandlePowerKeyLongPress      = "poweroff";
+    HandleSuspendKey             = "suspend";
+    HandleHibernateKey           = "hibernate";
+    # Idle target wired from user-level swayidle (more flexible than
+    # logind's IdleAction); keep logind idle disabled here.
+    IdleAction                   = "ignore";
   };
 
   # Power management: tlp if laptop, otherwise auto-cpufreq is fine either way.
