@@ -24,11 +24,6 @@ RowLayout {
         sourceSize: Qt.size(18, 18)
         smooth: true
       }
-
-      ToolTip.text: modelData.tooltipTitle || modelData.title || ""
-      ToolTip.visible: containsMouse && ToolTip.text !== ""
-      ToolTip.delay: 400
-      hoverEnabled: true
     }
   }
 }

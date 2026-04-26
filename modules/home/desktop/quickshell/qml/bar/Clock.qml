@@ -18,6 +18,5 @@ Text {
   MouseArea {
     anchors.fill: parent
     cursorShape: Qt.PointingHandCursor
-    // Hook: toggle a calendar popup here later if desired.
   }
 }

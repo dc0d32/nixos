@@ -2,6 +2,7 @@
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.DesktopEntries
+import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 

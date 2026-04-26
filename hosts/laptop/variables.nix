@@ -16,8 +16,6 @@
 
   desktop = {
     niri.enable = true;
-    # Pick ONE status bar / shell. Enabling both will draw two panels.
-    waybar.enable = false;
     quickshell.enable = true;
   };
 

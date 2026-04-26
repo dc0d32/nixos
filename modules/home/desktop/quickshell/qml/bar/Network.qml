@@ -50,6 +50,6 @@ RowLayout {
     color: Theme.subtext
     text: root.label
     elide: Text.ElideRight
-    Layout.maximumWidth: 140
+    Layout.preferredWidth: 60
   }
 }

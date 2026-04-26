@@ -9,8 +9,8 @@ lib.mkIf (cfg.enable or false) {
     quickshell
     qt6.qtdeclarative
     qt6.qtsvg
-    qt6.qt5compat          # for some QML modules used by widgets
-    material-symbols        # icon font used by widgets
+    qt6.qt5compat # for some QML modules used by widgets
+    material-symbols # icon font used by widgets
   ];
 
   xdg.configFile."quickshell" = {
@@ -18,7 +18,11 @@ lib.mkIf (cfg.enable or false) {
     recursive = true;
   };
 
-  # Autostart under niri. spawn-at-startup is merged with niri's other entries.
+  home.sessionVariables = {
+    QT_QPA_PLATFORM = "wayland";
+    QT_WAYLAND_USE_PRIVATE_API = "1";
+  };
+
   programs.niri.settings.spawn-at-startup = lib.mkAfter [
     { command = [ "quickshell" ]; }
   ];

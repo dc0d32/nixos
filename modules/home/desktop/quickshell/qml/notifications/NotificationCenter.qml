@@ -2,6 +2,7 @@
 // Subscribes to org.freedesktop.Notifications via Quickshell.Services.Notifications.
 import Quickshell
 import Quickshell.Services.Notifications
+import Quickshell.Io
 import QtQuick
 
 import ".."

@@ -1,4 +1,4 @@
-// Top bar: [Workspaces] ................ [Clock] ................ [Tray | Net | Vol | Bat]
+// Top bar: [Workspaces] | [MenuBar] | [ActiveWindow] | [Tray | Media | Weather] | [Net | Vol | Brightness | Clock]
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
@@ -40,23 +40,54 @@ PanelWindow {
     anchors.fill: parent
     anchors.leftMargin: 12
     anchors.rightMargin: 12
-    spacing: Theme.gap * 2
+    spacing: Theme.gap
 
-    Workspaces { Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter }
+    // LEFT: Workspaces | Separator | MenuBar
+    Workspaces { }
+    Rectangle {
+      width: 1
+      implicitWidth: 1
+      color: Theme.surface1
+      Layout.leftMargin: 8
+      Layout.rightMargin: 8
+    }
+    MenuBar { }
 
+    // Spacer
     Item { Layout.fillWidth: true }
 
-    Clock { Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter }
+    // CENTER: Active window title
+    ActiveWindow { Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter }
 
+    // Spacer
     Item { Layout.fillWidth: true }
 
+    // RIGHT: System tray, media, weather
     RowLayout {
       Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-      spacing: Theme.gap
+      spacing: 0
       SystemTray { }
-      Network    { }
-      Volume     { }
-      Battery    { }
+      Media { }
+      Weather { }
+    }
+
+    // Separator
+    Rectangle {
+      width: 1
+      implicitWidth: 1
+      color: Theme.surface1
+      Layout.leftMargin: 8
+      Layout.rightMargin: 8
+    }
+
+    // RIGHT EDGE: Network, Volume, Brightness, Clock
+    RowLayout {
+      Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+      spacing: 0
+      Network { }
+      Volume { }
+      Brightness { }
+      Clock { }
     }
   }
 }

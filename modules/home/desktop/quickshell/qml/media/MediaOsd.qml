@@ -2,6 +2,7 @@
 import Quickshell
 import Quickshell.Services.Mpris
 import Quickshell.Wayland
+import Quickshell.Io
 import QtQuick
 
 import ".."
@@ -33,8 +34,8 @@ Scope {
       visible: root.shown && root.player !== null
       color: "transparent"
       WlrLayershell.layer: WlrLayershell.Overlay
-      anchors { bottom: true; horizontalCenter: true }
-      margins { bottom: Theme.gap * 4 }
+      anchors { bottom: true }
+      margins { bottom: 100 }
       implicitWidth: 360
       implicitHeight: 72
 
@@ -46,14 +47,25 @@ Scope {
         border.color: Theme.surface2; border.width: 1
 
         Row {
-          anchors.fill: parent; anchors.margins: 10; spacing: 10
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          anchors.leftMargin: 10
+          anchors.rightMargin: 10
+          anchors.topMargin: 10
+          anchors.bottomMargin: 10
+          spacing: 10
           Image {
             width: 52; height: 52; sourceSize: Qt.size(52,52)
             source: root.player ? root.player.trackArtUrl : ""
             visible: source !== ""
           }
           Column {
-            anchors.verticalCenter: parent.verticalCenter; spacing: 2
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            spacing: 2
             Text { font.family: Theme.font; font.pixelSize: 13; font.bold: true; color: Theme.text
                    text: root.player ? root.player.trackTitle : "" }
             Text { font.family: Theme.font; font.pixelSize: 11; color: Theme.subtext

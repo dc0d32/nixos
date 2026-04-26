@@ -29,7 +29,7 @@ RowLayout {
     }
   }
 
-  Timer { interval: 1000; running: true; repeat: true; onTriggered: poller.running = true }
+  Timer { interval: 50; running: true; repeat: true; onTriggered: poller.running = true }
 
   Text {
     font.family: Theme.iconFont
@@ -45,10 +45,12 @@ RowLayout {
     font.pixelSize: 12
     color: Theme.subtext
     text: root.muted ? "mute" : root.volume + "%"
+    Layout.preferredWidth: 40
   }
 
   MouseArea {
-    anchors.fill: parent
+    Layout.preferredWidth: 10
+    Layout.fillHeight: true
     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
     onClicked: mouse.button === Qt.MiddleButton
       && Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])

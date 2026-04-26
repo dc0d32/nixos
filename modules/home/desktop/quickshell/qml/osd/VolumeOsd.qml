@@ -3,6 +3,7 @@
 // Bind volume/brightness keys to call both wpctl/brightnessctl AND this.
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Io
 import QtQuick
 
 import ".."
@@ -32,7 +33,8 @@ Scope {
       visible: root.shown
       color: "transparent"
       WlrLayershell.layer: WlrLayershell.Overlay
-      anchors { horizontalCenter: true; verticalCenter: true }
+      anchors { top: true }
+      margins { top: 100 }
       implicitWidth: 260; implicitHeight: 80
 
       Rectangle {
