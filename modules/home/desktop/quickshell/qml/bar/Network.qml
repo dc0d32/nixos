@@ -8,7 +8,7 @@ import ".."
 
 RowLayout {
   id: root
-  spacing: 4
+  spacing: 2
 
   property string label: "…"
   property string state: "unknown"   // wifi | wired | off | unknown

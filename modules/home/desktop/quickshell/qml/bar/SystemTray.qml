@@ -5,24 +5,29 @@ import QtQuick.Layouts
 
 import ".."
 
-RowLayout {
-  spacing: 6
+Row {
+  spacing: 4
 
   Repeater {
     model: SystemTray.items
-    delegate: MouseArea {
-      required property SystemTrayItem modelData
-      implicitWidth: 18
-      implicitHeight: 18
-      cursorShape: Qt.PointingHandCursor
-      onClicked: modelData.activate()
-      onPressed: if (mouse.button === Qt.RightButton) modelData.secondaryActivate()
+    delegate: Item {
+      width: 18
+      height: 18
 
       Image {
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: 16
+        height: 16
         source: modelData.icon
-        sourceSize: Qt.size(18, 18)
+        sourceSize: Qt.size(16, 16)
         smooth: true
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: modelData.activate()
+        onPressed: if (mouse.button === Qt.RightButton) modelData.secondaryActivate()
       }
     }
   }

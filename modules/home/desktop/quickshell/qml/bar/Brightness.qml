@@ -7,7 +7,7 @@ import ".."
 
 RowLayout {
   id: root
-  spacing: 4
+  spacing: 2
 
   property int brightness: 0
   property int maxBrightness: 100
@@ -40,22 +40,21 @@ RowLayout {
 
   Text {
     font.family: Theme.iconFont
-    font.pixelSize: 16
+    font.pixelSize: 14
     color: Theme.yellow
     text: "brightness_high"
   }
 
   Text {
     font.family: Theme.font
-    font.pixelSize: 12
+    font.pixelSize: 11
     color: Theme.subtext
     text: root.brightness + "%"
-    Layout.preferredWidth: 40
   }
 
   MouseArea {
-    Layout.preferredWidth: 10
-    Layout.fillHeight: true
+    implicitWidth: 10
+    implicitHeight: parent.height
     acceptedButtons: Qt.NoButton
     onWheel: {
       const delta = wheel.angleDelta.y > 0 ? "+5%" : "5%-"

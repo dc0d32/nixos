@@ -1,4 +1,3 @@
-// Volume via PipeWire (wpctl). Scroll to adjust.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -8,10 +7,10 @@ import ".."
 
 RowLayout {
   id: root
-  spacing: 4
+  spacing: 2
 
-  property int  volume: 0   // 0..100
-  property bool muted:  false
+  property int volume: 0
+  property bool muted: false
 
   Process {
     id: poller
@@ -19,7 +18,6 @@ RowLayout {
     running: true
     stdout: StdioCollector {
       onStreamFinished: {
-        // e.g. "Volume: 0.42 [MUTED]" or "Volume: 0.65"
         const m = text.match(/Volume:\s+([0-9.]+)(\s+\[MUTED\])?/)
         if (m) {
           root.volume = Math.round(parseFloat(m[1]) * 100)
@@ -33,24 +31,24 @@ RowLayout {
 
   Text {
     font.family: Theme.iconFont
-    font.pixelSize: 16
+    font.pixelSize: 14
     color: root.muted ? Theme.muted : Theme.peach
     text: root.muted ? "volume_off"
         : root.volume === 0 ? "volume_mute"
         : root.volume < 40  ? "volume_down"
                             : "volume_up"
   }
+
   Text {
     font.family: Theme.font
-    font.pixelSize: 12
+    font.pixelSize: 11
     color: Theme.subtext
     text: root.muted ? "mute" : root.volume + "%"
-    Layout.preferredWidth: 40
   }
 
   MouseArea {
-    Layout.preferredWidth: 10
-    Layout.fillHeight: true
+    implicitWidth: 10
+    implicitHeight: parent.height
     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
     onClicked: mouse.button === Qt.MiddleButton
       && Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])

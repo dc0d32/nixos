@@ -7,7 +7,7 @@ import ".."
 
 RowLayout {
   id: root
-  spacing: 6
+  spacing: 4
 
   property string title: ""
   property string artist: ""
@@ -35,7 +35,7 @@ RowLayout {
 
   Text {
     font.family: Theme.iconFont
-    font.pixelSize: 14
+    font.pixelSize: 12
     color: Theme.mauve
     text: root.playing ? "play_arrow" : "pause"
     MouseArea {
@@ -51,7 +51,6 @@ RowLayout {
     color: Theme.subtext
     text: root.title
     elide: Text.ElideRight
-    Layout.preferredWidth: 120
   }
 
   Text {
@@ -60,6 +59,5 @@ RowLayout {
     color: Theme.muted
     text: root.artist
     elide: Text.ElideRight
-    Layout.preferredWidth: 80
   }
 }

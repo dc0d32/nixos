@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import ".."
 
 RowLayout {
-  spacing: 4
+  spacing: 2
 
   Text {
     font.family: Theme.iconFont

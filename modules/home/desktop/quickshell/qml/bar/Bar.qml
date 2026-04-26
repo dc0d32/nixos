@@ -1,4 +1,4 @@
-// Top bar: [Workspaces] | [MenuBar] | [ActiveWindow] | [Tray | Media | Weather] | [Net | Vol | Brightness | Clock]
+// Top bar: [Workspaces] | [ActiveWindow] | [Tray | Media | Weather] | [Net | Vol | Brightness | Clock]
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
@@ -38,11 +38,11 @@ PanelWindow {
 
   RowLayout {
     anchors.fill: parent
-    anchors.leftMargin: 12
-    anchors.rightMargin: 12
-    spacing: Theme.gap
+    anchors.leftMargin: 8
+    anchors.rightMargin: 8
+    spacing: 0
 
-    // LEFT: Workspaces | Separator | MenuBar
+    // LEFT: Workspaces | Separator
     Workspaces { }
     Rectangle {
       width: 1
@@ -51,7 +51,6 @@ PanelWindow {
       Layout.leftMargin: 8
       Layout.rightMargin: 8
     }
-    MenuBar { }
 
     // Spacer
     Item { Layout.fillWidth: true }
@@ -86,6 +85,7 @@ PanelWindow {
       spacing: 0
       Network { }
       Volume { }
+      Battery { }
       Brightness { }
       Clock { }
     }
