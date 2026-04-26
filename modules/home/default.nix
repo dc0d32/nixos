@@ -8,15 +8,16 @@
 # We use `variables.system` (a specialArg, no config needed) to decide which
 # imports apply.
 let
-  system   = variables.system or "x86_64-linux";
-  isLinux  = lib.hasSuffix "linux" system;
-  isWsl    = variables.wsl.enable or false;
+  system = variables.system or "x86_64-linux";
+  isLinux = lib.hasSuffix "linux" system;
+  isWsl = variables.wsl.enable or false;
   hasDesktop = isLinux && !isWsl;
 in
 {
   imports = [
     ./shell/zsh.nix
     ./editor/neovim.nix
+    ./editor/vscode.nix
     ./terminal/alacritty.nix
     ./tools/btop.nix
     ./tools/build-deps.nix

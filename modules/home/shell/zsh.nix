@@ -20,6 +20,17 @@
     initContent = ''
       bindkey -e
       setopt AUTO_CD PROMPT_SUBST
+
+      nr() {
+        local host="$(hostname)"
+        sudo nixos-rebuild switch --flake ~/nixos#"$host"
+        nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
+      }
+
+      hm() {
+        local host="$(hostname)"
+        nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
+      }
     '';
   };
 

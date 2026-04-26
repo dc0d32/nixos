@@ -51,7 +51,8 @@
   };
 
   apps = {
-    chrome.enable = true; # linux only; no-op on mac
+    chrome.enable = true;
+    vscode.enable = true;
   };
 
   # Optional git identity merged into modules/home/git.nix

@@ -8,5 +8,7 @@
     vim
     curl
     wget
+    github-copilot-cli
+    opencode
   ];
 }

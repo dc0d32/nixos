@@ -16,16 +16,19 @@ lib.mkIf (cfg.enable or true) {
 
   services.swayidle = {
     enable = true;
-    systemdTarget = "graphical-session.target";
-    events = [
-      { event = "before-sleep"; command = "${pkgs.swaylock}/bin/swaylock -f -c 11111b"; }
-      { event = "lock";         command = "${pkgs.swaylock}/bin/swaylock -f -c 11111b"; }
-    ];
+    systemdTargets = [ "graphical-session.target" ];
+    events = {
+      "before-sleep" = "${pkgs.swaylock}/bin/swaylock -f -c 11111b";
+      "lock" = "${pkgs.swaylock}/bin/swaylock -f -c 11111b";
+    };
     timeouts = [
-      { timeout = (cfg.lockAfter    or 300);  command = "${pkgs.swaylock}/bin/swaylock -f -c 11111b"; }
-      { timeout = (cfg.dpmsAfter    or 420);  command = "niri msg action power-off-monitors";
-        resumeCommand = "niri msg action power-on-monitors"; }
-      { timeout = (cfg.suspendAfter or 900);  command = "systemctl suspend"; }
+      { timeout = (cfg.lockAfter    or 300); command = "${pkgs.swaylock}/bin/swaylock -f -c 11111b"; }
+      {
+        timeout = (cfg.dpmsAfter    or 420);
+        command = "niri msg action power-off-monitors";
+        resumeCommand = "niri msg action power-on-monitors";
+      }
+      { timeout = (cfg.suspendAfter or 900); command = "systemctl suspend"; }
     ];
   };
 }
