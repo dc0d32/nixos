@@ -26,10 +26,12 @@ in
     ./tmux.nix
     ./direnv.nix
   ] ++ lib.optionals hasDesktop [
+    ./audio/easyeffects.nix
     ./desktop/niri.nix
     ./desktop/waybar.nix
     ./desktop/quickshell
     ./desktop/idle.nix
+    ./desktop/wallpaper.nix
     ./apps/chrome.nix
   ];
 

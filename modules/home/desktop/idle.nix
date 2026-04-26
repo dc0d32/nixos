@@ -9,7 +9,10 @@
 # wlopm/kanshi.
 #
 # Toggle via variables.idle.enable (default: true).
-let cfg = variables.idle or { enable = true; };
+let
+  cfg = variables.idle or { enable = true; };
+  wpcfg = variables.desktop.wallpaper or { };
+  wallpaperDir = wpcfg.directory or "$HOME/wallpaper";
 in
 lib.mkIf (cfg.enable or true) {
   home.packages = with pkgs; [ swayidle swaylock brightnessctl ];
@@ -18,11 +21,11 @@ lib.mkIf (cfg.enable or true) {
     enable = true;
     systemdTargets = [ "graphical-session.target" ];
     events = {
-      "before-sleep" = "${pkgs.swaylock}/bin/swaylock -f -c 11111b";
-      "lock" = "${pkgs.swaylock}/bin/swaylock -f -c 11111b";
+      "before-sleep" = "${pkgs.swaylock}/bin/swaylock -f -i $(find ${wallpaperDir} -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) | shuf -n1 | tail -1)";
+      "lock" = "${pkgs.swaylock}/bin/swaylock -f -i $(find ${wallpaperDir} -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) | shuf -n1 | tail -1)";
     };
     timeouts = [
-      { timeout = (cfg.lockAfter    or 300); command = "${pkgs.swaylock}/bin/swaylock -f -c 11111b"; }
+      { timeout = (cfg.lockAfter    or 300); command = "${pkgs.swaylock}/bin/swaylock -f -i $(find ${wallpaperDir} -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) | shuf -n1 | tail -1)"; }
       {
         timeout = (cfg.dpmsAfter    or 420);
         command = "niri msg action power-off-monitors";

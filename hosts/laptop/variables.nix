@@ -17,9 +17,19 @@
   desktop = {
     niri.enable = true;
     quickshell.enable = true;
+    wallpaper = {
+      enable = true;
+      directory = "/home/p/.wallpaper";
+      intervalMinutes = 30;
+    };
   };
 
   audio.pipewire.enable = true;
+
+  audio.easyeffects = {
+    enable = true;
+    enableConvolver = false;  # requires impulse responses
+  };
 
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"
   # Consumed by modules/nixos/gpu.nix.

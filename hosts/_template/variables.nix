@@ -19,6 +19,12 @@
     # Pick ONE status bar / shell. Enabling both will draw two panels.
     waybar.enable = true;
     quickshell.enable = false;
+    # Wallpaper slideshow (requires a directory with images)
+    # wallpaper = {
+    #   enable = true;
+    #   directory = "/home/p/wallpaper";
+    #   intervalMinutes = 30;
+    # };
   };
 
   audio.pipewire.enable = true;
