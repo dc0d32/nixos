@@ -16,6 +16,14 @@ in
         natural-scroll = true;
       };
       prefer-no-csd = true;
+      hotkey-overlay = {
+        skip-at-startup = true;
+      };
+      outputs = {
+        "eDP-1" = {
+          scale = 1;
+        };
+      };
       layout = {
         gaps = 8;
         border.width = 2;

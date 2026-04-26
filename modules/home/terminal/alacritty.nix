@@ -9,7 +9,7 @@
       };
       font = {
         normal.family = "RecMonoCasual Nerd Font";
-        size = 9;
+        size = 10;
       };
       cursor.style.shape = "Beam";
       scrolling.history = 100000;

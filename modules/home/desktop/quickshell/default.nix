@@ -24,6 +24,7 @@ lib.mkIf (cfg.enable or false) {
   };
 
   programs.niri.settings.spawn-at-startup = lib.mkAfter [
+    { command = [ "easyeffects" "--gapplication-service" ]; }
     { command = [ "quickshell" ]; }
   ];
 }
