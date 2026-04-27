@@ -29,7 +29,7 @@ Item {
     cardWidth: card.width
     neckWidth: root.istmusW
     istmusH:   root.istmusH
-    color:     Theme.surface0
+    fillColor: Theme.surface0
   }
 
   // ── flyout card ───────────────────────────────────────────────────────

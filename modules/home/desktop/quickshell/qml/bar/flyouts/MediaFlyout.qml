@@ -37,7 +37,7 @@ Item {
   Isthmus {
     cardWidth: root.cardWidth
     neckWidth: root.istmusW
-    color:     Theme.base
+    fillColor: Theme.base
   }
 
   // card
