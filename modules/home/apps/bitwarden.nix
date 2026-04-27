@@ -2,6 +2,7 @@
 let
   cfg = variables.apps.bitwarden or { enable = false; };
   isLinux = pkgs.stdenv.hostPlatform.isLinux;
+  hasDesktop = isLinux && !(variables.wsl.enable or false);
 in
 lib.mkIf ((cfg.enable or false) && isLinux) {
   home.packages = [ pkgs.bitwarden-desktop ];
@@ -14,4 +15,9 @@ lib.mkIf ((cfg.enable or false) && isLinux) {
       base = "https://bitwarden.bitset.cc";
     };
   };
+
+  # Start minimized to tray on desktop sessions.
+  programs.niri.settings.spawn-at-startup = lib.mkIf hasDesktop [
+    { command = [ "${pkgs.bitwarden-desktop}/bin/bitwarden" "--silent" ]; }
+  ];
 }
