@@ -47,5 +47,6 @@ in
 
     services.dbus.enable = true;
     security.polkit.enable = true;
+    services.power-profiles-daemon.enable = lib.mkDefault true;
   };
 }

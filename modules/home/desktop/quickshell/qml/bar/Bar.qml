@@ -92,6 +92,7 @@ PanelWindow {
         Network    { id: networkChip }
         Volume     { id: volumeChip }
         Battery    { id: batteryChip }
+        PowerProfile { id: powerProfileChip }
         Brightness { id: brightnessChip }
         Clock      { id: clockChip }
         NotificationChip { id: notifChip; server: bar.notificationServer }
@@ -112,14 +113,15 @@ PanelWindow {
 
   // Each chip's center, expressed as reactive bindings on chip.x / parent.x.
   // We read enough properties that QML re-evaluates when layout changes.
-  readonly property real networkCX:    networkChip.x    + networkChip.parent.x    + networkChip.parent.parent.x    + networkChip.parent.parent.parent.x    + networkChip.width    / 2
-  readonly property real notifCX:      notifChip.x      + notifChip.parent.x      + notifChip.parent.parent.x      + notifChip.parent.parent.parent.x      + notifChip.width      / 2
-  readonly property real volumeCX:     volumeChip.x     + volumeChip.parent.x     + volumeChip.parent.parent.x     + volumeChip.parent.parent.parent.x     + volumeChip.width     / 2
-  readonly property real batteryCX:    batteryChip.x    + batteryChip.parent.x    + batteryChip.parent.parent.x    + batteryChip.parent.parent.parent.x    + batteryChip.width    / 2
-  readonly property real brightnessCX: brightnessChip.x + brightnessChip.parent.x + brightnessChip.parent.parent.x + brightnessChip.parent.parent.parent.x + brightnessChip.width / 2
-  readonly property real clockCX:      clockChip.x      + clockChip.parent.x      + clockChip.parent.parent.x      + clockChip.parent.parent.parent.x      + clockChip.width      / 2
-  readonly property real weatherCX:    weatherChip.x    + weatherChip.parent.x    + weatherChip.parent.parent.x    + weatherChip.parent.parent.parent.x    + weatherChip.width    / 2
-  readonly property real mediaCX:      mediaChip.x      + mediaChip.parent.x      + mediaChip.parent.parent.x      + mediaChip.parent.parent.parent.x      + mediaChip.width      / 2
+  readonly property real networkCX:       networkChip.x       + networkChip.parent.x       + networkChip.parent.parent.x       + networkChip.parent.parent.parent.x       + networkChip.width       / 2
+  readonly property real notifCX:         notifChip.x         + notifChip.parent.x         + notifChip.parent.parent.x         + notifChip.parent.parent.parent.x         + notifChip.width         / 2
+  readonly property real volumeCX:        volumeChip.x        + volumeChip.parent.x        + volumeChip.parent.parent.x        + volumeChip.parent.parent.parent.x        + volumeChip.width        / 2
+  readonly property real batteryCX:       batteryChip.x       + batteryChip.parent.x       + batteryChip.parent.parent.x       + batteryChip.parent.parent.parent.x       + batteryChip.width       / 2
+  readonly property real powerProfileCX:  powerProfileChip.x  + powerProfileChip.parent.x  + powerProfileChip.parent.parent.x  + powerProfileChip.parent.parent.parent.x  + powerProfileChip.width  / 2
+  readonly property real brightnessCX:    brightnessChip.x    + brightnessChip.parent.x    + brightnessChip.parent.parent.x    + brightnessChip.parent.parent.parent.x    + brightnessChip.width    / 2
+  readonly property real clockCX:         clockChip.x         + clockChip.parent.x         + clockChip.parent.parent.x         + clockChip.parent.parent.parent.x         + clockChip.width         / 2
+  readonly property real weatherCX:       weatherChip.x       + weatherChip.parent.x       + weatherChip.parent.parent.x       + weatherChip.parent.parent.parent.x       + weatherChip.width       / 2
+  readonly property real mediaCX:         mediaChip.x         + mediaChip.parent.x         + mediaChip.parent.parent.x         + mediaChip.parent.parent.parent.x         + mediaChip.width         / 2
 
   // ── tooltips ──────────────────────────────────────────────────────────
   BarTooltip {
@@ -139,6 +141,10 @@ PanelWindow {
   BarTooltip {
     chipCenterX: bar.brightnessCX; shown: brightnessChip.tooltipShown
     text: "Brightness: " + brightnessChip.brightness + "%"
+  }
+  BarTooltip {
+    chipCenterX: bar.powerProfileCX; shown: powerProfileChip.tooltipShown
+    text: "Profile: " + powerProfileChip.profileName
   }
   BarTooltip {
     chipCenterX: bar.clockCX; shown: clockChip.tooltipShown
@@ -162,6 +168,7 @@ PanelWindow {
   BatteryFlyout    { chipCenterX: bar.batteryCX;    chipWidth: batteryChip.width }
   WeatherFlyout    { chipCenterX: bar.weatherCX;    chipWidth: weatherChip.width }
   BrightnessFlyout { chipCenterX: bar.brightnessCX; chipWidth: brightnessChip.width }
+  PowerProfileFlyout { chipCenterX: bar.powerProfileCX; chipWidth: powerProfileChip.width }
   ClockFlyout      { chipCenterX: bar.clockCX;      chipWidth: clockChip.width }
   MediaFlyout      { chipCenterX: bar.mediaCX;      chipWidth: mediaChip.width }
 }

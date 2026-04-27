@@ -39,10 +39,11 @@ lib.mkIf enabled {
   ];
 
   # ── Cursor theme ─────────────────────────────────────────────────────────
-  # Catppuccin Mocha Blue cursor, 16px. Retire if theme preference changes.
+  # Bibata Modern Classic: black/white, color only on animated frames.
+  # Retire if cursor preference changes.
   home.pointerCursor = {
-    package = pkgs.catppuccin-cursors.mochaBlue;
-    name = "catppuccin-mocha-blue-cursors";
+    package = pkgs.bibata-cursors;
+    name = "Bibata-Modern-Classic";
     size = 16;
     gtk.enable = true;
     x11.enable = true;

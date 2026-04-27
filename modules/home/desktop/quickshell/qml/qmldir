@@ -16,6 +16,8 @@ Volume 1.0 bar/Volume.qml
 Battery 1.0 bar/Battery.qml
 Brightness 1.0 bar/Brightness.qml
 Clock 1.0 bar/Clock.qml
+PowerProfile 1.0 bar/PowerProfile.qml
+ProfileButton 1.0 bar/ProfileButton.qml
 Separator 1.0 bar/Separator.qml
 BarTooltip 1.0 bar/BarTooltip.qml
 
@@ -26,6 +28,7 @@ WeatherFlyout 1.0 bar/flyouts/WeatherFlyout.qml
 BrightnessFlyout 1.0 bar/flyouts/BrightnessFlyout.qml
 ClockFlyout 1.0 bar/flyouts/ClockFlyout.qml
 MediaFlyout 1.0 bar/flyouts/MediaFlyout.qml
+PowerProfileFlyout 1.0 bar/flyouts/PowerProfileFlyout.qml
 NotificationFlyout 1.0 bar/flyouts/NotificationFlyout.qml
 
 VolumeOsd 1.0 osd/VolumeOsd.qml
