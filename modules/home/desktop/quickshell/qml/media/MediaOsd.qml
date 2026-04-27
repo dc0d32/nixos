@@ -15,9 +15,18 @@ Scope {
                               || null
   property bool shown: false
 
+  // Browsers report the page/tab title as the track title and flip it on
+  // every play/pause, causing spurious OSD flashes.  Exclude them.
+  readonly property bool playerIsOsd: {
+    if (!root.player) return false
+    const id = (root.player.identity || "").toLowerCase()
+    return !id.includes("chrome") && !id.includes("chromium")
+        && !id.includes("firefox") && !id.includes("brave")
+  }
+
   Connections {
     target: root.player
-    function onTrackTitleChanged() { root.flash() }
+    function onTrackTitleChanged() { if (root.playerIsOsd) root.flash() }
   }
   function flash() {
     if (!root.player) return
@@ -31,7 +40,7 @@ Scope {
     PanelWindow {
       required property var modelData
       screen: modelData
-      visible: root.shown && root.player !== null
+      visible: root.shown && root.player !== null && root.playerIsOsd
       color: "transparent"
       WlrLayershell.layer: WlrLayershell.Overlay
       anchors { bottom: true }

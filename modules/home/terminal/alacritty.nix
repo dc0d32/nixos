@@ -4,7 +4,6 @@
     settings = {
       window = {
         padding = { x = 8; y = 8; };
-        opacity = 0.95;
         decorations = "none";
       };
       font = {

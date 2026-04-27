@@ -29,6 +29,12 @@ in
     xdg.portal = {
       enable = true;
       extraPortals = with pkgs; [ xdg-desktop-portal-gtk ];
+      # Without an explicit config, xdg-desktop-portal matches backends by
+      # UseIn= in *.portal files.  Both gtk.portal and gnome.portal declare
+      # UseIn=gnome, which is wrong for niri and causes gnome-portal to be
+      # activated alongside (or instead of) gtk-portal, leading to startup
+      # races and timeout failures.  Pin niri to the gtk backend explicitly.
+      config.niri.default = [ "gtk" ];
     };
 
     services.dbus.enable = true;

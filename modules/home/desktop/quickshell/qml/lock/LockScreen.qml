@@ -6,7 +6,13 @@ import ".."
 
 Scope {
   id: root
-  function lock() { locker.locked = true }
+  function lock() {
+    locker.locked = true;
+    // Pause stasis while the screen is locked: ext_idle_notifier_v1 does not
+    // reset idle time when input goes to the ext-session-lock surface, so
+    // without this stasis would re-fire the lock command every 180 s.
+    Quickshell.execDetached(["stasis", "pause"]);
+  }
 
   LockContext {
     id: lockContext
@@ -14,6 +20,7 @@ Scope {
       locker.locked = false;
       lockContext.currentText = "";
       lockContext.showFailure = false;
+      Quickshell.execDetached(["stasis", "resume"]);
     }
   }
 

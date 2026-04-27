@@ -17,7 +17,11 @@ in
     };
 
     programs.niri.settings = {
-      input.keyboard.xkb.layout = "us";
+      input.keyboard = {
+        xkb.layout = "us";
+        repeat-delay = 200;
+        repeat-rate = 35;
+      };
       input.touchpad = {
         tap = true;
         natural-scroll = true;
@@ -238,16 +242,7 @@ in
         "Mod+Shift+P".action.power-off-monitors = {};
       };
 
-      window-rules = [
-        {
-          matches = [{ is-focused = true; }];
-          opacity = 0.95;
-        }
-        {
-          matches = [{ is-focused = false; }];
-          opacity = 0.85;
-        }
-      ];
+      window-rules = [];
     };
   };
 }
