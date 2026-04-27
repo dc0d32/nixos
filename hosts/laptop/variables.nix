@@ -28,7 +28,9 @@
 
   audio.easyeffects = {
     enable = true;
-    enableConvolver = false;  # requires impulse responses
+    preset = "X1Yoga7-Music-Balanced";
+    presetsDir = ./audio-presets;
+    irsDir = ./audio-irs;
   };
 
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"
