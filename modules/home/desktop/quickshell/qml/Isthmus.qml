@@ -52,25 +52,18 @@ Canvas {
     var rT = Math.min(topR,     neckWidth / 2)
     var r  = Math.min(concaveR, (W - neckWidth) / 2, h)
 
-    // Path (clockwise), correct concave arcs:
-    //
-    //   Arc geometry for concave cutouts:
-    //     Right side: center (xR, h), from angle 3π/2 to 0, CCW (anticlockwise=true)
-    //       → curves inward from (xR, h-r) up-right to (xR+r, h)
-    //     Left side:  center (xL, h), from angle π to 3π/2, CW (anticlockwise=false)
-    //       → curves inward from (xL-r, h) up-left to (xL, h-r)  [traversed right-to-left]
-
+    // Path: start top-left of neck, go clockwise around the outside.
     ctx.beginPath()
-    ctx.moveTo(xL + rT, 0)                             // after top-left convex corner
-    ctx.lineTo(xR - rT, 0)                             // top of neck
-    ctx.arcTo(xR, 0, xR, rT, rT)                      // top-right convex corner
-    ctx.lineTo(xR, h - r)                              // right side of neck down
-    ctx.arc(xR, h, r, Math.PI * 1.5, 0, true)         // concave cutout right (CCW)
-    ctx.lineTo(W, h)                                   // bottom-right to card edge
-    ctx.lineTo(0, h)                                   // bottom-left across
-    ctx.arc(xL, h, r, Math.PI, Math.PI * 1.5, false)  // concave cutout left (CW)
-    ctx.lineTo(xL, rT)                                 // left side of neck up
-    ctx.arcTo(xL, 0, xL + rT, 0, rT)                  // top-left convex corner
+    ctx.moveTo(xL + rT, 0)                      // top-left (past convex corner)
+    ctx.lineTo(xR - rT, 0)                      // top of neck rightward
+    ctx.arcTo(xR, 0,     xR,    rT,  rT)        // top-right convex corner
+    ctx.lineTo(xR, h - r)                        // right side of neck, down
+    ctx.arcTo(xR, h,     xR+r,  h,   r)         // right concave corner (curves right)
+    ctx.lineTo(W, h)                             // right shoulder bottom edge
+    ctx.lineTo(0, h)                             // bottom edge all the way left
+    ctx.arcTo(xL-r, h,   xL,    h-r, r)         // left concave corner (curves up-right)
+    ctx.lineTo(xL, rT)                           // left side of neck up
+    ctx.arcTo(xL, 0,     xL+rT, 0,   rT)        // top-left convex corner
     ctx.closePath()
     ctx.fill()
   }
