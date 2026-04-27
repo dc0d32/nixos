@@ -25,6 +25,7 @@ in
     ./git.nix
     ./tmux.nix
     ./direnv.nix
+    ./fonts.nix
   ] ++ lib.optionals hasDesktop [
     ./audio/easyeffects.nix
     ./desktop/cursor.nix

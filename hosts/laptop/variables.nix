@@ -18,7 +18,7 @@
     niri.enable = true;
     quickshell.enable = true;
     wallpaper = {
-      enable = false;  # disabled: no wallpaper images
+      enable = true;
       directory = "/home/p/.wallpaper";
       intervalMinutes = 30;
     };

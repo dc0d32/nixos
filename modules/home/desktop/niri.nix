@@ -237,6 +237,13 @@ in
 
         "Mod+Shift+P".action.power-off-monitors = {};
       };
+
+      window-rules = [
+        {
+          matches = [{ is-focused = false; }];
+          opacity = 0.95;
+        }
+      ];
     };
   };
 }

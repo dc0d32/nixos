@@ -25,6 +25,14 @@ Scope {
         anchors.fill: parent
         color: Theme.crust
 
+        // Wallpaper — falls back to solid color if file doesn't exist
+        Image {
+          anchors.fill: parent
+          source: "file:///home/p/.wallpaper/current.jpg"
+          fillMode: Image.PreserveAspectCrop
+          visible: status === Image.Ready
+        }
+
         Column {
           anchors.centerIn: parent
           spacing: 20
