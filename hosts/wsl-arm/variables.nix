@@ -23,6 +23,11 @@
 
   audio.pipewire.enable = false;
 
+  audio.easyeffects = {
+    enable = false;
+    enableConvolver = false;
+  };
+
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"
   # Consumed by modules/nixos/gpu.nix.
   gpu = {
@@ -53,6 +58,7 @@
 
   apps = {
     chrome.enable = false;   # linux only; no-op on mac
+    vscode.enable = false;
   };
 
   # Optional git identity merged into modules/home/git.nix

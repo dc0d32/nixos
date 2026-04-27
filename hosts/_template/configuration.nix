@@ -17,6 +17,7 @@ in
   # Forced off inside WSL — nixos-wsl owns the boot path.
   boot.loader.systemd-boot.enable = lib.mkDefault (!isWsl);
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault (!isWsl);
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
   # Primary user. Inside WSL, nixos-wsl creates the default user itself,
   # so we skip the explicit user declaration there to avoid conflicting

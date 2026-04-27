@@ -17,17 +17,22 @@
   desktop = {
     niri.enable = true;
     # Pick ONE status bar / shell. Enabling both will draw two panels.
-    waybar.enable = true;
-    quickshell.enable = false;
-    # Wallpaper slideshow (requires a directory with images)
-    # wallpaper = {
-    #   enable = true;
-    #   directory = "/home/p/wallpaper";
-    #   intervalMinutes = 30;
-    # };
+    waybar.enable = false;
+    quickshell.enable = true;
+    # Wallpaper: downloads random nature photos from wallhaven, cycles every 30 min.
+    wallpaper = {
+      enable = false;  # set to true once ~/.wallpaper directory is ready
+      directory = "/home/CHANGEME/.wallpaper";
+      intervalMinutes = 30;
+    };
   };
 
   audio.pipewire.enable = true;
+
+  audio.easyeffects = {
+    enable = false;
+    enableConvolver = false;  # requires impulse response files
+  };
 
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"
   # Consumed by modules/nixos/gpu.nix.
@@ -58,6 +63,7 @@
 
   apps = {
     chrome.enable = true;   # linux only; no-op on mac
+    vscode.enable = true;
   };
 
   # Optional git identity merged into modules/home/git.nix
