@@ -1,9 +1,10 @@
-// Top bar: [Workspaces] | [ActiveWindow] | [Tray | Media | Weather] | [Net | Vol | Brightness | Clock]
+// Top bar: [Workspaces] | [ActiveWindow] | [Tray | Media | Weather] | [Notifs | Net | Vol | Brightness | Clock]
 // The window is intentionally taller than the visible bar strip so that flyouts
 // and tooltips (plain Items) can render inside it, above other windows, without
 // needing separate PanelWindows. Only Theme.barHeight + Theme.gap is exclusive.
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Services.Notifications
 import QtQuick
 import QtQuick.Layouts
 
@@ -11,6 +12,8 @@ import ".."
 
 PanelWindow {
   id: bar
+
+  property NotificationServer notificationServer
 
   anchors { top: true; left: true; right: true }
   margins  { top: 2; left: 2; right: 2 }
@@ -91,6 +94,7 @@ PanelWindow {
         Battery    { id: batteryChip }
         Brightness { id: brightnessChip }
         Clock      { id: clockChip }
+        NotificationChip { id: notifChip; server: bar.notificationServer }
       }
     }
   }
@@ -109,6 +113,7 @@ PanelWindow {
   // Each chip's center, expressed as reactive bindings on chip.x / parent.x.
   // We read enough properties that QML re-evaluates when layout changes.
   readonly property real networkCX:    networkChip.x    + networkChip.parent.x    + networkChip.parent.parent.x    + networkChip.parent.parent.parent.x    + networkChip.width    / 2
+  readonly property real notifCX:      notifChip.x      + notifChip.parent.x      + notifChip.parent.parent.x      + notifChip.parent.parent.parent.x      + notifChip.width      / 2
   readonly property real volumeCX:     volumeChip.x     + volumeChip.parent.x     + volumeChip.parent.parent.x     + volumeChip.parent.parent.parent.x     + volumeChip.width     / 2
   readonly property real batteryCX:    batteryChip.x    + batteryChip.parent.x    + batteryChip.parent.parent.x    + batteryChip.parent.parent.parent.x    + batteryChip.width    / 2
   readonly property real brightnessCX: brightnessChip.x + brightnessChip.parent.x + brightnessChip.parent.parent.x + brightnessChip.parent.parent.parent.x + brightnessChip.width / 2
@@ -151,6 +156,7 @@ PanelWindow {
   }
 
   // ── flyouts ───────────────────────────────────────────────────────────
+  NotificationFlyout { chipCenterX: bar.notifCX; chipWidth: notifChip.width; server: bar.notificationServer }
   NetworkFlyout    { chipCenterX: bar.networkCX;    chipWidth: networkChip.width }
   VolumeFlyout     { chipCenterX: bar.volumeCX;     chipWidth: volumeChip.width }
   BatteryFlyout    { chipCenterX: bar.batteryCX;    chipWidth: batteryChip.width }

@@ -28,13 +28,21 @@ in
 
     xdg.portal = {
       enable = true;
-      extraPortals = with pkgs; [ xdg-desktop-portal-gtk ];
+      extraPortals = with pkgs; [
+        xdg-desktop-portal-gtk
+        xdg-desktop-portal-wlr   # screenshare/screencast for wlroots compositors
+      ];
       # Without an explicit config, xdg-desktop-portal matches backends by
       # UseIn= in *.portal files.  Both gtk.portal and gnome.portal declare
       # UseIn=gnome, which is wrong for niri and causes gnome-portal to be
       # activated alongside (or instead of) gtk-portal, leading to startup
-      # races and timeout failures.  Pin niri to the gtk backend explicitly.
-      config.niri.default = [ "gtk" ];
+      # races and timeout failures.  Pin niri to the gtk backend explicitly,
+      # using wlr for screencast.
+      config.niri = {
+        default     = [ "gtk" ];
+        "org.freedesktop.impl.portal.ScreenCast" = [ "wlr" ];
+        "org.freedesktop.impl.portal.Screenshot" = [ "wlr" ];
+      };
     };
 
     services.dbus.enable = true;

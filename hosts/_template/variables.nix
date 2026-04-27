@@ -71,6 +71,10 @@
   # Requires one-time setup after first rebuild — see README "One-time hardware setup".
   biometrics.enable = false;
 
+  # SSH agent: systemd socket-activated ssh-agent for the user session.
+  # Disable if using a hardware key (YubiKey) or a secrets manager instead.
+  sshAgent.enable = true;
+
   # Optional git identity merged into modules/home/git.nix
   git = {
     name  = "CHANGEME";

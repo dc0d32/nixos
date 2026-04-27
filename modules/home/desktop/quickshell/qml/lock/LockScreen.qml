@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Effects
 
 import ".."
 
@@ -32,10 +33,23 @@ Scope {
         color: Theme.crust
 
         Image {
+          id: wallpaper
           anchors.fill: parent
           source: "file:///home/p/.wallpaper/current.jpg"
           fillMode: Image.PreserveAspectCrop
-          visible: status === Image.Ready
+          visible: false   // hidden; MultiEffect renders it
+        }
+
+        MultiEffect {
+          anchors.fill: parent
+          source: wallpaper
+          blurEnabled: true
+          blur: 1.0
+          blurMax: 64
+          visible: wallpaper.status === Image.Ready
+          // Dim overlay so text remains readable over any wallpaper
+          colorization: 0.15
+          colorizationColor: Theme.crust
         }
 
         Column {

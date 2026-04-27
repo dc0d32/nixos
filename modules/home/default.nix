@@ -29,6 +29,7 @@ in
   ] ++ lib.optionals hasDesktop [
     ./audio/easyeffects.nix
     ./desktop/cursor.nix
+    ./desktop/extras.nix
     ./desktop/niri.nix
     ./desktop/waybar.nix
     ./desktop/quickshell

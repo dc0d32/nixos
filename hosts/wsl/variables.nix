@@ -61,6 +61,8 @@
     vscode.enable = false;
   };
 
+  sshAgent.enable = false;
+
   # Optional git identity merged into modules/home/git.nix
   git = {
     name  = "none";

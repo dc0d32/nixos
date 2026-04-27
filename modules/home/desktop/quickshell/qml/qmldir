@@ -5,6 +5,7 @@ singleton WeatherModel 1.0 WeatherModel.qml
 
 Isthmus 1.0 Isthmus.qml
 Bar 1.0 bar/Bar.qml
+NotificationChip 1.0 bar/NotificationChip.qml
 Workspaces 1.0 bar/Workspaces.qml
 ActiveWindow 1.0 bar/ActiveWindow.qml
 SystemTray 1.0 bar/SystemTray.qml
@@ -25,6 +26,7 @@ WeatherFlyout 1.0 bar/flyouts/WeatherFlyout.qml
 BrightnessFlyout 1.0 bar/flyouts/BrightnessFlyout.qml
 ClockFlyout 1.0 bar/flyouts/ClockFlyout.qml
 MediaFlyout 1.0 bar/flyouts/MediaFlyout.qml
+NotificationFlyout 1.0 bar/flyouts/NotificationFlyout.qml
 
 VolumeOsd 1.0 osd/VolumeOsd.qml
 MediaOsd 1.0 media/MediaOsd.qml

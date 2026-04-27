@@ -110,6 +110,7 @@ pkgs.writeShellApplication {
        sed -i -e '/^  apps = {/,/^  };/ s|chrome.enable = true;|chrome.enable = false;|' "$HOST_DIR/variables.nix"
        sed -i -e '/^  apps = {/,/^  };/ s|bitwarden.enable = true;|bitwarden.enable = false;|' "$HOST_DIR/variables.nix"
        sed -i -e 's|biometrics.enable = true;|biometrics.enable = false;|' "$HOST_DIR/variables.nix"
+       sed -i -e 's|sshAgent.enable = true;|sshAgent.enable = false;|' "$HOST_DIR/variables.nix"
       # GPU none (WSLg handles GPU itself)
       sed -i -e '/^  gpu = {/,/^  };/ s|driver = "intel";|driver = "none";|' "$HOST_DIR/variables.nix"
 

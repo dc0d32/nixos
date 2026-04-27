@@ -25,6 +25,10 @@ in
       input.touchpad = {
         tap = true;
         natural-scroll = true;
+        accel-profile = "flat";
+      };
+      input.mouse = {
+        accel-profile = "flat";
       };
       prefer-no-csd = true;
       hotkey-overlay = {
@@ -43,6 +47,7 @@ in
         "Mod+Shift+Slash".action.show-hotkey-overlay = {};
 
         "Mod+T".action.spawn = "alacritty";
+        "Mod+E".action.spawn = [ "alacritty" "-e" "yazi" ];
         "Super+Space".action.spawn = "fuzzel";
 
         "Super+Alt+L".action.spawn = [ "bash" "-c" "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call lock lock" ];
@@ -227,9 +232,37 @@ in
 
         "Mod+W".action.toggle-column-tabbed-display = {};
 
-        "Print".action.screenshot = {};
-        "Ctrl+Print".action.screenshot-screen = {};
+        # Screenshots — grim captures, slurp selects, satty annotates.
+        # Print       = region select → satty annotation
+        # Ctrl+Print  = full screen → satty annotation
+        # Alt+Print   = focused window (niri native)
+        # Shift+Print = region select → clipboard (no annotation)
+        "Print".action.spawn = [
+          "bash" "-c"
+          "grim -g \"$(slurp)\" - | satty --filename - --copy-command 'wl-copy'"
+        ];
+        "Ctrl+Print".action.spawn = [
+          "bash" "-c"
+          "grim - | satty --filename - --copy-command 'wl-copy'"
+        ];
         "Alt+Print".action.screenshot-window = {};
+        "Shift+Print".action.spawn = [
+          "bash" "-c"
+          "grim -g \"$(slurp)\" - | wl-copy"
+        ];
+
+        # Clipboard history — cliphist stores history, fuzzel picks from it
+        "Mod+Shift+C".action.spawn = [
+          "bash" "-c"
+          "cliphist list | fuzzel --dmenu | cliphist decode | wl-copy"
+        ];
+
+        # Screen recording — toggle wf-recorder for full screen capture
+        # First invocation starts recording to ~/Videos/; second sends SIGINT to stop.
+        "Mod+Ctrl+Shift+S".action.spawn = [
+          "bash" "-c"
+          "if pgrep -x wf-recorder > /dev/null; then pkill -INT wf-recorder; else mkdir -p ~/Videos && wf-recorder -f ~/Videos/recording.mp4; fi"
+        ];
 
         "Mod+Escape" = {
           allow-inhibiting = false;

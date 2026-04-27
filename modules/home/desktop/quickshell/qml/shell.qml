@@ -9,18 +9,19 @@ import "notifications"
 import "lock"
 
 Scope {
+  VolumeOsd { }
+  MediaOsd { }
+  NotificationCenter { id: notifCenter }
+  LockScreen { id: lock }
+
   Variants {
     model: Quickshell.screens
     Bar {
       required property var modelData
       screen: modelData
+      notificationServer: notifCenter.server
     }
   }
-
-  VolumeOsd { }
-  MediaOsd { }
-  NotificationCenter { }
-  LockScreen { id: lock }
 
   IpcHandler {
     target: "launcher"

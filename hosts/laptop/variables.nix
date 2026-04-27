@@ -66,6 +66,8 @@
 
   biometrics.enable = true;
 
+  sshAgent.enable = false;
+
   # Optional git identity merged into modules/home/git.nix
   git = {
     name = "CHANGEME";
