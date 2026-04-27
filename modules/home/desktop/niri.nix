@@ -240,8 +240,12 @@ in
 
       window-rules = [
         {
-          matches = [{ is-focused = false; }];
+          matches = [{ is-focused = true; }];
           opacity = 0.95;
+        }
+        {
+          matches = [{ is-focused = false; }];
+          opacity = 0.85;
         }
       ];
     };
