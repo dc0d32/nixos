@@ -32,7 +32,7 @@ in
         };
       };
       layout = {
-        gaps = 8;
+        gaps = 2;
         border.width = 2;
       };
       binds = {
