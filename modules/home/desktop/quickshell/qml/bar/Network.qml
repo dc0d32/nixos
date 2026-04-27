@@ -1,4 +1,5 @@
 // Network status via NetworkManager (nmcli). Shows an icon + SSID/wired label.
+// Click to open the network flyout. Hover for tooltip.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -6,9 +7,10 @@ import QtQuick.Layouts
 
 import ".."
 
-RowLayout {
+Item {
   id: root
-  spacing: 2
+  implicitWidth:  row.implicitWidth
+  implicitHeight: row.implicitHeight
 
   property string label: "…"
   property string state: "unknown"   // wifi | wired | off | unknown
@@ -36,20 +38,44 @@ RowLayout {
 
   Timer { interval: 5000; running: true; repeat: true; onTriggered: poller.running = true }
 
-  Text {
-    font.family: Theme.iconFont
-    font.pixelSize: 16
-    color: root.state === "off" ? Theme.muted : Theme.sky
-    text: root.state === "wifi"  ? "wifi"
-        : root.state === "wired" ? "lan"
-        : "wifi_off"
+  RowLayout {
+    id: row
+    anchors.centerIn: parent
+    spacing: 4
+
+    Text {
+      font.family: Theme.iconFont
+      font.pixelSize: 16
+      color: root.state === "off" ? Theme.muted : Theme.sky
+      text: root.state === "wifi"  ? "wifi"
+          : root.state === "wired" ? "lan"
+          : "wifi_off"
+    }
+    Text {
+      font.family: Theme.font
+      font.pixelSize: 12
+      color: Theme.subtext
+      text: root.label
+      elide: Text.ElideRight
+      Layout.preferredWidth: 60
+    }
   }
-  Text {
-    font.family: Theme.font
-    font.pixelSize: 12
-    color: Theme.subtext
-    text: root.label
-    elide: Text.ElideRight
-    Layout.preferredWidth: 60
+
+  MouseArea {
+    anchors.fill: parent
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
+    onClicked: FlyoutManager.toggle("network")
+    onEntered: tipTimer.start()
+    onExited:  { tipTimer.stop(); tip.shown = false }
+
+    Timer { id: tipTimer; interval: 600; onTriggered: tip.shown = true }
+
+    BarTooltip {
+      id: tip
+      text: root.state === "wifi"  ? "WiFi: " + root.label
+          : root.state === "wired" ? "Wired: " + root.label
+          : "Not connected"
+    }
   }
 }

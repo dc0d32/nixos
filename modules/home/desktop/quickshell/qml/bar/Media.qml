@@ -1,63 +1,73 @@
+// Now-playing bar chip. Uses Quickshell MPRIS service (no polling).
+// Click to open media flyout. Hover for tooltip.
 import Quickshell
-import Quickshell.Io
+import Quickshell.Services.Mpris
 import QtQuick
 import QtQuick.Layouts
 
 import ".."
 
-RowLayout {
+Item {
   id: root
-  spacing: 4
+  implicitWidth:  row.implicitWidth
+  implicitHeight: row.implicitHeight
+  visible: root.player !== null
 
-  property string title: ""
-  property string artist: ""
-  property bool playing: false
+  property MprisPlayer player:
+    Mpris.players.values.find(p => p.playbackState === MprisPlaybackState.Playing)
+    || Mpris.players.values[0]
+    || null
 
-  Process {
-    id: poller
-    command: ["playerctl", "metadata", "--format", "{{title}}|{{artist}}|{{status}}"]
-    running: true
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const parts = text.trim().split("|")
-        if (parts.length >= 3) {
-          root.title = parts[0]
-          root.artist = parts[1]
-          root.playing = parts[2] === "Playing"
-        }
+  RowLayout {
+    id: row
+    anchors.centerIn: parent
+    spacing: 4
+
+    Text {
+      font.family: Theme.iconFont
+      font.pixelSize: 12
+      color: Theme.mauve
+      text: (root.player && root.player.playbackState === MprisPlaybackState.Playing)
+          ? "play_arrow" : "pause"
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: if (root.player) root.player.playPause()
       }
     }
-  }
-
-  Timer { interval: 50; running: true; repeat: true; onTriggered: poller.running = true }
-
-  visible: root.title !== ""
-
-  Text {
-    font.family: Theme.iconFont
-    font.pixelSize: 12
-    color: Theme.mauve
-    text: root.playing ? "play_arrow" : "pause"
-    MouseArea {
-      anchors.fill: parent
-      cursorShape: Qt.PointingHandCursor
-      onClicked: Quickshell.execDetached(["playerctl", "play-pause"])
+    Text {
+      font.family: Theme.font
+      font.pixelSize: 11
+      color: Theme.subtext
+      text: root.player ? root.player.trackTitle : ""
+      elide: Text.ElideRight
+      Layout.maximumWidth: 140
+    }
+    Text {
+      font.family: Theme.font
+      font.pixelSize: 11
+      color: Theme.muted
+      text: root.player ? root.player.trackArtist : ""
+      elide: Text.ElideRight
+      Layout.maximumWidth: 80
     }
   }
 
-  Text {
-    font.family: Theme.font
-    font.pixelSize: 11
-    color: Theme.subtext
-    text: root.title
-    elide: Text.ElideRight
-  }
+  MouseArea {
+    anchors.fill: parent
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
+    onClicked: FlyoutManager.toggle("media")
+    onEntered: tipTimer.start()
+    onExited:  { tipTimer.stop(); tip.shown = false }
 
-  Text {
-    font.family: Theme.font
-    font.pixelSize: 11
-    color: Theme.muted
-    text: root.artist
-    elide: Text.ElideRight
+    Timer { id: tipTimer; interval: 600; onTriggered: tip.shown = true }
+
+    BarTooltip {
+      id: tip
+      text: root.player
+          ? (root.player.trackTitle + " · " + root.player.trackArtist)
+          : ""
+    }
   }
 }

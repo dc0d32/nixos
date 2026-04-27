@@ -64,7 +64,7 @@ PanelWindow {
     // RIGHT: System tray, media, weather
     RowLayout {
       Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-      spacing: 0
+      spacing: 8
       SystemTray { }
       Media { }
       Weather { }
@@ -82,7 +82,7 @@ PanelWindow {
     // RIGHT EDGE: Network, Volume, Brightness, Clock
     RowLayout {
       Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-      spacing: 0
+      spacing: 8
       Network { }
       Volume { }
       Battery { }

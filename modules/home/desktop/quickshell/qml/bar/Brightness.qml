@@ -1,3 +1,4 @@
+// Brightness widget. Scroll to adjust. Click to open flyout.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -5,11 +6,12 @@ import QtQuick.Layouts
 
 import ".."
 
-RowLayout {
+Item {
   id: root
-  spacing: 2
+  implicitWidth:  row.implicitWidth
+  implicitHeight: row.implicitHeight
 
-  property int brightness: 0
+  property int brightness:    0
   property int maxBrightness: 100
 
   Process {
@@ -36,30 +38,46 @@ RowLayout {
     }
   }
 
-  Timer { interval: 50; running: true; repeat: true; onTriggered: { maxPoller.running = true; poller.running = true; } }
+  Timer { interval: 50; running: true; repeat: true; onTriggered: { maxPoller.running = true; poller.running = true } }
 
-  Text {
-    font.family: Theme.iconFont
-    font.pixelSize: 14
-    color: Theme.yellow
-    text: "brightness_high"
-  }
+  RowLayout {
+    id: row
+    anchors.centerIn: parent
+    spacing: 4
 
-  Text {
-    font.family: Theme.font
-    font.pixelSize: 11
-    color: Theme.subtext
-    text: root.brightness + "%"
+    Text {
+      font.family: Theme.iconFont
+      font.pixelSize: 14
+      color: Theme.yellow
+      text: "brightness_high"
+    }
+    Text {
+      font.family: Theme.font
+      font.pixelSize: 11
+      color: Theme.subtext
+      text: root.brightness + "%"
+    }
   }
 
   MouseArea {
-    implicitWidth: 10
-    implicitHeight: parent.height
-    acceptedButtons: Qt.NoButton
+    anchors.fill: parent
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
+    acceptedButtons: Qt.LeftButton
+    onClicked: FlyoutManager.toggle("brightness")
     onWheel: {
       const delta = wheel.angleDelta.y > 0 ? "+5%" : "5%-"
       Quickshell.execDetached(["brightnessctl", "set", delta])
       wheel.accepted = true
+    }
+    onEntered: tipTimer.start()
+    onExited:  { tipTimer.stop(); tip.shown = false }
+
+    Timer { id: tipTimer; interval: 600; onTriggered: tip.shown = true }
+
+    BarTooltip {
+      id: tip
+      text: "Brightness: " + root.brightness + "%"
     }
   }
 }

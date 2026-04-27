@@ -22,6 +22,16 @@ Scope {
   NotificationCenter { }
   LockScreen { id: lock }
 
+  // Flyout panels (one set; they pick their screen via anchors)
+  FlyoutBackdrop { }
+  NetworkFlyout { }
+  VolumeFlyout { }
+  BatteryFlyout { }
+  WeatherFlyout { }
+  BrightnessFlyout { }
+  ClockFlyout { }
+  MediaFlyout { }
+
   IpcHandler {
     target: "launcher"
     function toggle() { }

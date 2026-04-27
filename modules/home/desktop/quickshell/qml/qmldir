@@ -1,5 +1,7 @@
 module Theme
 singleton Theme 1.0 Theme.qml
+singleton FlyoutManager 1.0 FlyoutManager.qml
+singleton WeatherModel 1.0 WeatherModel.qml
 
 Bar 1.0 bar/Bar.qml
 Workspaces 1.0 bar/Workspaces.qml
@@ -13,6 +15,16 @@ Battery 1.0 bar/Battery.qml
 Brightness 1.0 bar/Brightness.qml
 Clock 1.0 bar/Clock.qml
 Separator 1.0 bar/Separator.qml
+BarTooltip 1.0 bar/BarTooltip.qml
+FlyoutBackdrop 1.0 bar/FlyoutBackdrop.qml
+
+NetworkFlyout 1.0 bar/flyouts/NetworkFlyout.qml
+VolumeFlyout 1.0 bar/flyouts/VolumeFlyout.qml
+BatteryFlyout 1.0 bar/flyouts/BatteryFlyout.qml
+WeatherFlyout 1.0 bar/flyouts/WeatherFlyout.qml
+BrightnessFlyout 1.0 bar/flyouts/BrightnessFlyout.qml
+ClockFlyout 1.0 bar/flyouts/ClockFlyout.qml
+MediaFlyout 1.0 bar/flyouts/MediaFlyout.qml
 
 VolumeOsd 1.0 osd/VolumeOsd.qml
 MediaOsd 1.0 media/MediaOsd.qml

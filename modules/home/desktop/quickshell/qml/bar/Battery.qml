@@ -1,4 +1,5 @@
 // Battery via /sys/class/power_supply. No-ops on desktops without a battery.
+// Click to open flyout (only wired when battery is present).
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -6,9 +7,10 @@ import QtQuick.Layouts
 
 import ".."
 
-RowLayout {
+Item {
   id: root
-  spacing: 4
+  implicitWidth:  row.implicitWidth
+  implicitHeight: row.implicitHeight
   visible: root.present
 
   property bool   present: false
@@ -40,23 +42,45 @@ RowLayout {
 
   Timer { interval: 10000; running: true; repeat: true; onTriggered: poller.running = true }
 
-  Text {
-    font.family: Theme.iconFont
-    font.pixelSize: 16
-    color: root.percent <= 15 ? Theme.red
-         : root.status === "Charging" ? Theme.green
-         : Theme.yellow
-    text: root.status === "Charging"
-      ? "battery_charging_full"
-      : root.percent > 80 ? "battery_full"
-      : root.percent > 50 ? "battery_5_bar"
-      : root.percent > 20 ? "battery_3_bar"
-                          : "battery_1_bar"
+  RowLayout {
+    id: row
+    anchors.centerIn: parent
+    spacing: 4
+
+    Text {
+      font.family: Theme.iconFont
+      font.pixelSize: 16
+      color: root.percent <= 15 ? Theme.red
+           : root.status === "Charging" ? Theme.green
+           : Theme.yellow
+      text: root.status === "Charging"
+        ? "battery_charging_full"
+        : root.percent > 80 ? "battery_full"
+        : root.percent > 50 ? "battery_5_bar"
+        : root.percent > 20 ? "battery_3_bar"
+                            : "battery_1_bar"
+    }
+    Text {
+      font.family: Theme.font
+      font.pixelSize: 12
+      color: Theme.subtext
+      text: root.percent + "%"
+    }
   }
-  Text {
-    font.family: Theme.font
-    font.pixelSize: 12
-    color: Theme.subtext
-    text: root.percent + "%"
+
+  MouseArea {
+    anchors.fill: parent
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
+    onClicked: FlyoutManager.toggle("battery")
+    onEntered: tipTimer.start()
+    onExited:  { tipTimer.stop(); tip.shown = false }
+
+    Timer { id: tipTimer; interval: 600; onTriggered: tip.shown = true }
+
+    BarTooltip {
+      id: tip
+      text: "Battery: " + root.percent + "% — " + root.status
+    }
   }
 }

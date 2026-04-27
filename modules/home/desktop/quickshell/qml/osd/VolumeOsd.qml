@@ -1,5 +1,5 @@
 // Centered OSD popup for volume/brightness changes. Listens on an IPC channel:
-//   quickshellipc call osd show "volume 42" 42
+//   quickshellipc call osd show "volume 42"
 // Bind volume/brightness keys to call both wpctl/brightnessctl AND this.
 import Quickshell
 import Quickshell.Wayland
@@ -16,9 +16,12 @@ Scope {
 
   IpcHandler {
     target: "osd"
-    function show(text, pct) {
-      root.label = text
-      root.value = pct !== undefined ? pct : 0
+    // Call as: quickshellipc call osd show "volume 42"
+    // The single string encodes both label and value, space-separated.
+    function show(msg: string) {
+      const parts = msg.split(" ")
+      root.label = parts.slice(0, parts.length - 1).join(" ")
+      root.value = parseInt(parts[parts.length - 1]) || 0
       root.shown = true
       hider.restart()
     }
