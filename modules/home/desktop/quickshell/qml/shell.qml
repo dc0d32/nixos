@@ -28,6 +28,6 @@ Scope {
   }
   IpcHandler {
     target: "lock"
-    function lock() { }
+    function lock() { lock.lock(); }
   }
 }

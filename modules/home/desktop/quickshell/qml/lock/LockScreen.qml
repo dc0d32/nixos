@@ -1,4 +1,3 @@
-// Session lock via ext-session-lock-v1.
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
@@ -9,9 +8,17 @@ Scope {
   id: root
   function lock() { locker.locked = true }
 
+  LockContext {
+    id: lockContext
+    onUnlocked: {
+      locker.locked = false;
+      lockContext.currentText = "";
+      lockContext.showFailure = false;
+    }
+  }
+
   WlSessionLock {
     id: locker
-    locked: false
 
     WlSessionLockSurface {
       Rectangle {
@@ -45,19 +52,16 @@ Scope {
               focus: true
               echoMode: TextInput.Password
               font.family: Theme.font; font.pixelSize: 16; color: Theme.text
-              Keys.onReturnPressed: {
-                // Quickshell doesn't authenticate on its own; hand off to swaylock
-                // or run `loginctl unlock-session` from a pam-aware helper.
-                // For now: treat ANY enter as unlock. Replace with a real check.
-                locker.locked = false
-                pw.text = ""
-              }
+              text: lockContext.currentText
+              onTextChanged: lockContext.currentText = text
+              Keys.onReturnPressed: lockContext.tryUnlock()
             }
           }
+
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            font.family: Theme.font; font.pixelSize: 11; color: Theme.muted
-            text: "press enter to unlock  (replace with PAM-backed auth)"
+            font.family: Theme.font; font.pixelSize: 14; color: lockContext.showFailure ? Theme.red : Theme.muted
+            text: lockContext.showFailure ? "incorrect password" : "press enter to unlock"
           }
         }
       }

@@ -1,0 +1,23 @@
+@author "p"
+@description "Stasis config for niri + quickshell"
+
+stasis:
+  monitor_media false
+  inhibit_apps = ["mpv", "vlc", "chromium"]
+
+  lock_screen:
+    timeout = 180
+    command = "quickshell ipc call lock lock"
+  end
+
+  dpms:
+    timeout = 120
+    command = "niri msg action power-off-monitors"
+    resume-command = "niri msg action power-on-monitors"
+  end
+
+  suspend:
+    timeout = 600
+    command = "systemctl suspend"
+  end
+end

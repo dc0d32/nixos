@@ -20,12 +20,10 @@ in
       playerctl
       grim
       slurp
-      swaybg
-      swaylock
-      swayidle
       mako
       fuzzel
       xdg-utils
+      stasis
     ];
 
     xdg.portal = {

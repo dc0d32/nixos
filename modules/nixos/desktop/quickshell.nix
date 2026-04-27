@@ -21,8 +21,6 @@ in
       playerctl
       grim
       slurp
-      swaylock
-      swayidle
     ];
 
     xdg.portal = {

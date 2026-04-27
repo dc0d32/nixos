@@ -17,11 +17,13 @@ QtObject {
   readonly property color subtext:   "#a6adc8"
   readonly property color muted:     "#6c7086"
 
+  // Colors
+  readonly property color red:       "#f38ba8"
+
   // Accents
   readonly property color blue:      "#89b4fa"
   readonly property color mauve:     "#cba6f7"
   readonly property color pink:      "#f5c2e7"
-  readonly property color red:       "#f38ba8"
   readonly property color peach:     "#fab387"
   readonly property color yellow:    "#f9e2af"
   readonly property color green:     "#a6e3a1"

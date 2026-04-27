@@ -33,7 +33,8 @@ in
 
         "Mod+T".action.spawn = "alacritty";
         "Mod+D".action.spawn = "fuzzel";
-        "Super+Alt+L".action.spawn = "${pkgs.swaylock}/bin/swaylock -f -i $(find ${wallpaperDir} -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) | shuf -n1 | tail -1)";
+
+        "Super+L".action.spawn = "quickshell ipc call lock lock";
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;

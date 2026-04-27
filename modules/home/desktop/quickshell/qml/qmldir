@@ -1,2 +1,23 @@
 module Theme
 singleton Theme 1.0 Theme.qml
+
+Bar 1.0 bar/Bar.qml
+Workspaces 1.0 bar/Workspaces.qml
+ActiveWindow 1.0 bar/ActiveWindow.qml
+SystemTray 1.0 bar/SystemTray.qml
+Media 1.0 bar/Media.qml
+Weather 1.0 bar/Weather.qml
+Network 1.0 bar/Network.qml
+Volume 1.0 bar/Volume.qml
+Battery 1.0 bar/Battery.qml
+Brightness 1.0 bar/Brightness.qml
+Clock 1.0 bar/Clock.qml
+Separator 1.0 bar/Separator.qml
+
+VolumeOsd 1.0 osd/VolumeOsd.qml
+MediaOsd 1.0 media/MediaOsd.qml
+NotificationCenter 1.0 notifications/NotificationCenter.qml
+Launcher 1.0 launcher/Launcher.qml
+LockScreen 1.0 lock/LockScreen.qml
+LockContext 1.0 lock/LockContext.qml
+IdleController 1.0 IdleController.qml

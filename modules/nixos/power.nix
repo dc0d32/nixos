@@ -6,16 +6,15 @@
   # (lidSwitch, powerKey, etc.) and extraConfig were all migrated into
   # services.logind.settings.Login (structured INI) in current nixpkgs.
   services.logind.settings.Login = {
-    HandleLidSwitch              = "suspend";
-    HandleLidSwitchDocked        = "ignore";
-    HandleLidSwitchExternalPower = "suspend";
-    HandlePowerKey               = "suspend";   # short press -> suspend
-    HandlePowerKeyLongPress      = "poweroff";
-    HandleSuspendKey             = "suspend";
-    HandleHibernateKey           = "hibernate";
-    # Idle target wired from user-level swayidle (more flexible than
-    # logind's IdleAction); keep logind idle disabled here.
-    IdleAction                   = "ignore";
+    # Let logind handle power button
+    HandleLidSwitch = "ignore";
+    HandleLidSwitchDocked = "ignore";
+    HandleLidSwitchExternalPower = "ignore";
+    HandlePowerKey = "suspend";
+    HandlePowerKeyLongPress = "poweroff";
+    HandleSuspendKey = "suspend";
+    HandleHibernateKey = "ignore";
+    IdleAction = "ignore";
   };
 
   # Power management: tlp if laptop, otherwise auto-cpufreq is fine either way.

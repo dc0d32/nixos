@@ -18,7 +18,7 @@
     niri.enable = true;
     quickshell.enable = true;
     wallpaper = {
-      enable = true;
+      enable = false;  # disabled: no wallpaper images
       directory = "/home/p/.wallpaper";
       intervalMinutes = 30;
     };
@@ -44,9 +44,9 @@
   # modules/home/desktop/idle.nix via swayidle under the user's session.
   idle = {
     enable = true;
-    lockAfter = 300; # 5 min
-    dpmsAfter = 420; # 7 min
-    suspendAfter = 900; # 15 min
+    lockAfter = 300;
+    dpmsAfter = 420;
+    suspendAfter = 900;
   };
 
   # WSL (Windows Subsystem for Linux). Flip on for a WSL distro, including
