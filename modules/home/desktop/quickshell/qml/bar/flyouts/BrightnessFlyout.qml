@@ -1,6 +1,5 @@
-// Brightness flyout: slider (0–100%).
+// Brightness flyout: 0-100% slider.
 import Quickshell
-import Quickshell.Wayland
 import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
@@ -8,107 +7,81 @@ import QtQuick.Controls.Basic
 
 import "../.."
 
-PanelWindow {
+Item {
   id: root
+  property real chipCenterX: 0
+  property real chipWidth:   0
+
+  readonly property int cardWidth: 220
+  readonly property int istmusW:   Math.max(chipWidth, 24)
 
   visible: FlyoutManager.active === "brightness"
-  color: "transparent"
-  WlrLayershell.layer: WlrLayershell.Overlay
-  WlrLayershell.namespace: "quickshell-flyout-brightness"
-  anchors { top: true; right: true }
-  margins { top: Theme.barHeight + Theme.gap * 2; right: Theme.gap }
-  implicitWidth: 220
-  implicitHeight: card.implicitHeight
+
+  x: Math.min(Math.max(Math.round(chipCenterX - cardWidth / 2), 0),
+              (parent ? parent.width - cardWidth : 0))
+  y: Theme.barHeight
+  width:  cardWidth
+  height: Theme.gap + col.implicitHeight + 20
 
   property int brightness:    0
   property int maxBrightness: 100
 
-  Process {
-    id: maxPoller
-    command: ["brightnessctl", "max"]
-    running: root.visible
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const v = parseInt(text.trim())
-        if (!isNaN(v) && v > 0) root.maxBrightness = v
-      }
-    }
-  }
+  onVisibleChanged: { if (visible) { maxPoller.running = true; poller.running = true } }
 
-  Process {
-    id: poller
-    command: ["brightnessctl", "get"]
-    running: root.visible
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const v = parseInt(text.trim())
-        if (!isNaN(v) && !slider.pressed)
-          root.brightness = Math.round((v / root.maxBrightness) * 100)
-      }
-    }
-  }
-
+  Process { id: maxPoller; command: ["brightnessctl", "max"]; running: false
+    stdout: StdioCollector { onStreamFinished: { const v = parseInt(text.trim()); if (!isNaN(v) && v > 0) root.maxBrightness = v } } }
+  Process { id: poller; command: ["brightnessctl", "get"]; running: false
+    stdout: StdioCollector { onStreamFinished: {
+      const v = parseInt(text.trim())
+      if (!isNaN(v) && !slider.pressed) root.brightness = Math.round((v / root.maxBrightness) * 100)
+    }} }
   Timer { interval: 200; running: root.visible; repeat: true; onTriggered: poller.running = true }
 
+  // isthmus
   Rectangle {
-    id: card
-    anchors { top: parent.top; right: parent.right }
-    width: 220
+    x: Math.round((root.cardWidth - root.istmusW) / 2); y: 0
+    width: root.istmusW; height: Theme.gap + Theme.radius
+    color: Theme.base; topLeftRadius: Theme.radius / 2; topRightRadius: Theme.radius / 2
+    bottomLeftRadius: 0; bottomRightRadius: 0
+  }
+
+  // card
+  Rectangle {
+    x: 0; y: Theme.gap; width: root.cardWidth
     implicitHeight: col.implicitHeight + 20
-    radius: Theme.radius
-    color: Theme.base
-    opacity: Theme.opacity
+    radius: Theme.radius; color: Theme.base; opacity: Theme.opacity
     border.color: Theme.surface1; border.width: 1
 
     Column {
       id: col
       anchors { top: parent.top; left: parent.left; right: parent.right }
-      anchors.margins: 14
-      anchors.topMargin: 14
+      anchors.margins: 14; anchors.topMargin: 14
       spacing: 10
 
       RowLayout {
         width: parent.width; spacing: 8
-        Text {
-          font.family: Theme.iconFont; font.pixelSize: 20; color: Theme.yellow
-          text: "brightness_high"
-        }
-        Text {
-          font.family: Theme.font; font.pixelSize: 13; font.bold: true
-          color: Theme.text; text: "Brightness"
-        }
-        Item { Layout.fillWidth: true }
-        Text {
-          font.family: Theme.font; font.pixelSize: 12; color: Theme.subtext
-          text: root.brightness + "%"
-        }
+        Text { font.family: Theme.iconFont; font.pixelSize: 20; color: Theme.yellow; text: "brightness_high" }
+        Text { font.family: Theme.font; font.pixelSize: 13; font.bold: true; color: Theme.text; text: "Brightness" }
+        Item  { Layout.fillWidth: true }
+        Text { font.family: Theme.font; font.pixelSize: 12; color: Theme.subtext; text: root.brightness + "%" }
       }
 
       RowLayout {
         width: parent.width; spacing: 8
         Text { font.family: Theme.iconFont; font.pixelSize: 14; color: Theme.muted; text: "brightness_low" }
         Slider {
-          id: slider
-          Layout.fillWidth: true
-          from: 1; to: 100; stepSize: 1
-          value: root.brightness
-          onMoved: {
-            Quickshell.execDetached(["brightnessctl", "set", Math.round(slider.value) + "%"])
-          }
+          id: slider; Layout.fillWidth: true; from: 1; to: 100; stepSize: 1; value: root.brightness
+          onMoved: Quickshell.execDetached(["brightnessctl", "set", Math.round(slider.value) + "%"])
           background: Rectangle {
             x: slider.leftPadding; y: slider.topPadding + slider.availableHeight / 2 - height / 2
             width: slider.availableWidth; height: 4; radius: 2; color: Theme.surface1
-            Rectangle {
-              width: slider.visualPosition * parent.width; height: parent.height
-              radius: 2; color: Theme.yellow
-              Behavior on width { NumberAnimation { duration: 80 } }
-            }
+            Rectangle { width: slider.visualPosition * parent.width; height: parent.height; radius: 2; color: Theme.yellow
+                        Behavior on width { NumberAnimation { duration: 80 } } }
           }
           handle: Rectangle {
             x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
             y: slider.topPadding + slider.availableHeight / 2 - height / 2
-            width: 14; height: 14; radius: 7
-            color: Theme.yellow; border.color: Theme.base; border.width: 2
+            width: 14; height: 14; radius: 7; color: Theme.yellow; border.color: Theme.base; border.width: 2
           }
         }
         Text { font.family: Theme.iconFont; font.pixelSize: 14; color: Theme.yellow; text: "brightness_high" }

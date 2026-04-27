@@ -1,81 +1,63 @@
-// Reusable hover tooltip for bar widgets.
-// Renders as a top-right anchored Overlay PanelWindow so it floats above all windows.
-// Place inside a widget's Item; control via `shown`. Screen is auto-detected.
-//
-// Usage (inside a bar widget Item):
-//   MouseArea {
-//     anchors.fill: parent
-//     hoverEnabled: true
-//     onEntered: tipTimer.start()
-//     onExited:  { tipTimer.stop(); tip.shown = false }
-//     Timer { id: tipTimer; interval: 600; onTriggered: tip.shown = true }
-//     BarTooltip { id: tip; text: "some detail" }
-//   }
-import Quickshell
-import Quickshell.Wayland
+// Tooltip rendered inside the bar PanelWindow, positioned below the chip.
+// chipCenterX: x-center of the target widget within the bar window.
 import QtQuick
-
 import ".."
 
-Scope {
+Item {
   id: root
+  // Set by Bar.qml
+  property real   chipCenterX: 0
+  property string text:        ""
+  property bool   shown:       false
 
-  property string text:  ""
-  property bool   shown: false
+  // Isthmus dimensions
+  readonly property int istmusH: Theme.gap       // 8px connector
+  readonly property int istmusW: 24              // narrow neck width
 
-  // Invisible item so the component has a visual footprint of zero
-  // when used inside a layout/item tree.
-  Item { width: 0; height: 0 }
+  visible: shown && text !== ""
 
-  Variants {
-    model: Quickshell.screens.filter(s => s === Quickshell.primaryScreen || Quickshell.screens.length === 1)
-    PanelWindow {
-      required property var modelData
-      screen:  modelData
-      visible: root.shown && root.text !== ""
-      color:   "transparent"
-      WlrLayershell.layer:     WlrLayershell.Overlay
-      WlrLayershell.namespace: "quickshell-tooltip"
+  // Position the whole assembly just below the bar strip
+  x: Math.round(chipCenterX - card.width / 2)
+  y: Theme.barHeight
 
-      // Sit just below the bar, pinned to the right edge
-      anchors { top: true; right: true }
-      margins {
-        top:   Theme.barHeight + Theme.gap + 2
-        right: Theme.gap
-      }
+  // Clamp to window edges (will be refined per-instance if needed)
+  width:  card.width
+  height: istmusH + card.height
 
-      implicitWidth:  card.implicitWidth
-      implicitHeight: card.implicitHeight
+  // ── isthmus (connector neck) ──────────────────────────────────────────
+  Rectangle {
+    // Centered horizontally over the card
+    x:      Math.round((card.width - istmusW) / 2)
+    y:      0
+    width:  istmusW
+    height: root.istmusH + Theme.radius   // overlaps card top to hide its corners under neck
+    color:  Theme.surface0
+    // Round only the top two corners (toward the chip)
+    topLeftRadius:     Theme.radius / 2
+    topRightRadius:    Theme.radius / 2
+    bottomLeftRadius:  0
+    bottomRightRadius: 0
+  }
 
-      Rectangle {
-        id: card
-        implicitWidth:  label.implicitWidth  + 16
-        implicitHeight: label.implicitHeight + 10
-        radius: 6
-        color:  Theme.surface0
-        border.color: Theme.surface2
-        border.width: 1
+  // ── flyout card ───────────────────────────────────────────────────────
+  Rectangle {
+    id: card
+    x:      0
+    y:      root.istmusH
+    width:  label.implicitWidth + 20
+    height: label.implicitHeight + 12
+    radius: Theme.radius
+    color:  Theme.surface0
+    border.color: Theme.surface1
+    border.width: 1
 
-        // Outer outline for contrast against any background
-        Rectangle {
-          anchors.fill: parent
-          anchors.margins: -1
-          radius: parent.radius + 1
-          color: "transparent"
-          border.color: Theme.crust
-          border.width: 1
-          z: -1
-        }
-
-        Text {
-          id: label
-          anchors.centerIn: parent
-          font.family:    Theme.font
-          font.pixelSize: 11
-          color:          Theme.subtext
-          text:           root.text
-        }
-      }
+    Text {
+      id: label
+      anchors.centerIn: parent
+      font.family:    Theme.font
+      font.pixelSize: 11
+      color:          Theme.subtext
+      text:           root.text
     }
   }
 }

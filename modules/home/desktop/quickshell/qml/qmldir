@@ -16,7 +16,6 @@ Brightness 1.0 bar/Brightness.qml
 Clock 1.0 bar/Clock.qml
 Separator 1.0 bar/Separator.qml
 BarTooltip 1.0 bar/BarTooltip.qml
-FlyoutBackdrop 1.0 bar/FlyoutBackdrop.qml
 
 NetworkFlyout 1.0 bar/flyouts/NetworkFlyout.qml
 VolumeFlyout 1.0 bar/flyouts/VolumeFlyout.qml

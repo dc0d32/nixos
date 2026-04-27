@@ -26,7 +26,9 @@ QtObject {
     stdout: StdioCollector {
       onStreamFinished: {
         try {
-          const j = JSON.parse(text)
+          const trimmed = text ? text.trim() : ""
+          if (!trimmed) throw new Error("empty response")
+          const j = JSON.parse(trimmed)
           if (j.latitude && j.longitude) {
             root.location = j.city || ""
             root._fetch(j.latitude, j.longitude)
@@ -86,7 +88,9 @@ QtObject {
     stdout: StdioCollector {
       onStreamFinished: {
         try {
-          const j = JSON.parse(text)
+          const trimmed = text ? text.trim() : ""
+          if (!trimmed) throw new Error("empty response")
+          const j = JSON.parse(trimmed)
           if (j.current) {
             root.temp = Math.round(j.current.temperature_2m) + "°"
             const wc = j.current.weather_code
@@ -109,7 +113,9 @@ QtObject {
             }
             root.dailyForecast = fc
           }
-        } catch(e) { console.log("WeatherModel parse error:", e) }
+        } catch(e) {
+          console.log("WeatherModel parse error:", e)
+        }
         root.loading = false
       }
     }
