@@ -3,6 +3,7 @@ singleton Theme 1.0 Theme.qml
 singleton FlyoutManager 1.0 FlyoutManager.qml
 singleton WeatherModel 1.0 WeatherModel.qml
 
+Isthmus 1.0 Isthmus.qml
 Bar 1.0 bar/Bar.qml
 Workspaces 1.0 bar/Workspaces.qml
 ActiveWindow 1.0 bar/ActiveWindow.qml

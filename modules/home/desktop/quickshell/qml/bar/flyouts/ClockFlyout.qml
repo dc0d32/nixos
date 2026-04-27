@@ -40,11 +40,10 @@ Item {
   }
 
   // isthmus
-  Rectangle {
-    x: Math.round((root.cardWidth - root.istmusW) / 2); y: 0
-    width: root.istmusW; height: Theme.gap + Theme.radius
-    color: Theme.base; topLeftRadius: Theme.radius / 2; topRightRadius: Theme.radius / 2
-    bottomLeftRadius: 0; bottomRightRadius: 0
+  Isthmus {
+    cardWidth: root.cardWidth
+    neckWidth: root.istmusW
+    color:     Theme.base
   }
 
   // card
