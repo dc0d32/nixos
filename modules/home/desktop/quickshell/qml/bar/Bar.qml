@@ -13,14 +13,14 @@ PanelWindow {
   id: bar
 
   anchors { top: true; left: true; right: true }
-  margins  { top: Theme.gap; left: Theme.gap; right: Theme.gap }
+  margins  { top: 2; left: 2; right: 2 }
 
   readonly property int flyoutSpace: 420
   implicitHeight: Theme.barHeight + flyoutSpace
   color: "transparent"
   WlrLayershell.namespace: "quickshell-bar"
   WlrLayershell.layer: WlrLayershell.Top
-  WlrLayershell.exclusiveZone: Theme.barHeight + Theme.gap
+  WlrLayershell.exclusiveZone: Theme.barHeight + 2
 
   // ── bar strip background ──────────────────────────────────────────────
   Rectangle {
