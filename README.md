@@ -145,6 +145,54 @@ After the initial scaffold commit, before a real rebuild:
    # or:  git remote add origin git@github.com:dc0d32/nixos.git && git push -u origin main
    ```
 
+## One-time hardware setup (laptop only)
+
+These steps are required once after the first `nixos-rebuild switch` on a new
+machine. They configure hardware that can't be fully automated declaratively.
+
+### Fingerprint reader
+
+Enroll your fingerprints (repeat for each finger you want):
+
+```sh
+fprintd-enroll
+# or enroll a specific finger:
+fprintd-enroll -f right-index-finger "$USER"
+```
+
+Verify enrollment:
+
+```sh
+fprintd-verify
+```
+
+### IR face authentication (howdy)
+
+The IR emitter needs a one-time calibration. Run this from a Wayland terminal
+(not a TTY) so the preview window can open:
+
+```sh
+sudo -E linux-enable-ir-emitter configure
+```
+
+Follow the prompts — it will show a live IR camera preview and ask whether the
+emitter is flashing. Select the correct emitter mode when it works.
+
+Then enroll your face:
+
+```sh
+sudo howdy add
+```
+
+Verify face auth works:
+
+```sh
+sudo howdy test
+```
+
+After both are set up, the auth order at login/lock/sudo is:
+**face → fingerprint → password** (any one is sufficient).
+
 ## Known caveats / things to watch
 
 - **niri-flake outputs** — the module paths used in

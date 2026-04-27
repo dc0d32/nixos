@@ -64,7 +64,12 @@
   apps = {
     chrome.enable = true;   # linux only; no-op on mac
     vscode.enable = true;
+    bitwarden.enable = false;  # linux only; set server URL in modules/home/apps/bitwarden.nix
   };
+
+  # Biometrics: fingerprint reader + IR face auth (howdy).
+  # Requires one-time setup after first rebuild — see README "One-time hardware setup".
+  biometrics.enable = false;
 
   # Optional git identity merged into modules/home/git.nix
   git = {

@@ -12,5 +12,6 @@
     ./gpu.nix
     ./power.nix
     ./wsl.nix
+    ./biometrics.nix
   ];
 }

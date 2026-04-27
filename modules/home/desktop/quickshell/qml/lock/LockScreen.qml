@@ -8,10 +8,9 @@ Scope {
   id: root
   function lock() {
     locker.locked = true;
-    // Pause stasis while the screen is locked: ext_idle_notifier_v1 does not
-    // reset idle time when input goes to the ext-session-lock surface, so
-    // without this stasis would re-fire the lock command every 180 s.
     Quickshell.execDetached(["stasis", "pause"]);
+    // Start biometric auth immediately on lock.
+    lockContext.startAuth();
   }
 
   LockContext {
@@ -32,7 +31,6 @@ Scope {
         anchors.fill: parent
         color: Theme.crust
 
-        // Wallpaper — falls back to solid color if file doesn't exist
         Image {
           anchors.fill: parent
           source: "file:///home/p/.wallpaper/current.jpg"
@@ -44,6 +42,7 @@ Scope {
           anchors.centerIn: parent
           spacing: 20
 
+          // Clock
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             font.family: Theme.font; font.pixelSize: 64; color: Theme.text
@@ -57,15 +56,37 @@ Scope {
             text: Qt.formatDate(new Date(), "dddd, MMMM d")
           }
 
+          // Status / hint line
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            font.family: Theme.font; font.pixelSize: 13
+            color: lockContext.showFailure ? Theme.red
+                 : lockContext.pamMessageIsError ? Theme.red
+                 : Theme.muted
+            text: {
+              if (lockContext.showFailure)         return "authentication failed"
+              if (!lockContext.pamActive)          return "press enter to unlock"
+              if (lockContext.pamResponseRequired) return "enter password"
+              if (lockContext.pamMessage !== "")   return lockContext.pamMessage
+              return "scanning…"
+            }
+          }
+
+          // Password input — only shown when PAM is asking for a typed response
           Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 320; height: 44; radius: Theme.radius
-            color: Theme.surface0; border.color: Theme.surface2; border.width: 1
+            color: Theme.surface0
+            border.color: lockContext.pamResponseRequired ? Theme.accent : Theme.surface2
+            border.width: 1
+            visible: lockContext.pamResponseRequired || lockContext.currentText !== ""
+            opacity: lockContext.pamResponseRequired ? 1.0 : 0.5
+
             TextInput {
               id: pw
               anchors.fill: parent; anchors.margins: 12
               focus: true
-              echoMode: TextInput.Password
+              echoMode: lockContext.pamResponseVisible ? TextInput.Normal : TextInput.Password
               font.family: Theme.font; font.pixelSize: 16; color: Theme.text
               text: lockContext.currentText
               onTextChanged: lockContext.currentText = text
@@ -73,12 +94,21 @@ Scope {
             }
           }
 
-          Text {
+          // "press enter" hint when not yet active and password box is hidden
+          MouseArea {
             anchors.horizontalCenter: parent.horizontalCenter
-            font.family: Theme.font; font.pixelSize: 14; color: lockContext.showFailure ? Theme.red : Theme.muted
-            text: lockContext.showFailure ? "incorrect password" : "press enter to unlock"
+            width: 320; height: 44
+            visible: !lockContext.pamActive && !lockContext.pamResponseRequired
+            cursorShape: Qt.PointingHandCursor
+            onClicked: lockContext.startAuth()
+            // Keyboard enter also works via the TextInput above when visible,
+            // but when hidden we need a global key handler.
           }
         }
+
+        // Global key handler: Enter starts/submits auth regardless of focus
+        Keys.onReturnPressed: lockContext.tryUnlock()
+        focus: true
       }
     }
   }

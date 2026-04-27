@@ -64,6 +64,8 @@
     bitwarden.enable = true;
   };
 
+  biometrics.enable = true;
+
   # Optional git identity merged into modules/home/git.nix
   git = {
     name = "CHANGEME";
