@@ -41,7 +41,7 @@ in
         "Mod+T".action.spawn = "alacritty";
         "Super+Space".action.spawn = "fuzzel";
 
-        "Super+Alt+L".action.spawn = [ "bash" "-c" "${pkgs.quickshell}/bin/quickshell ipc call lock lock" ];
+        "Super+Alt+L".action.spawn = [ "bash" "-c" "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call lock lock" ];
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;
