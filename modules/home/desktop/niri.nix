@@ -12,7 +12,6 @@ in
     programs.fuzzel.enable = true;
     programs.fuzzel.settings = {
       main = {
-        font = "Inter:size=11";
         "dpi-aware" = "no";
       };
     };
