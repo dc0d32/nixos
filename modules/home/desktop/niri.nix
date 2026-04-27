@@ -32,9 +32,9 @@ in
         "Mod+Shift+Slash".action.show-hotkey-overlay = {};
 
         "Mod+T".action.spawn = "alacritty";
-        "Mod+D".action.spawn = "fuzzel";
+        "Super+Space".action.spawn = "fuzzel";
 
-        "Super+L".action.spawn = "quickshell ipc call lock lock";
+        "Super+Alt+L".action.spawn = [ "bash" "-c" "${pkgs.quickshell}/bin/quickshell ipc call lock lock" ];
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;
