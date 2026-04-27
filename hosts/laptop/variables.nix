@@ -61,6 +61,7 @@
   apps = {
     chrome.enable = true;
     vscode.enable = true;
+    bitwarden.enable = true;
   };
 
   # Optional git identity merged into modules/home/git.nix

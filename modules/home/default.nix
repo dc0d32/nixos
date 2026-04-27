@@ -35,6 +35,7 @@ in
     ./desktop/idle.nix
     ./desktop/wallpaper.nix
     ./apps/chrome.nix
+    ./apps/bitwarden.nix
   ];
 
   programs.home-manager.enable = true;
