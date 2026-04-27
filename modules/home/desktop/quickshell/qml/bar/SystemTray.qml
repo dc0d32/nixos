@@ -27,7 +27,7 @@ Row {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         onClicked: modelData.activate()
-        onPressed: if (mouse.button === Qt.RightButton) modelData.secondaryActivate()
+        onPressed: function(mouse) { if (mouse.button === Qt.RightButton) modelData.secondaryActivate() }
       }
     }
   }

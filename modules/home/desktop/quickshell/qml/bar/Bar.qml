@@ -22,6 +22,13 @@ PanelWindow {
   WlrLayershell.layer: WlrLayershell.Top
   WlrLayershell.exclusiveZone: Theme.barHeight + 2
 
+  // Restrict input to the visible bar strip when no flyout is open, so the
+  // transparent region below doesn't eat clicks from underlying windows.
+  // When a flyout is open, mask is null (whole window receives input) so the
+  // dismiss MouseArea below the bar strip can fire.
+  mask: FlyoutManager.active !== "" ? null : barMask
+  Region { id: barMask; item: barContent }
+
   // ── bar strip background ──────────────────────────────────────────────
   Rectangle {
     x: 0; y: 0; width: parent.width; height: Theme.barHeight
