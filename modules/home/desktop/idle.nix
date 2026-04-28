@@ -21,8 +21,9 @@ lib.mkIf (cfg.enable) {
         monitor_media false
         inhibit_apps = ["mpv", "vlc", "chromium"]
         # debounce: how long input must be absent before idle countdown starts.
-        # Keep this reasonably high so pausing to read doesn't trigger the lock.
-        debounce_seconds = 60
+        # Set high to compensate for niri not resetting ext_idle_notifier_v1
+        # on all input events (e.g. Electron windows losing focus briefly).
+        debounce_seconds = 300
 
         lock_screen:
           timeout = ${toString lockAfter}
