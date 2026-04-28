@@ -54,7 +54,7 @@ in
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;
-          action.spawn = [ "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "0.1+" "-l" "1.0" ];
+          action.spawn = [ "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "0.1+" "-l" "1.5" ];
         };
         "XF86AudioLowerVolume" = {
           allow-when-locked = true;
