@@ -14,8 +14,8 @@ lib.mkIf (cfg.enable or false) {
       "monitor.alsa.rules" = [{
         matches = [{ "node.name" = "~alsa_output.*"; }];
         actions.update-props = {
-          # Allow volume up to 150% (1.5) via the volume slider.
-          "channelmix.max-volume" = 1.5;
+          # Allow volume up to 150% (1.5) via the volume slider/keybinds.
+          "channelmix.max-volume" = 1.0;
         };
       }];
     };

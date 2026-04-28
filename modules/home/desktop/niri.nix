@@ -54,11 +54,11 @@ in
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;
-          action.spawn = [ "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "0.1+" "-l" "1.5" ];
+          action.spawn = [ "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "0.01+" "-l" "1.0" ];
         };
         "XF86AudioLowerVolume" = {
           allow-when-locked = true;
-          action.spawn = [ "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "0.1-" ];
+          action.spawn = [ "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "0.01-" ];
         };
         "XF86AudioMute" = {
           allow-when-locked = true;
@@ -80,11 +80,11 @@ in
 
         "XF86MonBrightnessUp" = {
           allow-when-locked = true;
-          action.spawn = [ "brightnessctl" "--class=backlight" "set" "+10%" ];
+          action.spawn = [ "brightnessctl" "--class=backlight" "set" "+5%" ];
         };
         "XF86MonBrightnessDown" = {
           allow-when-locked = true;
-          action.spawn = [ "brightnessctl" "--class=backlight" "set" "10%-" ];
+          action.spawn = [ "brightnessctl" "--class=backlight" "set" "5%-" ];
         };
 
         "Mod+O" = {

@@ -15,7 +15,7 @@ decisions, and rationale live there.
 - **Do not add nix-darwin** without the user asking. Mac is home-manager-only
   by design.
 - **Do not introduce a secrets framework** (sops-nix/agenix) unless asked.
-- **Do not commit changes unless explicitly asked.** Make edits and deploy, but leave committing to the user.
+- **Do not commit or push changes unless explicitly asked.** Make edits and deploy, but always ask before running `git commit` or `git push`.
 - **Do not edit `hosts/_template/` or `homes/_template/` to customize a
   machine.** Scaffold a new host via `nix run .#new-host -- <name>` instead.
 - **Line endings must stay LF.** `.gitattributes` enforces this; don't relax.

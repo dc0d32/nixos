@@ -175,7 +175,7 @@
             }
         },
         "autogain#0": {
-            "bypass": true,
+            "bypass": false,
             "input-gain": 0.0,
             "output-gain": 0.0,
             "maximum-history": 20,
