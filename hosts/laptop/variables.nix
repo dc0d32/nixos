@@ -73,6 +73,8 @@
 
   biometrics.enable = true;
 
+  hardwareHacking.enable = true;
+
   sshAgent.enable = false;
 
   # Optional git identity merged into modules/home/git.nix

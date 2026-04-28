@@ -13,5 +13,6 @@
     ./power.nix
     ./wsl.nix
     ./biometrics.nix
+    ./hardware-hacking.nix
   ];
 }

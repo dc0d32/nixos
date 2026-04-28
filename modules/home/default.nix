@@ -22,6 +22,7 @@ in
     ./tools/btop.nix
     ./tools/build-deps.nix
     ./tools/gh.nix
+    ./tools/hardware-hacking.nix
     ./git.nix
     ./tmux.nix
     ./direnv.nix

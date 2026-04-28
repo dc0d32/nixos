@@ -63,6 +63,8 @@
 
   sshAgent.enable = false;
 
+  hardwareHacking.enable = true;
+
   # Optional git identity merged into modules/home/git.nix
   git = {
     name  = "none";
