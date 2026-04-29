@@ -1,6 +1,5 @@
-// Brightness flyout: 0-100% slider.
+// Brightness flyout: 0-100% slider. State from BrightnessState singleton.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
@@ -22,20 +21,6 @@ Item {
   y: Theme.barHeight
   width:  cardWidth
   height: Theme.gap + col.implicitHeight + 20
-
-  property int brightness:    0
-  property int maxBrightness: 100
-
-  onVisibleChanged: { if (visible) { maxPoller.running = true; poller.running = true } }
-
-  Process { id: maxPoller; command: ["brightnessctl", "max"]; running: false
-    stdout: StdioCollector { onStreamFinished: { const v = parseInt(text.trim()); if (!isNaN(v) && v > 0) root.maxBrightness = v } } }
-  Process { id: poller; command: ["brightnessctl", "get"]; running: false
-    stdout: StdioCollector { onStreamFinished: {
-      const v = parseInt(text.trim())
-      if (!isNaN(v) && !slider.pressed) root.brightness = Math.round((v / root.maxBrightness) * 100)
-    }} }
-  Timer { interval: 200; running: root.visible; repeat: true; onTriggered: poller.running = true }
 
   // isthmus
   Isthmus {
@@ -62,14 +47,18 @@ Item {
         Text { font.family: Theme.iconFont; font.pixelSize: 20; color: Theme.yellow; text: "brightness_high" }
         Text { font.family: Theme.font; font.pixelSize: 13; font.bold: true; color: Theme.text; text: "Brightness" }
         Item  { Layout.fillWidth: true }
-        Text { font.family: Theme.font; font.pixelSize: 12; color: Theme.subtext; text: root.brightness + "%" }
+        Text { font.family: Theme.font; font.pixelSize: 12; color: Theme.subtext
+               text: BrightnessState.percent + "%" }
       }
 
       RowLayout {
         width: parent.width; spacing: 8
         Text { font.family: Theme.iconFont; font.pixelSize: 14; color: Theme.muted; text: "brightness_low" }
         Slider {
-          id: slider; Layout.fillWidth: true; from: 1; to: 100; stepSize: 1; value: root.brightness
+          id: slider; Layout.fillWidth: true; from: 1; to: 100; stepSize: 1
+          // Bind to the singleton, but only when the user isn't dragging
+          // — otherwise the binding fights the user's input mid-drag.
+          value: slider.pressed ? slider.value : BrightnessState.percent
           onMoved: Quickshell.execDetached(["brightnessctl", "set", Math.round(slider.value) + "%"])
           background: Rectangle {
             x: slider.leftPadding; y: slider.topPadding + slider.availableHeight / 2 - height / 2

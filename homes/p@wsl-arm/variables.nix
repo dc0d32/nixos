@@ -4,5 +4,5 @@
   #   git.name  = "Your Name";
   #   git.email = "you@example.com";
   #
-  # stateVersion = "24.11";
+  # stateVersion = "25.11";
 }

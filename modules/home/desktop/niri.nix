@@ -2,8 +2,6 @@
 let
   cfg = variables.desktop.niri or { enable = false; };
   enabled = cfg.enable or false;
-  wpcfg = variables.desktop.wallpaper or { };
-  wallpaperDir = wpcfg.directory or "$HOME/wallpaper";
 in
 {
   imports = lib.optional (enabled && (inputs ? niri)) inputs.niri.homeModules.niri;

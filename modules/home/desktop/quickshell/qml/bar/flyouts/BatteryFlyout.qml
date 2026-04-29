@@ -1,6 +1,6 @@
 // Battery flyout: percent, status, estimated time remaining.
+// All state from BatteryState (event-driven UPower wrapper); no polling here.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
@@ -21,34 +21,6 @@ Item {
   y: Theme.barHeight
   width:  cardWidth
   height: Theme.gap + col.implicitHeight + 20
-
-  property int    percent:  0
-  property string status:   "Unknown"
-  property string timeLeft: ""
-
-  onVisibleChanged: { if (visible) poller.running = true }
-
-  Process {
-    id: poller
-    command: ["sh", "-c",
-      "for b in /sys/class/power_supply/BAT*; do [ -d \"$b\" ] || continue; " +
-      "cap=$(cat $b/capacity 2>/dev/null); st=$(cat $b/status 2>/dev/null); " +
-      "tte=$(cat $b/time_to_empty_now 2>/dev/null || echo ''); " +
-      "ttf=$(cat $b/time_to_full_now 2>/dev/null || echo ''); " +
-      "printf '%s\\n%s\\n%s\\n%s\\n' \"$cap\" \"$st\" \"$tte\" \"$ttf\"; exit 0; done"]
-    running: false
-    stdout: StdioCollector { onStreamFinished: {
-      const lines = text.trim().split("\n"); if (lines.length < 2) return
-      root.percent = parseInt(lines[0]) || 0; root.status = lines[1] || "Unknown"
-      const secs = parseInt(root.status === "Charging" ? lines[3] : lines[2]) || 0
-      if (secs > 0) {
-        const totalMin = secs > 10000 ? Math.round(secs / 60) : secs
-        const h = Math.floor(totalMin / 60), m = totalMin % 60
-        root.timeLeft = h > 0 ? h + "h " + m + "m" : m + "m"
-      } else root.timeLeft = ""
-    }}
-  }
-  Timer { interval: 10000; running: root.visible; repeat: true; onTriggered: poller.running = true }
 
   // isthmus
   Isthmus {
@@ -73,25 +45,37 @@ Item {
       RowLayout {
         width: parent.width; spacing: 8
         Text { font.family: Theme.iconFont; font.pixelSize: 24
-               color: root.percent <= 15 ? Theme.red : root.status === "Charging" ? Theme.green : Theme.yellow
-               text: root.status === "Charging" ? "battery_charging_full"
-                   : root.percent > 80 ? "battery_full" : root.percent > 50 ? "battery_5_bar"
-                   : root.percent > 20 ? "battery_3_bar" : "battery_1_bar" }
+               color: BatteryState.percent <= 15 ? Theme.red
+                    : BatteryState.charging       ? Theme.green
+                                                  : Theme.yellow
+               text: BatteryState.charging         ? "battery_charging_full"
+                   : BatteryState.percent > 80     ? "battery_full"
+                   : BatteryState.percent > 50     ? "battery_5_bar"
+                   : BatteryState.percent > 20     ? "battery_3_bar"
+                                                   : "battery_1_bar" }
         Column { spacing: 2
-          Text { font.family: Theme.font; font.pixelSize: 20; font.bold: true; color: Theme.text; text: root.percent + "%" }
+          Text { font.family: Theme.font; font.pixelSize: 20; font.bold: true
+                 color: Theme.text; text: BatteryState.percent + "%" }
           Text { font.family: Theme.font; font.pixelSize: 11
-                 color: root.status === "Charging" ? Theme.green : root.percent <= 15 ? Theme.red : Theme.subtext
-                 text: root.status } }
+                 color: BatteryState.charging          ? Theme.green
+                      : BatteryState.percent <= 15    ? Theme.red
+                                                      : Theme.subtext
+                 text: BatteryState.status } }
       }
 
       Rectangle { width: parent.width; height: 6; radius: 3; color: Theme.surface1
-        Rectangle { width: parent.width * (root.percent / 100.0); height: parent.height; radius: 3
-                    color: root.percent <= 15 ? Theme.red : root.status === "Charging" ? Theme.green : Theme.yellow
+        Rectangle { width: parent.width * (BatteryState.percent / 100.0); height: parent.height; radius: 3
+                    color: BatteryState.percent <= 15 ? Theme.red
+                         : BatteryState.charging       ? Theme.green
+                                                       : Theme.yellow
                     Behavior on width { NumberAnimation { duration: 300 } } }
       }
 
-      Text { visible: root.timeLeft !== ""; font.family: Theme.font; font.pixelSize: 11; color: Theme.muted
-             text: root.status === "Charging" ? "Full in ~" + root.timeLeft : "~" + root.timeLeft + " remaining" }
+      Text { visible: BatteryState.timeLeft !== ""
+             font.family: Theme.font; font.pixelSize: 11; color: Theme.muted
+             text: BatteryState.charging
+                   ? ("Full in ~" + BatteryState.timeLeft)
+                   : ("~" + BatteryState.timeLeft + " remaining") }
     }
   }
 }

@@ -7,12 +7,14 @@
 let cfg = variables.login.ly or { enable = false; };
 in
 lib.mkIf (cfg.enable or false) {
-  # Use only one DM; disable others explicitly to avoid conflicts.
+  # Use only one DM; default the others off so any future host enabling
+  # gdm/sddm/lightdm only has to flip its own switch (mkDefault loses to
+  # any explicit assignment in the host config).
   # Note: gdm/sddm live under services.displayManager.* in current nixpkgs,
   # but lightdm is still at services.xserver.displayManager.lightdm.
-  services.displayManager.gdm.enable          = lib.mkForce false;
-  services.displayManager.sddm.enable         = lib.mkForce false;
-  services.xserver.displayManager.lightdm.enable = lib.mkForce false;
+  services.displayManager.gdm.enable          = lib.mkDefault false;
+  services.displayManager.sddm.enable         = lib.mkDefault false;
+  services.xserver.displayManager.lightdm.enable = lib.mkDefault false;
 
   services.displayManager.ly = {
     enable = true;

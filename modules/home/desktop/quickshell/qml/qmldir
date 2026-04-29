@@ -2,6 +2,11 @@ singleton Theme 1.0 Theme.qml
 singleton FlyoutManager 1.0 FlyoutManager.qml
 singleton WeatherModel 1.0 WeatherModel.qml
 singleton NiriState 1.0 NiriState.qml
+singleton BatteryState 1.0 BatteryState.qml
+singleton BrightnessState 1.0 BrightnessState.qml
+singleton VolumeState 1.0 VolumeState.qml
+singleton NetworkState 1.0 NetworkState.qml
+singleton MediaState 1.0 MediaState.qml
 
 Isthmus 1.0 Isthmus.qml
 Bar 1.0 bar/Bar.qml

@@ -1,4 +1,6 @@
 // Media flyout: album art, track info, progress bar, prev/play/next.
+// Player selection comes from MediaState; this file owns only the
+// progress refresh timer (mpris position is not push-notified).
 import Quickshell
 import Quickshell.Services.Mpris
 import QtQuick
@@ -22,16 +24,14 @@ Item {
   width:  cardWidth
   height: Theme.gap + col.implicitHeight + 20
 
-  property MprisPlayer player:
-    Mpris.players.values.find(p => p.playbackState === MprisPlaybackState.Playing)
-    || Mpris.players.values[0] || null
+  readonly property var player: MediaState.player
 
   property real position: player ? player.position : 0
   property real length:   player ? player.length   : 1
   property real progress: length > 0 ? Math.min(position / length, 1.0) : 0
 
-  Timer { interval: 1000; running: root.visible && player !== null; repeat: true
-          onTriggered: root.position = player ? player.position : 0 }
+  Timer { interval: 1000; running: root.visible && root.player !== null; repeat: true
+          onTriggered: root.position = root.player ? root.player.position : 0 }
 
   // isthmus
   Isthmus {

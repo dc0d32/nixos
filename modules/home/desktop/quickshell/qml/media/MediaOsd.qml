@@ -1,8 +1,10 @@
-// Now-playing widget shown on media change via MPRIS.
+// Now-playing widget shown on media change via MPRIS. Player selection
+// comes from MediaState. A startup grace-period (`armed`) suppresses the
+// OSD on initial bind, mirroring VolumeOsd, so restarting the shell while
+// music is playing doesn't immediately pop the OSD.
 import Quickshell
 import Quickshell.Services.Mpris
 import Quickshell.Wayland
-import Quickshell.Io
 import QtQuick
 
 import ".."
@@ -10,9 +12,7 @@ import ".."
 Scope {
   id: root
 
-  property MprisPlayer player: Mpris.players.values.find(p => p.playbackState === MprisPlaybackState.Playing)
-                              || Mpris.players.values[0]
-                              || null
+  readonly property var player: MediaState.player
   property bool shown: false
 
   // Browsers report the page/tab title as the track title and flip it on
@@ -24,9 +24,15 @@ Scope {
         && !id.includes("firefox") && !id.includes("brave")
   }
 
+  // Suppress the OSD until the shell has been alive long enough for the
+  // initial MPRIS bind to settle.
+  property bool armed: false
+  Timer { interval: 1500; running: true; repeat: false; onTriggered: root.armed = true }
+
   Connections {
     target: root.player
-    function onTrackTitleChanged() { if (root.playerIsOsd) root.flash() }
+    ignoreUnknownSignals: true
+    function onTrackTitleChanged() { if (root.armed && root.playerIsOsd) root.flash() }
   }
   function flash() {
     if (!root.player) return

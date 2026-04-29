@@ -9,9 +9,9 @@ in
   ];
 
   networking.hostName = variables.hostname;
-  time.timeZone = variables.timezone;
-  i18n.defaultLocale = variables.locale;
   console.keyMap = variables.keymap;
+  # time.timeZone / i18n.defaultLocale are set from variables in
+  # modules/nixos/locale.nix — no need to repeat them here.
 
   # Bootloader: sensible UEFI default for bare-metal / VM installs.
   # Forced off inside WSL — nixos-wsl owns the boot path.
@@ -29,11 +29,8 @@ in
     shell = pkgs.zsh;
   };
 
-  # Required so users.users.*.shell = pkgs.zsh works
-  programs.zsh.enable = true;
-
-  # Enable flakes
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  # programs.zsh.enable and nix.settings.experimental-features are set from
+  # modules/nixos/users.nix and modules/nixos/nix-settings.nix respectively.
 
   system.stateVersion = variables.stateVersion;
 }

@@ -3,6 +3,7 @@
 # required CLI to 0.26.1; nixpkgs still ships tree-sitter 0.25.x as of
 # 2026-04, so without this pin :checkhealth nvim-treesitter fails the
 # version gate even though highlighting and :TSInstall work fine.
+# Rechecked 2026-04-28: nixpkgs#tree-sitter still 0.25.10 — pin still required.
 #
 # We override the base attr; nixpkgs defines .withAllGrammars as a passthru
 # helper that threads through overrides, so consumers using

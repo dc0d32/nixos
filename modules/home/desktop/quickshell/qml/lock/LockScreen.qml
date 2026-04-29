@@ -35,7 +35,10 @@ Scope {
         Image {
           id: wallpaper
           anchors.fill: parent
-          source: root.wallpaperPath
+          // The wallpaper daemon (modules/home/desktop/wallpaper.nix) keeps
+          // ~/.wallpaper/current.jpg as a stable symlink to the latest fetched
+          // image. Resolve $HOME at runtime so this works for any user.
+          source: "file://" + Quickshell.env("HOME") + "/.wallpaper/current.jpg"
           fillMode: Image.PreserveAspectCrop
           visible: false   // hidden; MultiEffect renders it
         }

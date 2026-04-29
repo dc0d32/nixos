@@ -170,7 +170,6 @@ pkgs.writeShellApplication {
 
   audio.easyeffects = {
     enable = $EASYEFFECTS_ENABLE;
-    enableConvolver = false;  # requires impulse response files
   };
 
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"

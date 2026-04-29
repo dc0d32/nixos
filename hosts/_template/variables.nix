@@ -32,7 +32,6 @@
 
   audio.easyeffects = {
     enable = false;
-    enableConvolver = false;  # requires impulse response files
   };
 
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"

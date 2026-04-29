@@ -27,11 +27,8 @@ in
     shell = pkgs.zsh;
   };
 
-  # Required so users.users.*.shell = pkgs.zsh works
-  programs.zsh.enable = true;
-
-  # Enable flakes
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  # programs.zsh.enable and nix.settings.experimental-features are set from
+  # modules/nixos/users.nix and modules/nixos/nix-settings.nix respectively.
 
   system.stateVersion = variables.stateVersion;
 }

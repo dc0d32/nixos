@@ -94,11 +94,11 @@ lib.mkIf enabled {
 
   # systemd user socket-activated ssh-agent. Keys are added on first use.
   # Retire if a hardware key (YubiKey) or secret manager handles SSH instead.
-  services.ssh-agent.enable = lib.mkDefault (variables.sshAgent.enable or true);
+  services.ssh-agent.enable = lib.mkDefault (variables.sshAgent.enable or false);
 
   home.sessionVariables = {
     QT_QPA_PLATFORM = "wayland";
-  } // lib.optionalAttrs (variables.sshAgent.enable or true) {
+  } // lib.optionalAttrs (variables.sshAgent.enable or false) {
     SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/ssh-agent.socket";
   };
 }

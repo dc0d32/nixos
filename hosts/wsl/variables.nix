@@ -19,13 +19,16 @@
     # Pick ONE status bar / shell. Enabling both will draw two panels.
     waybar.enable = false;
     quickshell.enable = false;
+    wallpaper = {
+      enable = false;
+      intervalMinutes = 30;
+    };
   };
 
   audio.pipewire.enable = false;
 
   audio.easyeffects = {
     enable = false;
-    enableConvolver = false;
   };
 
   # Graphics driver. One of: "intel" | "amd" | "nvidia" | "none"
@@ -59,7 +62,10 @@
   apps = {
     chrome.enable = false;   # linux only; no-op on mac
     vscode.enable = false;
+    bitwarden.enable = false;
   };
+
+  biometrics.enable = false;
 
   sshAgent.enable = false;
 
@@ -67,13 +73,7 @@
 
   # Optional git identity merged into modules/home/git.nix
   git = {
-    name  = "none";
-    email = "none@none.com";
+    name  = "CHANGEME";
+    email = "CHANGEME@example.com";
   };
-
-  # Optional: per-host monitor layout (unused by default; wire into niri
-  # module as desired).
-  # monitors = [
-  #   { name = "DP-1"; mode = "2560x1440@144"; position = "0,0"; scale = 1.0; }
-  # ];
 }

@@ -1,4 +1,6 @@
-// Media chip. Uses MPRIS. Click opens media flyout.
+// Media chip. Active player selection lives in MediaState (reacts to
+// player appearance/disappearance and playback-state flips). Click opens
+// media flyout.
 import Quickshell
 import Quickshell.Services.Mpris
 import QtQuick
@@ -9,11 +11,9 @@ Item {
   id: root
   implicitWidth:  row.implicitWidth
   implicitHeight: row.implicitHeight
-  visible: root.player !== null
+  visible: MediaState.player !== null
 
-  property MprisPlayer player:
-    Mpris.players.values.find(p => p.playbackState === MprisPlaybackState.Playing)
-    || Mpris.players.values[0] || null
+  readonly property var player: MediaState.player
 
   property bool tooltipShown: false
 

@@ -1,13 +1,13 @@
-// Volume / mute OSD popup. Reacts directly to PipeWire change signals via
-// Quickshell.Services.Pipewire — no IPC needed. niri's volume keybinds run
+// Volume / mute OSD popup. Reacts to VolumeState change signals (sourced
+// from Quickshell.Services.Pipewire — no IPC). niri's volume keybinds run
 // `wpctl set-volume` and `wpctl set-mute` directly; the resulting volume /
-// muted change on the default audio sink triggers this OSD.
+// muted change on the default audio sink propagates through VolumeState
+// into the Connections target below.
 //
 // A startup grace period suppresses the popup on initial property bind so
 // the user doesn't see an OSD flash every time the shell is restarted.
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Services.Pipewire
 import QtQuick
 
 import ".."
@@ -24,29 +24,23 @@ Scope {
   property bool armed: false
   Timer { interval: 1500; running: true; repeat: false; onTriggered: root.armed = true }
 
-  // Subscribe to the default sink. PwObjectTracker is required to keep the
-  // node's audio sub-object alive and emitting change signals.
-  PwObjectTracker {
-    objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : []
-  }
-
+  // VolumeState owns the PwObjectTracker that keeps the audio sub-object
+  // alive; we just listen to its volume / muted change signals.
   Connections {
-    target: Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
+    target: VolumeState.audio
     ignoreUnknownSignals: true
-    function onVolumesChanged() { root._onAudioChanged(false) }
-    function onMutedChanged()   { root._onAudioChanged(true) }
+    function onVolumesChanged() { root._onAudioChanged() }
+    function onMutedChanged()   { root._onAudioChanged() }
   }
 
-  function _onAudioChanged(fromMute) {
+  function _onAudioChanged() {
     if (!armed) return
-    const audio = Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
-    if (!audio) return
-    if (audio.muted) {
+    if (VolumeState.muted) {
       root.label = "muted"
       root.value = 0
     } else {
       root.label = "volume"
-      root.value = Math.round((audio.volume || 0) * 100)
+      root.value = VolumeState.volume
     }
     root.shown = true
     hider.restart()

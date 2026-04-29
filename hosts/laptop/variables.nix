@@ -16,6 +16,8 @@
 
   desktop = {
     niri.enable = true;
+    # Pick ONE status bar / shell. Enabling both will draw two panels.
+    waybar.enable = false;
     quickshell.enable = true;
     wallpaper = {
       enable = true;
@@ -81,10 +83,4 @@
     name = "CHANGEME";
     email = "CHANGEME@example.com";
   };
-
-  # Optional: per-host monitor layout (unused by default; wire into niri
-  # module as desired).
-  # monitors = [
-  #   { name = "DP-1"; mode = "2560x1440@144"; position = "0,0"; scale = 1.0; }
-  # ];
 }
