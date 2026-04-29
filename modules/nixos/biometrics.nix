@@ -69,29 +69,79 @@ in
   security.pam.services = lib.mkIf enabled (
     let
       # Slot howdy and fprintd between pam_unix (12900) and pam_deny.
-      howdyOrder    = 12950;
-      fprintdOrder  = 13000;
-      denyOrder     = 13100;
+      howdyOrder = 12950;
+      fprintdOrder = 13000;
+      denyOrder = 13100;
       reorder = {
         rules.auth = {
-          howdy.order   = howdyOrder;
+          howdy.order = howdyOrder;
           fprintd.order = fprintdOrder;
           # Force deny last so we don't get stranded behind it on services
           # whose default deny is at 12500 (sudo, bitwarden).
-          deny.order    = denyOrder;
+          deny.order = denyOrder;
         };
       };
     in
     {
-      login    = reorder // { fprintAuth = lib.mkDefault true; };
-      sudo     = reorder // { fprintAuth = lib.mkDefault true; };
-      ly       = reorder // { fprintAuth = lib.mkDefault true; };
+      login = reorder // { fprintAuth = lib.mkDefault true; };
+      sudo = reorder // { fprintAuth = lib.mkDefault true; };
+      ly = reorder // { fprintAuth = lib.mkDefault true; };
 
       # Bitwarden biometric unlock: polkit calls this PAM service to verify
       # the user before releasing the vault key. Same biometric stack, same
       # ordering — password first, biometrics as fallback.
       # Retire if bitwarden-desktop ever ships its own PAM service file.
       bitwarden = reorder // { fprintAuth = lib.mkDefault true; };
+
+      # ── Quickshell lockscreen: split PAM services for parallel auth ──────
+      # The default "login" PAM stack runs sequentially (unix → howdy →
+      # fprintd → deny). With pam_unix as `sufficient`, PAM immediately asks
+      # for a password and only falls through to biometrics if pam_unix
+      # returns ignore (no password provided). That serial behavior makes it
+      # impossible for the lockscreen to *concurrently* try biometrics while
+      # the user types a password.
+      #
+      # Solution: split the auth stack into two single-purpose PAM services
+      # so quickshell can drive two parallel PamContexts (one for each).
+      # Whichever one returns success first wins; the other is aborted.
+      #
+      # IMPORTANT: PAM resolves bare module names (`pam_howdy.so`) relative
+      # to linux-pam's *own* `lib/security/` directory — which only contains
+      # the modules linux-pam itself ships (pam_unix, pam_deny, etc.).
+      # Modules from other packages (howdy, fprintd, gnome-keyring) live in
+      # their own store paths and must be referenced absolutely, otherwise
+      # PAM logs "unable to dlopen ... cannot open shared object file" and
+      # treats the rule as a faulty module (which fails closed). The other
+      # NixOS-managed PAM services (login/sudo/ly) avoid this because their
+      # `rules.auth.<name>` entries are auto-prefixed by the framework with
+      # the right store path; raw `text =` stacks must do it themselves.
+      quickshell-password = {
+        # Password-only: pam_unix verifies, pam_gnome_keyring captures the
+        # token to unlock the keyring on success. No biometrics.
+        text = ''
+          auth      required  pam_unix.so       likeauth nullok try_first_pass
+          auth      optional  ${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so use_authtok
+          account   required  pam_unix.so
+          password  required  pam_unix.so       sha512 shadow nullok try_first_pass
+          password  optional  ${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so use_authtok
+          session   required  pam_unix.so
+          session   optional  ${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so auto_start
+        '';
+      };
+      quickshell-biometric = {
+        # Biometric-only: try howdy (face) then fprintd (finger). pam_deny
+        # last so failure of both yields a clean PamResult.Failed instead of
+        # hanging. No password module — this PamContext should never set
+        # responseRequired.
+        text = ''
+          auth      sufficient  ${pkgs.howdy}/lib/security/pam_howdy.so
+          auth      sufficient  ${pkgs.fprintd}/lib/security/pam_fprintd.so
+          auth      required    pam_deny.so
+          account   required    pam_unix.so
+          password  required    pam_deny.so
+          session   required    pam_unix.so
+        '';
+      };
     }
   );
 
@@ -191,6 +241,6 @@ in
   environment.pathsToLink = lib.mkIf enabled [ "/share/polkit-1" ];
   environment.systemPackages = lib.mkIf enabled [
     pkgs.bitwarden-desktop
-    pkgs.v4l-utils  # `v4l2-ctl` for users running `face-doctor` or debugging
+    pkgs.v4l-utils # `v4l2-ctl` for users running `face-doctor` or debugging
   ];
 }

@@ -21,6 +21,13 @@ lib.mkIf (cfg.enable or false) {
   home.sessionVariables = {
     QT_QPA_PLATFORM = "wayland";
     QT_WAYLAND_USE_PRIVATE_API = "1";
+    # LockScreen.qml reads these to decide which auth methods to advertise
+    # in the status hint ("Password, face, or fingerprint" etc). They are
+    # set from the host's variables.biometrics flag — the actual PAM stacks
+    # (quickshell-{password,biometric}) are wired up unconditionally in
+    # modules/nixos/biometrics.nix when biometrics.enable is true.
+    QUICKSHELL_LOCK_FACE        = if (variables.biometrics.enable or false) then "1" else "";
+    QUICKSHELL_LOCK_FINGERPRINT = if (variables.biometrics.enable or false) then "1" else "";
   };
 
   programs.niri.settings.spawn-at-startup = lib.mkAfter [

@@ -7,21 +7,35 @@ import ".."
 
 Scope {
   id: root
+
+  // Idempotent lock(): triggered via `quickshell ipc call lock lock`. If the
+  // lockscreen is already up (e.g. user pressed Super+Alt+L twice, or stasis
+  // re-fires before we've torn down), do nothing — re-running startAuth()
+  // would abort an in-flight biometric scan and reset the password buffer.
   function lock() {
+    if (locker.locked) return;
     locker.locked = true;
+    // Pause stasis so its dpms/suspend countdown doesn't fire while the
+    // user is mid-unlock. Symmetric resume happens in teardown() — we route
+    // every exit path through it so the daemon never gets stranded paused.
     Quickshell.execDetached(["stasis", "pause"]);
-    // Start biometric auth immediately on lock.
     lockContext.startAuth();
+  }
+
+  // Single teardown path: called on successful unlock. Aborts any in-flight
+  // PAM contexts, clears state, resumes stasis. Made symmetric so any future
+  // dismissal path (manual unlock, session signal) goes through here.
+  function teardown() {
+    lockContext.abortAuth();
+    lockContext.currentText = "";
+    lockContext.showFailure = false;
+    locker.locked = false;
+    Quickshell.execDetached(["stasis", "resume"]);
   }
 
   LockContext {
     id: lockContext
-    onUnlocked: {
-      locker.locked = false;
-      lockContext.currentText = "";
-      lockContext.showFailure = false;
-      Quickshell.execDetached(["stasis", "resume"]);
-    }
+    onUnlocked: root.teardown()
   }
 
   WlSessionLock {
@@ -73,7 +87,8 @@ Scope {
             text: Qt.formatDate(new Date(), "dddd, MMMM d")
           }
 
-          // Status / hint line
+          // Status / hint line. With dual PamContexts the password prompt is
+          // always available, so the hint advertises every accepted method.
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             font.family: Theme.font; font.pixelSize: 13
@@ -81,23 +96,27 @@ Scope {
                  : lockContext.pamMessageIsError ? Theme.red
                  : Theme.muted
             text: {
-              if (lockContext.showFailure)         return "authentication failed"
-              if (!lockContext.pamActive)          return "press enter to unlock"
-              if (lockContext.pamResponseRequired) return "enter password"
-              if (lockContext.pamMessage !== "")   return lockContext.pamMessage
-              return "scanning…"
+              if (lockContext.showFailure) return "authentication failed"
+              // Build "Password[, face][, fingerprint]" from availability flags.
+              var methods = ["password"];
+              if (lockContext.faceAvailable)        methods.push("face");
+              if (lockContext.fingerprintAvailable) methods.push("fingerprint");
+              if (methods.length === 1) return "enter password";
+              if (methods.length === 2) return methods[0] + " or " + methods[1];
+              // Oxford "or" for 3+: "password, face, or fingerprint".
+              return methods.slice(0, -1).join(", ") + ", or " + methods[methods.length - 1];
             }
           }
 
-          // Password input — only shown when PAM is asking for a typed response
+          // Password input — always shown so the user can start typing
+          // immediately on lock without waiting for PAM to ask. Biometric
+          // scan runs in parallel (LockContext.pamBiometric).
           Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 320; height: 44; radius: Theme.radius
             color: Theme.surface0
-            border.color: lockContext.pamResponseRequired ? Theme.accent : Theme.surface2
+            border.color: pw.activeFocus ? Theme.accent : Theme.surface2
             border.width: 1
-            visible: lockContext.pamResponseRequired || lockContext.currentText !== ""
-            opacity: lockContext.pamResponseRequired ? 1.0 : 0.5
 
             TextInput {
               id: pw
@@ -110,20 +129,9 @@ Scope {
               Keys.onReturnPressed: lockContext.tryUnlock()
             }
           }
-
-          // "press enter" hint when not yet active and password box is hidden
-          MouseArea {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: 320; height: 44
-            visible: !lockContext.pamActive && !lockContext.pamResponseRequired
-            cursorShape: Qt.PointingHandCursor
-            onClicked: lockContext.startAuth()
-            // Keyboard enter also works via the TextInput above when visible,
-            // but when hidden we need a global key handler.
-          }
         }
 
-        // Global key handler: Enter starts/submits auth regardless of focus
+        // Global key handler: Enter submits even if focus drifted off pw.
         Keys.onReturnPressed: lockContext.tryUnlock()
         focus: true
       }
