@@ -47,5 +47,16 @@ in
     services.dbus.enable = true;
     security.polkit.enable = true;
     services.power-profiles-daemon.enable = lib.mkDefault true;
+
+    # niri-flake auto-installs polkit-kde-authentication-agent-1 as a user
+    # systemd unit (niri-flake-polkit.service, WantedBy=niri.service). We
+    # already run hyprpolkitagent ourselves (see modules/home/desktop/
+    # polkit-agent.nix); two agents racing on the same dbus subject yields
+    #   "Cannot register authentication agent: ... agent already exists for
+    #    the given subject"
+    # and the loser flaps until systemd's restart counter trips, leaving
+    # the user session degraded. Disable the niri-flake one. Documented
+    # opt-out per niri-flake README.
+    systemd.user.services.niri-flake-polkit.enable = false;
   };
 }
