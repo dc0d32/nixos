@@ -1,5 +1,6 @@
+// Active window chip. Reads focusedWindow from the NiriState singleton.
+// No polling; updates push from niri's event-stream via NiriState.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
@@ -9,29 +10,9 @@ RowLayout {
   id: root
   spacing: 6
 
-  property string titleText: ""
-  property string appName: ""
-
-  Process {
-    id: poller
-    command: ["sh", "-c", "niri msg focused-window 2>/dev/null | head -5"]
-    running: true
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const lines = text.split("\n")
-        for (const line of lines) {
-          if (line.startsWith("Title:")) {
-            root.titleText = line.replace("Title:", "").trim().replace(/"/g, "")
-          }
-          if (line.startsWith("App ID:")) {
-            root.appName = line.replace("App ID:", "").trim()
-          }
-        }
-      }
-    }
-  }
-
-  Timer { interval: 500; running: true; repeat: true; onTriggered: poller.running = true }
+  readonly property var win: NiriState.focusedWindow
+  readonly property string titleText: win ? (win.title || "") : ""
+  readonly property string appName:   win ? (win.app_id || "") : ""
 
   Text {
     font.family: Theme.font

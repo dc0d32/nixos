@@ -22,6 +22,7 @@ in
     ./tools/btop.nix
     ./tools/build-deps.nix
     ./tools/gh.nix
+    ./tools/ai-cli.nix
     ./tools/hardware-hacking.nix
     ./git.nix
     ./tmux.nix
@@ -29,7 +30,6 @@ in
     ./fonts.nix
   ] ++ lib.optionals hasDesktop [
     ./audio/easyeffects.nix
-    ./desktop/cursor.nix
     ./desktop/extras.nix
     ./desktop/niri.nix
     ./desktop/waybar.nix

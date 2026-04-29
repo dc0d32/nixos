@@ -35,7 +35,7 @@ Scope {
         Image {
           id: wallpaper
           anchors.fill: parent
-          source: "file:///home/p/.wallpaper/current.jpg"
+          source: root.wallpaperPath
           fillMode: Image.PreserveAspectCrop
           visible: false   // hidden; MultiEffect renders it
         }

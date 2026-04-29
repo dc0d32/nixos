@@ -100,28 +100,27 @@ PanelWindow {
     }
   }
 
-  // ── reactive chip center: reads .x properties so QML tracks changes ───
-  // chip lives inside: bar → barContent → barRow → rightGroup{1,2} → chip
-  // We walk the x chain explicitly so the binding engine re-evaluates on layout.
+  // ── reactive chip center ──────────────────────────────────────────────
+  // mapToItem() is NOT reactive — its return value won't update on layout
+  // changes. Instead, we walk the .x chain manually: each property read
+  // inside a binding is captured by QML's binding engine, so the binding
+  // re-evaluates whenever any chip's or ancestor's x position changes.
   function chipCX(chip) {
-    // mapToItem reads are NOT reactive; instead sum the .x chain manually.
     var x = chip.x + chip.width / 2
     var p = chip.parent
     while (p && p !== bar) { x += p.x; p = p.parent }
     return x
   }
 
-  // Each chip's center, expressed as reactive bindings on chip.x / parent.x.
-  // We read enough properties that QML re-evaluates when layout changes.
-  readonly property real networkCX:       networkChip.x       + networkChip.parent.x       + networkChip.parent.parent.x       + networkChip.parent.parent.parent.x       + networkChip.width       / 2
-  readonly property real notifCX:         notifChip.x         + notifChip.parent.x         + notifChip.parent.parent.x         + notifChip.parent.parent.parent.x         + notifChip.width         / 2
-  readonly property real volumeCX:        volumeChip.x        + volumeChip.parent.x        + volumeChip.parent.parent.x        + volumeChip.parent.parent.parent.x        + volumeChip.width        / 2
-  readonly property real batteryCX:       batteryChip.x       + batteryChip.parent.x       + batteryChip.parent.parent.x       + batteryChip.parent.parent.parent.x       + batteryChip.width       / 2
-  readonly property real powerProfileCX:  powerProfileChip.x  + powerProfileChip.parent.x  + powerProfileChip.parent.parent.x  + powerProfileChip.parent.parent.parent.x  + powerProfileChip.width  / 2
-  readonly property real brightnessCX:    brightnessChip.x    + brightnessChip.parent.x    + brightnessChip.parent.parent.x    + brightnessChip.parent.parent.parent.x    + brightnessChip.width    / 2
-  readonly property real clockCX:         clockChip.x         + clockChip.parent.x         + clockChip.parent.parent.x         + clockChip.parent.parent.parent.x         + clockChip.width         / 2
-  readonly property real weatherCX:       weatherChip.x       + weatherChip.parent.x       + weatherChip.parent.parent.x       + weatherChip.parent.parent.parent.x       + weatherChip.width       / 2
-  readonly property real mediaCX:         mediaChip.x         + mediaChip.parent.x         + mediaChip.parent.parent.x         + mediaChip.parent.parent.parent.x         + mediaChip.width         / 2
+  readonly property real networkCX:      chipCX(networkChip)
+  readonly property real notifCX:        chipCX(notifChip)
+  readonly property real volumeCX:       chipCX(volumeChip)
+  readonly property real batteryCX:      chipCX(batteryChip)
+  readonly property real powerProfileCX: chipCX(powerProfileChip)
+  readonly property real brightnessCX:   chipCX(brightnessChip)
+  readonly property real clockCX:        chipCX(clockChip)
+  readonly property real weatherCX:      chipCX(weatherChip)
+  readonly property real mediaCX:        chipCX(mediaChip)
 
   // ── tooltips ──────────────────────────────────────────────────────────
   BarTooltip {

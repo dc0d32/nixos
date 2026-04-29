@@ -12,7 +12,7 @@ Scope {
   VolumeOsd { }
   MediaOsd { }
   NotificationCenter { id: notifCenter }
-  LockScreen { id: lock }
+  LockScreen { id: lockScreen }
 
   Variants {
     model: Quickshell.screens
@@ -24,11 +24,7 @@ Scope {
   }
 
   IpcHandler {
-    target: "launcher"
-    function toggle() { }
-  }
-  IpcHandler {
     target: "lock"
-    function lock() { lock.lock(); }
+    function lock() { lockScreen.lock(); }
   }
 }

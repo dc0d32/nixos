@@ -20,9 +20,10 @@
     waybar.enable = false;
     quickshell.enable = true;
     # Wallpaper: downloads random nature photos from wallhaven, cycles every 30 min.
+    # `directory` defaults to $HOME/.wallpaper; override only if you want it
+    # somewhere else.
     wallpaper = {
       enable = false;  # set to true once ~/.wallpaper directory is ready
-      directory = "/home/CHANGEME/.wallpaper";
       intervalMinutes = 30;
     };
   };
@@ -44,7 +45,7 @@
   login.ly.enable = true;
 
   # Auto-lock / DPMS / suspend timings (seconds). Applied by
-  # modules/home/desktop/idle.nix via swayidle under the user's session.
+  # modules/home/desktop/idle.nix via stasis under the user's session.
   idle = {
     enable = true;
     lockAfter    = 300;   # 5 min
@@ -70,6 +71,10 @@
   # Biometrics: fingerprint reader + IR face auth (howdy).
   # Requires one-time setup after first rebuild — see README "One-time hardware setup".
   biometrics.enable = false;
+
+  # Hardware hacking: USB serial / JTAG / flashing tools and udev rules.
+  # Off by default — enable on machines you actually plug devices into.
+  hardwareHacking.enable = false;
 
   # SSH agent: systemd socket-activated ssh-agent for the user session.
   # Disable if using a hardware key (YubiKey) or a secrets manager instead.

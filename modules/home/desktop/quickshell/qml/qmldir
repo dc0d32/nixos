@@ -1,7 +1,7 @@
-module Theme
 singleton Theme 1.0 Theme.qml
 singleton FlyoutManager 1.0 FlyoutManager.qml
 singleton WeatherModel 1.0 WeatherModel.qml
+singleton NiriState 1.0 NiriState.qml
 
 Isthmus 1.0 Isthmus.qml
 Bar 1.0 bar/Bar.qml
@@ -34,7 +34,5 @@ NotificationFlyout 1.0 bar/flyouts/NotificationFlyout.qml
 VolumeOsd 1.0 osd/VolumeOsd.qml
 MediaOsd 1.0 media/MediaOsd.qml
 NotificationCenter 1.0 notifications/NotificationCenter.qml
-Launcher 1.0 launcher/Launcher.qml
 LockScreen 1.0 lock/LockScreen.qml
 LockContext 1.0 lock/LockContext.qml
-IdleController 1.0 IdleController.qml

@@ -38,7 +38,7 @@
   login.ly.enable = false;
 
   # Auto-lock / DPMS / suspend timings (seconds). Applied by
-  # modules/home/desktop/idle.nix via swayidle under the user's session.
+  # modules/home/desktop/idle.nix via stasis under the user's session.
   idle = {
     enable = false;
     lockAfter    = 300;   # 5 min
@@ -63,7 +63,7 @@
 
   sshAgent.enable = false;
 
-  hardwareHacking.enable = true;
+  hardwareHacking.enable = false;
 
   # Optional git identity merged into modules/home/git.nix
   git = {

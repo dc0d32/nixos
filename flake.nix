@@ -14,11 +14,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixvim = {
-      url = "github:nix-community/nixvim";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # NixOS inside WSL. Use dc0d32/nixos-aarch64-wsl
     # aarch64-linux rootfs for Windows on ARM; also works fine on x86_64.
     nixos-wsl = {
@@ -66,9 +61,7 @@
           };
         });
 
-      packages = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
-        in import ./pkgs { inherit pkgs; });
+      packages = forAllSystems (_: { });
 
       formatter = forAllSystems (system:
         (import nixpkgs { inherit system; }).nixpkgs-fmt);

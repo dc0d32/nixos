@@ -18,9 +18,7 @@ final: prev: {
         owner = "nvim-treesitter";
         repo = "nvim-treesitter";
         rev = "f8bbc3177d929dc86e272c41cc15219f0a7aa1ac";
-        # First build will fail with a hash mismatch; paste the `got:` hash
-        # here to replace lib.fakeHash.
-        hash = prev.lib.fakeHash;
+        hash = "sha256-9GI22/cwoJWOO7jvRpW67s/x6IoahNZkMpBb58rO31k=";
       };
     });
   };

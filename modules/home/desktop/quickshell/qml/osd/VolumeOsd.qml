@@ -1,9 +1,13 @@
-// Centered OSD popup for volume/brightness changes. Listens on an IPC channel:
-//   quickshellipc call osd show "volume 42"
-// Bind volume/brightness keys to call both wpctl/brightnessctl AND this.
+// Volume / mute OSD popup. Reacts directly to PipeWire change signals via
+// Quickshell.Services.Pipewire — no IPC needed. niri's volume keybinds run
+// `wpctl set-volume` and `wpctl set-mute` directly; the resulting volume /
+// muted change on the default audio sink triggers this OSD.
+//
+// A startup grace period suppresses the popup on initial property bind so
+// the user doesn't see an OSD flash every time the shell is restarted.
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Io
+import Quickshell.Services.Pipewire
 import QtQuick
 
 import ".."
@@ -14,18 +18,40 @@ Scope {
   property int    value: 0     // 0..100
   property bool   shown: false
 
-  IpcHandler {
-    target: "osd"
-    // Call as: quickshellipc call osd show "volume 42"
-    // The single string encodes both label and value, space-separated.
-    function show(msg: string) {
-      const parts = msg.split(" ")
-      root.label = parts.slice(0, parts.length - 1).join(" ")
-      root.value = parseInt(parts[parts.length - 1]) || 0
-      root.shown = true
-      hider.restart()
-    }
+  // Suppress the OSD until the shell has been alive long enough for the
+  // initial Pipewire bind to settle. Without this, every shell restart
+  // pops the OSD with the current volume.
+  property bool armed: false
+  Timer { interval: 1500; running: true; repeat: false; onTriggered: root.armed = true }
+
+  // Subscribe to the default sink. PwObjectTracker is required to keep the
+  // node's audio sub-object alive and emitting change signals.
+  PwObjectTracker {
+    objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : []
   }
+
+  Connections {
+    target: Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
+    ignoreUnknownSignals: true
+    function onVolumesChanged() { root._onAudioChanged(false) }
+    function onMutedChanged()   { root._onAudioChanged(true) }
+  }
+
+  function _onAudioChanged(fromMute) {
+    if (!armed) return
+    const audio = Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
+    if (!audio) return
+    if (audio.muted) {
+      root.label = "muted"
+      root.value = 0
+    } else {
+      root.label = "volume"
+      root.value = Math.round((audio.volume || 0) * 100)
+    }
+    root.shown = true
+    hider.restart()
+  }
+
   Timer { id: hider; interval: 1200; onTriggered: root.shown = false }
 
   Variants {

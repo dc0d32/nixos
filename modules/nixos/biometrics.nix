@@ -52,22 +52,21 @@ in
   # policy at the NixOS level so polkit can authorize biometric unlock.
   # Retire when bitwarden-desktop moves to environment.systemPackages or
   # NixOS polkit starts scanning HM packages.
+  #
+  # The rule below tells polkit to require user re-auth for the bitwarden
+  # unlock action. polkit then invokes pam_authenticate on the "bitwarden"
+  # PAM service (see security.pam.services.bitwarden above), which runs the
+  # full biometric stack (howdy → fprintd → password).
+  #
+  # This replaces the deprecated localauthority .pkla format with a modern
+  # rules.d JS rule (the .pkla loader is going away in polkit ≥ 0.121).
   security.polkit.extraConfig = lib.mkIf enabled ''
-    // Allow the active user to unlock Bitwarden via biometrics (polkit action
-    // com.bitwarden.Bitwarden.unlock). The desktop_proxy calls this action;
-    // polkit then calls pam_authenticate on the "bitwarden" PAM service.
-    // This just permits the action for the active session — PAM does the
-    // actual biometric verification.
+    polkit.addRule(function (action, subject) {
+      if (action.id == "com.bitwarden.Bitwarden.unlock" && subject.active) {
+        return polkit.Result.AUTH_SELF;
+      }
+    });
   '';
-
-  environment.etc."polkit-1/localauthority/50-local.d/bitwarden-biometrics.pkla" = lib.mkIf enabled {
-    text = ''
-      [Bitwarden Biometric Unlock]
-      Identity=unix-user:*
-      Action=com.bitwarden.Bitwarden.unlock
-      ResultActive=auth_self
-    '';
-  };
 
   # Install the polkit policy from the bitwarden-desktop package system-wide.
   environment.pathsToLink = lib.mkIf enabled [ "/share/polkit-1" ];

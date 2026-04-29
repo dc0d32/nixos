@@ -14,7 +14,9 @@ lib.mkIf (cfg.enable or false) {
       "monitor.alsa.rules" = [{
         matches = [{ "node.name" = "~alsa_output.*"; }];
         actions.update-props = {
-          # Allow volume up to 150% (1.5) via the volume slider/keybinds.
+          # Cap output volume at 100% (1.0) to prevent digital clipping
+          # via the volume slider/keybinds. Raise (e.g. 1.5 for 150%) only
+          # if you trust your downstream gain staging.
           "channelmix.max-volume" = 1.0;
         };
       }];

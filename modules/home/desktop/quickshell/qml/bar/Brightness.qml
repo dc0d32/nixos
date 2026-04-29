@@ -1,4 +1,6 @@
-// Brightness chip. Scroll adjusts, click opens flyout.
+// Brightness chip. Initial value polled once; subsequent updates are pushed
+// by a long-running `udevadm monitor` watching the backlight subsystem.
+// Scroll adjusts, click opens flyout.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -15,14 +17,50 @@ Item {
   property int  maxBrightness: 100
   property bool tooltipShown:  false
 
-  Process { id: maxPoller; command: ["brightnessctl", "max"]; running: true
-    stdout: StdioCollector { onStreamFinished: { const v = parseInt(text.trim()); if (!isNaN(v) && v > 0) root.maxBrightness = v } } }
-  Process { id: poller; command: ["brightnessctl", "get"]; running: true
-    stdout: StdioCollector { onStreamFinished: {
-      const v = parseInt(text.trim())
-      if (!isNaN(v)) root.brightness = Math.round((v / root.maxBrightness) * 100)
-    }} }
-  Timer { interval: 50; running: true; repeat: true; onTriggered: { maxPoller.running = true; poller.running = true } }
+  function _refresh() { getter.running = true }
+
+  // One-shot reads on startup and after every udev event.
+  Process {
+    id: maxGetter
+    command: ["brightnessctl", "max"]
+    running: true
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const v = parseInt(text.trim())
+        if (!isNaN(v) && v > 0) root.maxBrightness = v
+      }
+    }
+  }
+  Process {
+    id: getter
+    command: ["brightnessctl", "get"]
+    running: true
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const v = parseInt(text.trim())
+        if (!isNaN(v)) root.brightness = Math.round((v / root.maxBrightness) * 100)
+      }
+    }
+  }
+
+  // Long-running udev monitor for the backlight subsystem. Each event line
+  // is a kernel notification that something in /sys/class/backlight changed;
+  // we react by re-running `brightnessctl get`. Replaces the previous 50 ms
+  // polling timer with a true event-driven flow.
+  Process {
+    id: udevMon
+    command: ["udevadm", "monitor", "--udev", "--subsystem-match=backlight"]
+    running: true
+    stdout: SplitParser {
+      splitMarker: "\n"
+      onRead: data => {
+        // Lines from udevadm look like "UDEV  [..] change /devices/..."
+        // — react on any "change" line. The header lines printed at startup
+        // don't contain "change" so they're harmless.
+        if (data.indexOf(" change ") !== -1) root._refresh()
+      }
+    }
+  }
 
   RowLayout {
     id: row; anchors.centerIn: parent; spacing: 4

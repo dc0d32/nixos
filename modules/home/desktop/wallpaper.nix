@@ -2,7 +2,12 @@
 let
   cfg = variables.desktop.wallpaper or { };
   enabled = cfg.enable or false;
-  wallpaperDir = cfg.directory or "%h/.wallpaper";
+  # Default to $HOME/.wallpaper. The previous default ("%h/.wallpaper") was
+  # systemd-unit syntax and would have been written into the shell script
+  # literally, creating a directory called "%h". Use the home-manager
+  # config.home.homeDirectory so the path is always correct for the user
+  # being built.
+  wallpaperDir = cfg.directory or "${config.home.homeDirectory}/.wallpaper";
   intervalMinutes = cfg.intervalMinutes or 30;
 
   fetchScript = pkgs.writeShellScript "wallpaper-fetch" ''
