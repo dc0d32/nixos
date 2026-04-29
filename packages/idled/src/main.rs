@@ -79,6 +79,17 @@ struct General {
     /// Honour logind idle inhibitors. Default true.
     #[serde(default = "default_true")]
     respect_idle_inhibitors: bool,
+    /// Shell command to run *before* the system suspends/hibernates so the
+    /// lockscreen is up before the screen blanks. Absent = don't lock on
+    /// sleep. Paired with a logind delay-inhibitor so suspend waits for
+    /// this command (plus `lock_settle_ms`) to complete before proceeding.
+    #[serde(default)]
+    lock_before_sleep: Option<String>,
+    /// Milliseconds to wait after spawning lock_before_sleep before
+    /// releasing the suspend inhibitor. Tuned to give the wayland
+    /// compositor time to paint the lockscreen surface. Default 300.
+    #[serde(default = "default_lock_settle_ms")]
+    lock_settle_ms: u64,
 }
 
 impl Default for General {
@@ -86,6 +97,8 @@ impl Default for General {
         Self {
             tick_ms: default_tick_ms(),
             respect_idle_inhibitors: true,
+            lock_before_sleep: None,
+            lock_settle_ms: default_lock_settle_ms(),
         }
     }
 }
@@ -95,6 +108,9 @@ fn default_tick_ms() -> u64 {
 }
 fn default_true() -> bool {
     true
+}
+fn default_lock_settle_ms() -> u64 {
+    300
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -171,12 +187,26 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Spawn dbus task: PrepareForSleep + BlockInhibited.
+    // Spawn dbus task: PrepareForSleep + BlockInhibited + (optional) lock-on-sleep.
     let dbus_state = state.clone();
     let inhibitor = Arc::new(Mutex::new(false));
     let dbus_inhibitor = inhibitor.clone();
+    let lock_cfg = cfg
+        .general
+        .lock_before_sleep
+        .clone()
+        .map(|cmd| dbus::LockOnSleep {
+            command: cmd,
+            settle_ms: cfg.general.lock_settle_ms,
+        });
+    if let Some(ref l) = lock_cfg {
+        info!(
+            settle_ms = l.settle_ms,
+            "lock-before-sleep enabled (delay inhibitor + lock command)"
+        );
+    }
     tokio::spawn(async move {
-        if let Err(e) = dbus::run(dbus_state, dbus_inhibitor).await {
+        if let Err(e) = dbus::run(dbus_state, dbus_inhibitor, lock_cfg).await {
             error!(error = %e, "dbus task exited");
         }
     });

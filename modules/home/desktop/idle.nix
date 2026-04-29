@@ -33,6 +33,12 @@ let
     [general]
     tick_ms = 1000
     respect_idle_inhibitors = true
+    # Lock the screen *before* the system suspends/hibernates so on resume
+    # the user sees the lockscreen, not a desktop flash. idled holds a
+    # logind delay-inhibitor and releases it after the lock command has
+    # had a moment to render.
+    lock_before_sleep = "quickshell ipc call lock lock"
+    lock_settle_ms = 300
 
     [[stages]]
     name = "lock"
