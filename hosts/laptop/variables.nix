@@ -98,6 +98,13 @@
     bitwarden.enable = true;
   };
 
+  # 3D CAD (FreeCAD) — see modules/home/cad/freecad.nix. Ships a
+  # FusionLike auto-startup mod that applies a Fusion-360-flavored
+  # preference pack on every launch (navigation, dark theme, default
+  # workbench, shortcuts), plus pinned versions of Assembly4,
+  # Fasteners, Sheet Metal, and Defeaturing addons.
+  cad.freecad.enable = true;
+
   biometrics.enable = true;
 
   hardwareHacking.enable = true;

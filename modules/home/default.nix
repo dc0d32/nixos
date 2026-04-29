@@ -39,6 +39,7 @@ in
     ./desktop/wallpaper.nix
     ./apps/chrome.nix
     ./apps/bitwarden.nix
+    ./cad/freecad.nix
   ];
 
   programs.home-manager.enable = true;

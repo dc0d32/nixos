@@ -1,6 +1,8 @@
 { pkgs, lib, variables, ... }:
-# Hardware hacking tools: USB/serial, flashing, logic analysis, EDA, 3D CAD.
-# GUI apps (KiCad, FreeCAD) are Linux-only. CLI tools work on WSL too.
+# Hardware hacking tools: USB/serial, flashing, logic analysis, EDA.
+# 3D CAD (FreeCAD) lives in modules/home/cad/freecad.nix — it carries
+# its own preference pack and addons and shouldn't be coupled to the
+# hardware-hacking flag.
 let
   cfg = variables.hardwareHacking or { enable = false; };
   isLinux = pkgs.stdenv.hostPlatform.isLinux;
@@ -21,8 +23,5 @@ lib.mkIf (cfg.enable or false) {
   ] ++ lib.optionals isLinux [
     # EDA — Linux only (no Darwin package)
     kicad
-
-    # 3D CAD — freecad-wayland for native Wayland rendering
-    (pkgs.freecad-wayland or pkgs.freecad)
   ];
 }
