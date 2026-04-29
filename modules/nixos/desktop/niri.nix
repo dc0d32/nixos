@@ -48,6 +48,15 @@ in
     security.polkit.enable = true;
     services.power-profiles-daemon.enable = lib.mkDefault true;
 
+    # UPower daemon — provides org.freedesktop.UPower over system dbus, which
+    # quickshell's Quickshell.Services.UPower (BatteryState.qml) consumes for
+    # battery percentage / charging state. Without this, only the
+    # power-profiles-daemon-provided org.freedesktop.UPower.PowerProfiles
+    # interface is on the bus, and BatteryState.present stays false → the
+    # battery chip is hidden. Safe to leave on for desktops without a battery
+    # (UPower simply reports no laptop battery and BatteryState hides itself).
+    services.upower.enable = lib.mkDefault true;
+
     # niri-flake auto-installs polkit-kde-authentication-agent-1 as a user
     # systemd unit (niri-flake-polkit.service, WantedBy=niri.service). We
     # already run hyprpolkitagent ourselves (see modules/home/desktop/

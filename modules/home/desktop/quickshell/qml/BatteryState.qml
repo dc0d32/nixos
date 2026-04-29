@@ -27,7 +27,10 @@ QtObject {
     _dev && _dev.ready && _dev.isLaptopBattery && _dev.isPresent
 
   readonly property int percent:
-    present ? Math.round(_dev.percentage) : 0
+    // quickshell's UPowerDevice.percentage is 0.0–1.0 (energy / capacity),
+    // not 0–100 like the dbus org.freedesktop.UPower.Device.Percentage
+    // property it wraps. Multiply before rounding or 0.95 collapses to 1.
+    present ? Math.round(_dev.percentage * 100) : 0
 
   readonly property bool charging:
     present && _dev.state === UPowerDeviceState.Charging
