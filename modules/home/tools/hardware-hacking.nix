@@ -16,6 +16,7 @@ lib.mkIf (cfg.enable or false) {
     # Flashing / firmware
     esptool         # ESP8266 / ESP32 flash tool
     dfu-util        # STM32 and other DFU devices
+    flashrom        # SPI flash read/write via CH341A and others
 
   ] ++ lib.optionals isLinux [
     # EDA — Linux only (no Darwin package)
