@@ -5,6 +5,20 @@ let
   dpmsAfter    = cfg.dpmsAfter    or 1020;
   suspendAfter = cfg.suspendAfter or 1800;
 
+  # Battery watcher config. Driven from variables.battery.* on the host.
+  # Emitted as a [battery] TOML block only if the host opted in; absence
+  # of the section disables the watcher in idled (see packages/idled/
+  # src/power.rs). PPD is required at runtime — gated on the host already
+  # enabling power-profiles-daemon (it is via modules/nixos/desktop/niri.nix).
+  bat = variables.battery or { enable = false; };
+  batteryEnabled = (bat.enable or false) && ((bat.powerSaverPercent or 0) > 0);
+  batteryToml = lib.optionalString batteryEnabled ''
+
+    [battery]
+    power_saver_percent = ${toString bat.powerSaverPercent}
+    hysteresis = 5
+  '';
+
   # idled config: each stage fires at `timeout` seconds since last input.
   # On any input after a stage has fired, its `resume_command` (if set)
   # is run so DPMS can wake monitors immediately.
@@ -35,7 +49,7 @@ let
     name = "suspend"
     timeout = ${toString suspendAfter}
     command = "systemctl suspend"
-  '';
+  '' + batteryToml;
 in
 lib.mkIf (cfg.enable) {
   home.packages = with pkgs; [ brightnessctl idled ];

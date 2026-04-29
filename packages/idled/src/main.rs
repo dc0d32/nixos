@@ -48,6 +48,7 @@ use tracing::{debug, error, info, warn};
 
 mod dbus;
 mod input;
+mod power;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Kernel-input idle manager")]
@@ -63,6 +64,11 @@ struct Config {
     general: General,
     #[serde(default)]
     stages: Vec<Stage>,
+    /// Optional battery watcher: switch power-profiles-daemon profile when
+    /// the battery descends past a threshold while discharging. Absent
+    /// section disables the watcher entirely.
+    #[serde(default)]
+    battery: Option<power::BatteryConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -174,6 +180,22 @@ async fn main() -> Result<()> {
             error!(error = %e, "dbus task exited");
         }
     });
+
+    // Spawn battery watcher if configured. Optional — hosts without a
+    // battery (or without PPD) simply omit the [battery] section.
+    if let Some(bcfg) = cfg.battery.clone() {
+        info!(
+            threshold = bcfg.power_saver_percent,
+            "starting battery / power-profiles watcher"
+        );
+        tokio::spawn(async move {
+            if let Err(e) = power::run(bcfg).await {
+                error!(error = %e, "battery watcher exited");
+            }
+        });
+    } else {
+        debug!("no [battery] section in config; battery watcher disabled");
+    }
 
     // Drain input_rx alongside the tick: every input bumps last_input and
     // reruns resume actions for any stage that had fired.
