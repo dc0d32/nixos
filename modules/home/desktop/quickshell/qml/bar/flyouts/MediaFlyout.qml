@@ -101,7 +101,10 @@ Item {
           Text { anchors.centerIn: parent; font.family: Theme.iconFont; font.pixelSize: 22; color: Theme.base
                  text: (root.player && root.player.playbackState === MprisPlaybackState.Playing) ? "pause" : "play_arrow" }
           MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                      onClicked: if (root.player) root.player.playPause() } }
+                      // quickshell's MprisPlayer exposes togglePlaying() (no
+                      // playPause()). Guard on canTogglePlaying which is the
+                      // OR of canPlay/canPause depending on current state.
+                      onClicked: if (root.player && root.player.canTogglePlaying) root.player.togglePlaying() } }
         Text { font.family: Theme.iconFont; font.pixelSize: 24
                color: (root.player && root.player.canGoNext) ? Theme.subtext : Theme.muted
                opacity: (root.player && root.player.canGoNext) ? 1.0 : 0.3

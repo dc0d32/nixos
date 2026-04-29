@@ -19,10 +19,13 @@ Item {
 
   RowLayout {
     id: row; anchors.centerIn: parent; spacing: 4
+    // Play/pause icon is purely decorative on the chip — the inline MouseArea
+    // it used to carry was unreachable (the chip-wide MouseArea below covers
+    // it and wins the click), so users got no playPause toggle from clicking
+    // the icon. The full play/pause control lives in the media flyout; the
+    // chip only opens the flyout now.
     Text { font.family: Theme.iconFont; font.pixelSize: 12; color: Theme.mauve
-           text: (root.player && root.player.playbackState === MprisPlaybackState.Playing) ? "play_arrow" : "pause"
-           MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                       onClicked: if (root.player) root.player.playPause() } }
+           text: (root.player && root.player.playbackState === MprisPlaybackState.Playing) ? "play_arrow" : "pause" }
     Text { font.family: Theme.font; font.pixelSize: 11; color: Theme.subtext
            text: root.player ? root.player.trackTitle : ""; elide: Text.ElideRight; Layout.maximumWidth: 140 }
     Text { font.family: Theme.font; font.pixelSize: 11; color: Theme.muted
