@@ -24,6 +24,10 @@ in
         tap = true;
         natural-scroll = true;
         accel-profile = "flat";
+        # Slow scrolling — default 1.0 was way too fast on this trackpad;
+        # Niri scales libinput scroll deltas by this factor for
+        # both touchpad axes.
+        scroll-factor = 0.4;
       };
       input.mouse = {
         accel-profile = "flat";
