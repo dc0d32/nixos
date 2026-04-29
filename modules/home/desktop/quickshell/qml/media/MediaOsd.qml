@@ -49,6 +49,10 @@ Scope {
       visible: root.shown && root.player !== null && root.playerIsOsd
       color: "transparent"
       WlrLayershell.layer: WlrLayershell.Overlay
+      // Single-anchor PanelWindows default to ExclusionMode.Auto, which
+      // reserves a strip matching the window dimensions. Force Ignore so
+      // the OSD truly overlays instead of pushing tiled windows away.
+      exclusionMode: ExclusionMode.Ignore
       anchors { bottom: true }
       margins { bottom: 100 }
       implicitWidth: 360
