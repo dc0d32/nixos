@@ -14,5 +14,6 @@
     ./wsl.nix
     ./biometrics.nix
     ./hardware-hacking.nix
+    ./battery.nix
   ];
 }

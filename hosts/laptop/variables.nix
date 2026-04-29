@@ -57,6 +57,32 @@
     suspendAfter = 900;
   };
 
+  # Battery management — see modules/nixos/battery.nix and the UPower
+  # watcher inside packages/idled/. All percentages are integers 0–100.
+  battery = {
+    enable = true;
+    # Lenovo X1 Yoga supports kernel charge thresholds via
+    # /sys/class/power_supply/BAT0/charge_control_*_threshold.
+    # Capping at 80% extends battery lifespan substantially. Set to 100
+    # (and recharge to full) before flying or other long unplug.
+    chargeStopThreshold  = 80;
+    chargeStartThreshold = 75;
+    # UPower CriticalAction at this percent. "Hibernate" requires a swap
+    # area large enough for RAM (configured below). Falls back to
+    # PowerOff if hibernate fails.
+    criticalPercent = 10;
+    criticalAction  = "Hibernate";
+    # Switch to power-profiles-daemon "power-saver" at this percent on
+    # battery; restored to whatever profile was active when we descended
+    # past the threshold the next time we go above it. Implemented by
+    # the UPower watcher inside the idled user daemon.
+    powerSaverPercent = 40;
+    # Swap file size (GiB). Hibernate needs swap >= RAM. 32 GiB matches
+    # this host's 31 GiB RAM with a margin. Created at /swap/swapfile on
+    # btrfs (CoW disabled per kernel requirement).
+    swapSizeGiB = 32;
+  };
+
   # WSL (Windows Subsystem for Linux). Flip on for a WSL distro, including
   # Windows-on-ARM (aarch64-linux). When enabled, modules/nixos/wsl.nix
   # imports the wsl.nix file from github:dc0d32/nixos-aarch64-wsl and
