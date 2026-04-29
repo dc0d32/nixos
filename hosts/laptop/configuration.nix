@@ -25,7 +25,9 @@ in
   users.users.${variables.user} = lib.mkIf (!isWsl) {
     isNormalUser = true;
     description = variables.user;
-    extraGroups = [ "wheel" "networkmanager" "video" "audio" ];
+    # `input` group: required by idled to read /dev/input/event* directly.
+    # See modules/home/desktop/idle.nix and packages/idled/src/main.rs.
+    extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
     shell = pkgs.zsh;
   };
 

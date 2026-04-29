@@ -10,4 +10,5 @@
 #   - modules/nixos/nix-settings.nix (nixpkgs.overlays for NixOS systems)
 [
   (import ./nvim-treesitter-pin.nix)
+  (import ./idled.nix)
 ]

@@ -23,7 +23,6 @@ in
       mako
       fuzzel
       xdg-utils
-      stasis
     ];
 
     xdg.portal = {
