@@ -32,6 +32,7 @@ in
     ./audio/easyeffects.nix
     ./desktop/extras.nix
     ./desktop/niri.nix
+    ./desktop/polkit-agent.nix
     ./desktop/waybar.nix
     ./desktop/quickshell
     ./desktop/idle.nix
