@@ -19,7 +19,18 @@ PanelWindow {
   margins  { top: 2; left: 2; right: 2 }
 
   readonly property int flyoutSpace: 420
-  implicitHeight: Theme.barHeight + flyoutSpace
+  // When a flyout is open, balloon the window to cover the whole screen so a
+  // click anywhere outside the flyout card (incl. far below it, on top of
+  // other apps) hits the dismiss MouseArea below. Layer-shell windows don't
+  // forward unhandled clicks to surfaces underneath, so without this growth
+  // a click on a browser/terminal just goes to that window and the flyout
+  // stays open. exclusiveZone stays at barHeight; only the *input* area
+  // grows. Tiled windows are unaffected (they're laid out per exclusiveZone,
+  // not per window height).
+  readonly property bool flyoutOpen: FlyoutManager.active !== ""
+  implicitHeight: flyoutOpen
+                  ? (screen ? screen.height : Theme.barHeight + flyoutSpace)
+                  : Theme.barHeight + flyoutSpace
   color: "transparent"
   WlrLayershell.namespace: "quickshell-bar"
   WlrLayershell.layer: WlrLayershell.Top
@@ -29,7 +40,7 @@ PanelWindow {
   // transparent region below doesn't eat clicks from underlying windows.
   // When a flyout is open, mask is null (whole window receives input) so the
   // dismiss MouseArea below the bar strip can fire.
-  mask: FlyoutManager.active !== "" ? null : barMask
+  mask: flyoutOpen ? null : barMask
   Region { id: barMask; item: barContent }
 
   // ── bar strip background ──────────────────────────────────────────────
@@ -40,10 +51,14 @@ PanelWindow {
   }
 
   // ── dismiss backdrop ──────────────────────────────────────────────────
+  // Covers everything below the bar strip down to the bottom of the (now
+  // full-screen) window when a flyout is open. Flyouts render *above* this
+  // (later in declaration order) so their cards still receive clicks.
   MouseArea {
     x: 0; y: Theme.barHeight
-    width: parent.width; height: bar.flyoutSpace
-    visible: FlyoutManager.active !== ""
+    width: parent.width
+    height: parent.height - Theme.barHeight
+    visible: bar.flyoutOpen
     onClicked: FlyoutManager.close()
   }
 
