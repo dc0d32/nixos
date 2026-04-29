@@ -34,7 +34,7 @@ in
     device = lib.removePrefix "/dev/" cameraDevice;
   };
 
-  # ── PAM auth ordering (closest practical analogue to Windows Hello UX) ───
+  # ── PAM auth ordering ────────────────────────────────────────────────────
   #
   # The default NixOS biometric stack runs `auth sufficient pam_howdy.so`
   # and `auth sufficient pam_fprintd.so` BEFORE `auth sufficient pam_unix.so`.
@@ -42,56 +42,79 @@ in
   # several seconds even when the user has already typed a password — the
   # password line is unreachable until fprintd returns.
   #
-  # We override the `order` of the howdy and fprintd rules so they run AFTER
-  # `auth sufficient pam_unix.so try_first_pass`. Because pam_unix is
-  # `sufficient`, a correct typed password short-circuits the rest of the
-  # stack and biometric modules never run. If no password was typed (or the
-  # password is wrong), pam_unix returns failure and PAM falls through to
-  # howdy (face) and then fprintd (finger).
+  # We override the `order` of howdy and fprintd so they slot deliberately
+  # around `pam_unix`. There are two policies, applied per-service:
   #
-  # The pam_deny rule MUST stay last in the auth stack — if howdy/fprintd
-  # are placed after deny, biometrics become unreachable. Different services
-  # have different default deny orders (login/ly: 13700; sudo/bitwarden:
-  # 12500), and we don't want to relocate deny — that risks breaking other
-  # auth modules between unix and deny. Instead we push deny to a fixed
-  # position above ours, so the resolved order is always:
-  #   ... unix-early, [keyring], unix(sufficient), howdy, fprintd, deny.
+  #   "face-first"     (sudo, login, ly):
+  #       howdy → pam_unix → fprintd → deny
+  #     The IR camera is fast (~1s); leading with face gives a Windows
+  #     Hello-style "look at the laptop and you're in" experience. Falls
+  #     through to a typed password if the camera shot doesn't match, then
+  #     to fingerprint as a slower last-resort biometric.
   #
-  # As a side effect this also fixes the gnome-keyring "vault locked" prompt
-  # after login: pam_unix-early (optional, likeauth) captures the password
-  # into PAM_AUTHTOK before any auth module short-circuits, and
-  # pam_gnome_keyring (optional) consumes that token to unlock the login
-  # keyring. With the old ordering, fprintd/howdy at lower orders would
-  # short-circuit first and the keyring never saw a password.
+  #   "password-first" (bitwarden):
+  #       pam_unix → howdy → fprintd → deny
+  #     Vault unlock is a deliberate gesture; we want the user to type a
+  #     password rather than glance and have the vault open. Biometrics
+  #     remain available as a fallback.
   #
-  # Apply the same reorder to login (TTY), sudo, ly (display manager), and
-  # bitwarden (polkit-driven biometric unlock).
+  # Important caveats for "face-first" on login/ly:
+  # `pam_unix-early` (optional, order 11700) and `pam_gnome_keyring`
+  # (optional, order 12200) still run before howdy *only if howdy is
+  # ordered above them*. On sudo there is no keyring, so howdy can sit at
+  # the very top. On login/ly we slot howdy at 12500 — above the keyring
+  # (12200), below the *sufficient* pam_unix (12900) — so:
+  #   1. unix-early(11700) tries to capture an AUTHTOK from any typed input.
+  #   2. gnome_keyring(12200) consumes the AUTHTOK if present.
+  #   3. howdy(12500) attempts face match; on success, short-circuits.
+  #   4. unix(12900) prompts for password as fallback.
+  #   5. fprintd(13000) prompts for finger as final fallback.
+  #   6. deny(13100) — required-last sentinel so a complete fall-through
+  #      yields a clean failure rather than landing on the next module.
+  #
+  # KEYRING CAVEAT: when face-login wins on login/ly, no password is ever
+  # typed, so AUTHTOK is empty, and pam_gnome_keyring cannot unlock the
+  # login keyring. The user will get a separate "unlock keyring" prompt
+  # later when an app needs it. To get the keyring auto-unlocked, type the
+  # password into ly/login instead of using face.
+  #
+  # The pam_deny rule MUST stay last. Different services have different
+  # default deny orders (login/ly: 13700; sudo/bitwarden: 12500); we relocate
+  # deny to 13100 explicitly so we don't get stranded behind it on sudo /
+  # bitwarden. Don't go below 13000 or fprintd becomes unreachable.
   security.pam.services = lib.mkIf enabled (
     let
-      # Slot howdy and fprintd between pam_unix (12900) and pam_deny.
-      howdyOrder = 12950;
-      fprintdOrder = 13000;
-      denyOrder = 13100;
-      reorder = {
+      mkReorder = { howdyOrder }: {
         rules.auth = {
-          howdy.order = howdyOrder;
-          fprintd.order = fprintdOrder;
+          howdy.order   = howdyOrder;
+          fprintd.order = 13000;
           # Force deny last so we don't get stranded behind it on services
           # whose default deny is at 12500 (sudo, bitwarden).
-          deny.order = denyOrder;
+          deny.order    = 13100;
         };
       };
+      # Face-first for sudo: no keyring step to preserve, so howdy can sit
+      # at the very top of the stack (below the conventional 11000 account
+      # range used by pam_unix-account, but above the auth pam_unix at 11700).
+      reorderFaceFirstSudo = mkReorder { howdyOrder = 11500; };
+      # Face-first for login/ly: leave room for unix-early(11700) and
+      # gnome_keyring(12200) so the keyring gets an AUTHTOK if a password
+      # *is* typed. Howdy slots between keyring and the deciding pam_unix.
+      reorderFaceFirstLogin = mkReorder { howdyOrder = 12500; };
+      # Password-first for bitwarden: vault unlock should be a deliberate
+      # password gesture; biometrics remain a fallback.
+      reorderPasswordFirst = mkReorder { howdyOrder = 12950; };
     in
     {
-      login = reorder // { fprintAuth = lib.mkDefault true; };
-      sudo = reorder // { fprintAuth = lib.mkDefault true; };
-      ly = reorder // { fprintAuth = lib.mkDefault true; };
+      sudo  = reorderFaceFirstSudo  // { fprintAuth = lib.mkDefault true; };
+      login = reorderFaceFirstLogin // { fprintAuth = lib.mkDefault true; };
+      ly    = reorderFaceFirstLogin // { fprintAuth = lib.mkDefault true; };
 
       # Bitwarden biometric unlock: polkit calls this PAM service to verify
-      # the user before releasing the vault key. Same biometric stack, same
-      # ordering — password first, biometrics as fallback.
+      # the user before releasing the vault key. Password-first; biometrics
+      # as fallback.
       # Retire if bitwarden-desktop ever ships its own PAM service file.
-      bitwarden = reorder // { fprintAuth = lib.mkDefault true; };
+      bitwarden = reorderPasswordFirst // { fprintAuth = lib.mkDefault true; };
 
       # ── Quickshell lockscreen: split PAM services for parallel auth ──────
       # The default "login" PAM stack runs sequentially (unix → howdy →
@@ -241,6 +264,6 @@ in
   environment.pathsToLink = lib.mkIf enabled [ "/share/polkit-1" ];
   environment.systemPackages = lib.mkIf enabled [
     pkgs.bitwarden-desktop
-    pkgs.v4l-utils # `v4l2-ctl` for users running `face-doctor` or debugging
+    pkgs.v4l-utils  # `v4l2-ctl` for users running `face-doctor` or debugging
   ];
 }
