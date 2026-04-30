@@ -143,6 +143,7 @@ in
         config.flake.modules.homeManager.bitwarden
         config.flake.modules.homeManager.vscode
         config.flake.modules.homeManager.alacritty
+        config.flake.modules.homeManager.zsh
       ];
 
       home.username = user;

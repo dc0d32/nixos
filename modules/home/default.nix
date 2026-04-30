@@ -15,7 +15,6 @@ let
 in
 {
   imports = [
-    ./shell/zsh.nix
     ./editor/neovim.nix
   ] ++ lib.optionals hasDesktop [
     ./desktop/extras.nix
