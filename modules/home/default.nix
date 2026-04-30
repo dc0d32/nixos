@@ -19,7 +19,6 @@ in
   ] ++ lib.optionals hasDesktop [
     ./desktop/niri.nix
     ./desktop/quickshell
-    ./desktop/idle.nix
     ./cad/freecad.nix
   ];
 

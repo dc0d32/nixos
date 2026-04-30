@@ -94,6 +94,12 @@ in
     intervalMinutes = variables.desktop.wallpaper.intervalMinutes or 30;
   };
 
+  idle = {
+    lockAfter = variables.idle.lockAfter or 900;
+    dpmsAfter = variables.idle.dpmsAfter or 1020;
+    suspendAfter = variables.idle.suspendAfter or 1800;
+  };
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
@@ -150,6 +156,7 @@ in
         config.flake.modules.homeManager.zsh
         config.flake.modules.homeManager.desktop-extras
         config.flake.modules.homeManager.wallpaper
+        config.flake.modules.homeManager.idle
       ];
 
       home.username = user;
