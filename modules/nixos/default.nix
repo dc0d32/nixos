@@ -5,7 +5,6 @@
     ./audio/pipewire.nix
     ./fonts.nix
     ./locale.nix
-    ./users.nix
     ./wsl.nix
     ./biometrics.nix
     ./battery.nix
