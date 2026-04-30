@@ -13,10 +13,10 @@
 
 ```sh
 # Rebuild NixOS (user runs sudo, not the agent)
-sudo nixos-rebuild switch --flake .#laptop
+sudo nixos-rebuild switch --flake .#pb-x1
 
 # Rebuild user environment
-home-manager switch --flake .#'p@laptop'
+home-manager switch --flake .#'p@pb-x1'
 
 # Format
 nix fmt
@@ -25,8 +25,8 @@ nix fmt
 nix flake check
 
 # Agent-side smoke build (no activation, no sudo)
-nix build .#nixosConfigurations.laptop.config.system.build.toplevel
-nix build .#homeConfigurations.'p@laptop'.activationPackage
+nix build .#nixosConfigurations.pb-x1.config.system.build.toplevel
+nix build .#homeConfigurations.'p@pb-x1'.activationPackage
 ```
 
 ## Architecture
@@ -38,7 +38,8 @@ nix build .#homeConfigurations.'p@laptop'.activationPackage
   module. Each feature contributes to
   `flake.modules.<class>.<feature>` for whichever class(es) it applies
   to (`nixos`, `homeManager`, or both as a cross-class module).
-- `flake-modules/hosts/laptop.nix` is the host bridge: it picks which
+- `flake-modules/hosts/pb-x1.nix` is the host bridge for the primary
+  laptop: it picks which
   feature modules to import and sets per-host option values.
 - **Importing IS enabling.** There is no per-feature `enable` flag and
   no `variables.nix`. Hosts that don't want a feature simply don't
@@ -80,9 +81,9 @@ be silently excluded.
 ## Deploy split: NixOS vs home-manager
 
 - System-level (`flake.modules.nixos.*`): PipeWire, kernel, services,
-  boot — `sudo nixos-rebuild switch --flake .#laptop`.
+  boot — `sudo nixos-rebuild switch --flake .#pb-x1`.
 - User-level (`flake.modules.homeManager.*`): dotfiles, EasyEffects,
-  quickshell, zsh, alacritty — `home-manager switch --flake .#'p@laptop'`.
+  quickshell, zsh, alacritty — `home-manager switch --flake .#'p@pb-x1'`.
 - Editing a `flake.modules.nixos.*` module and only running
   home-manager (or vice versa) silently has no effect.
 
@@ -94,10 +95,10 @@ hardware-configuration.nix) live under `hosts/<hostname>/`, not in
 fed into the relevant module's options:
 
 ```nix
-# flake-modules/hosts/laptop.nix
+# flake-modules/hosts/pb-x1.nix
 audio.easyeffects = {
-  presetsDir = ../../hosts/laptop/audio-presets;
-  irsDir     = ../../hosts/laptop/audio-irs;
+  presetsDir = ../../hosts/pb-x1/audio-presets;
+  irsDir     = ../../hosts/pb-x1/audio-irs;
   preset     = "X1Yoga7-Dynamic-Detailed";
 };
 ```
@@ -131,7 +132,8 @@ audio.easyeffects = {
 
 There is no scaffolder. To add a host:
 
-1. Create `flake-modules/hosts/<name>.nix` modeled after `laptop.nix`.
+1. Create `flake-modules/hosts/<name>.nix` modeled after `pb-x1.nix`
+   (full desktop) or `wsl.nix` (headless / multi-config).
 2. Generate `hosts/<name>/hardware-configuration.nix` via
    `sudo nixos-generate-config --show-hardware-config`.
 3. Pick which feature modules to import; set their option values.

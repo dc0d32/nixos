@@ -67,9 +67,9 @@ new file, `git add` it before running `nixos-rebuild` or
 ## Deploy split: NixOS vs home-manager
 
 - System-level changes (`flake.modules.nixos.*`): user runs
-  `sudo nixos-rebuild switch --flake .#laptop`.
+  `sudo nixos-rebuild switch --flake .#pb-x1`.
 - User-level changes (`flake.modules.homeManager.*`): user runs
-  `home-manager switch --flake .#'p@laptop'`.
+  `home-manager switch --flake .#'p@pb-x1'`.
 - The agent runs `nix build` only; the user runs anything that needs
   sudo or activation.
 
@@ -85,9 +85,9 @@ errors.
 
 - `flake.nix` — inputs and flake-parts entry; imports the dendritic tree.
 - `flake-modules/` — every feature module; one concern per file.
-- `flake-modules/hosts/laptop.nix` — host bridge: imports + per-host
-  option values.
-- `hosts/laptop/` — `hardware-configuration.nix` and host-specific
+- `flake-modules/hosts/pb-x1.nix` — host bridge for the primary
+  laptop: imports + per-host option values.
+- `hosts/pb-x1/` — `hardware-configuration.nix` and host-specific
   asset directories (audio presets, IRS).
 - `overlays/` — package overrides; see Conventions.
 - `packages/` — custom package definitions.

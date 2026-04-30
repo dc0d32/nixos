@@ -1,18 +1,26 @@
 # dc0d32 / nixos
 
 Personal declarative config for NixOS (full system) and home-manager.
-Currently configures one host: `laptop` (Lenovo X1 Yoga, x86_64-linux).
+Configured hosts:
+
+- `pb-x1` — primary dev laptop (Lenovo X1 Yoga gen 7, x86_64-linux).
+- `wsl` — NixOS inside WSL2 on x86_64 Windows.
+- `wsl-arm` — NixOS inside WSL2 on Windows on ARM (aarch64-linux).
+
+More machines (additional laptops + servers) will be added under
+`flake-modules/hosts/<name>.nix`.
 
 ## Layout
 
 ```
 flake.nix                     inputs + flake-parts substrate
 flake-modules/                dendritic feature modules (one per concern)
-  hosts/laptop.nix            host bridge: imports + per-host option values
+  hosts/pb-x1.nix             host bridge: primary laptop
+  hosts/wsl.nix               host bridge: both WSL configurations
   <feature>.nix               each contributes flake.modules.{nixos,homeManager}.<feature>
   quickshell/qml/             QML tree deployed to ~/.config/quickshell/
   FusionLike/                 FreeCAD auto-startup mod (Init.py + InitGui.py)
-hosts/laptop/                 hardware-configuration.nix + audio presets/IRS dirs
+hosts/pb-x1/                  hardware-configuration.nix + audio presets/IRS dirs
 overlays/                     custom overlays (each documents why and when to delete)
 packages/                     custom package definitions
 docs/                         design notes and AI session history (see docs/sessions/)
@@ -34,6 +42,10 @@ This flake follows the **dendritic pattern** (mightyiam/dendritic):
 - Cross-module data flows through top-level `options.<ns>` declared by
   the feature module that owns the data, set on the host bridge file.
   See `flake-modules/battery.nix` for a worked example.
+- Per-NixOS-config values (hostname, primary user, etc.) are set
+  inside each host bridge's `configurations.nixos.<name>.module = { … }`
+  block, NOT at the flake-parts level. See `flake-modules/users.nix`
+  for the `users.primary` pattern.
 
 Design choices:
 
@@ -47,11 +59,19 @@ Design choices:
 ## Day-to-day
 
 ```sh
-# Rebuild NixOS (laptop is the only configured host)
-sudo nixos-rebuild switch --flake .#laptop
+# Rebuild NixOS on the primary laptop
+sudo nixos-rebuild switch --flake .#pb-x1
 
-# Rebuild user environment
-home-manager switch --flake .#'p@laptop'
+# Rebuild user environment on the primary laptop
+home-manager switch --flake .#'p@pb-x1'
+
+# Inside WSL (x86_64)
+sudo nixos-rebuild switch --flake .#wsl
+home-manager switch --flake .#'p@wsl'
+
+# Inside WSL (Windows on ARM)
+sudo nixos-rebuild switch --flake .#wsl-arm
+home-manager switch --flake .#'p@wsl-arm'
 
 # Update all inputs
 nix flake update
@@ -71,12 +91,13 @@ nix fmt
    need host-tunable data declare `options.<ns>` plus
    `config.flake.modules.<class>.<feature> = let cfg = config.<ns>; in { … };`.
 2. Add `config.flake.modules.<class>.<feature>` to the appropriate
-   `imports = [ … ]` list inside `flake-modules/hosts/laptop.nix`.
+   `imports = [ … ]` list inside the host bridges that should enable
+   the feature (e.g. `flake-modules/hosts/pb-x1.nix`).
 3. If the feature needs host-specific values, set them as top-level
-   option values in `hosts/laptop.nix`.
+   option values in the host bridge.
 4. `git add` the new file (the flake build only sees git-tracked files).
-5. Verify with `nix build .#nixosConfigurations.laptop.config.system.build.toplevel`
-   or `nix build .#homeConfigurations.'p@laptop'.activationPackage`.
+5. Verify with `nix build .#nixosConfigurations.<host>.config.system.build.toplevel`
+   or `nix build .#homeConfigurations.'<user>@<host>'.activationPackage`.
 
 Each module begins with a short header documenting (1) why it exists
 and (2) the condition under which it can be deleted.
@@ -85,11 +106,14 @@ and (2) the condition under which it can be deleted.
 
 There is no scaffolder. To add a host:
 
-1. Create `flake-modules/hosts/<name>.nix` modeled after `laptop.nix`.
+1. Create `flake-modules/hosts/<name>.nix` modeled after `pb-x1.nix`
+   (full desktop laptop) or `wsl.nix` (headless / WSL).
 2. Generate `hosts/<name>/hardware-configuration.nix` via
    `sudo nixos-generate-config --show-hardware-config`.
 3. Pick which feature modules to import; set their option values.
-4. Build and switch as above.
+4. Set `users.primary = "<your-user>";` inside the per-config
+   `module` block (declared by `flake-modules/users.nix`).
+5. Build and switch as above.
 
 ## Module conventions
 
@@ -100,10 +124,15 @@ There is no scaffolder. To add a host:
 - Top-level options live next to the module that owns them; consumed
   by reading `config.<ns>` inside the module that contributes the
   config.
+- Per-NixOS-config values (hostname, primary user, system tuple, …)
+  are set inside `configurations.nixos.<name>.module`, NOT at the
+  flake-parts level.
 
-## One-time hardware setup (laptop only)
+## One-time hardware setup (pb-x1 only)
 
-These steps are required once after the first `nixos-rebuild switch`.
+These steps are required once after the first `nixos-rebuild switch`
+on the laptop. Other hosts (WSL, headless servers) don't need any of
+this.
 
 ### Fingerprint reader
 

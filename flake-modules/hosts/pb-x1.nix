@@ -1,4 +1,8 @@
-# laptop — primary dev machine (Lenovo X1 Yoga, x86_64-linux).
+# pb-x1 — primary dev laptop (Lenovo X1 Yoga gen 7, x86_64-linux).
+#
+# Naming: `pb-x1` = "pb" (initials) + "x1" (X1 Yoga). Renamed from
+# the earlier generic `laptop` once a second laptop became part of
+# the plan.
 #
 # Dendritic host module. Sets top-level option values for every
 # feature module this host imports, and lists the full set of
@@ -9,7 +13,7 @@
 # `imports = [ … ]` list below for whichever class it belongs to.
 { inputs, lib, config, ... }:
 let
-  hostName = "laptop";
+  hostName = "pb-x1";
   user = "p";
   system = "x86_64-linux";
   stateVersion = "25.11";
@@ -79,8 +83,8 @@ in
 
   audio = {
     preset = "X1Yoga7-Dynamic-Detailed";
-    presetsDir = ../../hosts/laptop/audio-presets;
-    irsDir = ../../hosts/laptop/audio-irs;
+    presetsDir = ../../hosts/pb-x1/audio-presets;
+    irsDir = ../../hosts/pb-x1/audio-irs;
     # Autoload: apply preset automatically when this output device appears.
     # Get the device name with: wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
     autoloadDevice = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
@@ -103,7 +107,7 @@ in
   configurations.nixos.${hostName} = {
     module = {
       imports = [
-        ../../hosts/laptop/hardware-configuration.nix
+        ../../hosts/pb-x1/hardware-configuration.nix
         # Migrated dendritic feature modules (NixOS side).
         config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.gpu
@@ -191,7 +195,7 @@ in
       programs.home-manager.enable = true;
 
       # Per-user session vars (last bit from the legacy
-      # homes/p@laptop/home.nix). Editor pinned to nvim because
+      # homes/<user>@<host>/home.nix). Editor pinned to nvim because
       # flake-modules/neovim.nix sets defaultEditor=true but some shells
       # / terminals don't pick that up via update-alternatives.
       home.sessionVariables = {
