@@ -231,3 +231,58 @@ All other commits in this session are byte-identical.
 Current baselines:
 - NixOS toplevel: `dd1mi40w7bxrj2njlnzc2ympfcfk99xl-nixos-system-laptop-26.05.20260418.b12141e`
 - HM generation:  `pvssiljf0x44m132gfzk62rjgd7l7q21-home-manager-generation`
+
+## Milestone — NixOS aggregator fully retired (after 19 feature commits)
+
+`modules/nixos/` no longer exists. Every NixOS-class feature lives
+under `flake-modules/`, and `flake-modules/hosts/laptop.nix` no
+longer imports `../../modules/nixos`. The host bridge module's
+NixOS-side `imports` is just `hosts/laptop/configuration.nix` plus
+the per-feature `config.flake.modules.nixos.*` references.
+
+Migrated since the previous checkpoint (6 more commits):
+- `audio` (cross-class: pipewire NixOS + easyeffects HM, with
+  per-host preset/IRS dirs as typed top-level options).
+- `wsl` (NixOS-only; not imported by laptop, byte-identical
+  baseline. Validates that "host doesn't import this feature" is a
+  cleaner story than `lib.mkIf cfg.enable`).
+- `biometrics` (NixOS-only; the largest single migration so far —
+  fprintd + howdy + PAM stack reordering + quickshell-{password,
+  biometric} split services + IR-camera autodetect oneshot +
+  Bitwarden polkit policy).
+- `login-ly` (NixOS-only leaf).
+- `niri` NixOS side + retiring the now-empty
+  `modules/nixos/default.nix` aggregator.
+
+Closure-equivalent (not byte-identical) commits added since the
+previous checkpoint:
+- `50ed2c2` (audio) — `home.packages` reorder; identical 118
+  inputs to `home-manager-path`.
+- `3803857` (biometrics) — `environment.systemPackages` reorder;
+  identical 240 inputs to `system-path`. dbus, etc, units all
+  bumped transitively, contents unchanged.
+- `9094281` (niri) — `environment.systemPackages` reorder;
+  identical 240 inputs to `system-path`.
+
+New baselines after the milestone:
+- NixOS toplevel: `iyji0yr51hv1ix6s5s8l7hc0y6wbpaq3-nixos-system-laptop-26.05.20260418.b12141e`
+- HM generation:  `1073xylcs3rq3csv986yy2yywdxd30y7-home-manager-generation`
+
+What's left:
+- HM-side desktop subtree still in `modules/home/`: `desktop/{niri,
+  extras,polkit-agent,waybar,quickshell,idle,wallpaper}.nix`,
+  `apps/{chrome,bitwarden}.nix`, `cad/freecad.nix`, plus the
+  larger user features `shell/zsh.nix`, `editor/{neovim,vscode}.nix`,
+  `terminal/alacritty.nix`.
+- The HM aggregator `modules/home/default.nix` retains an
+  `lib.optionals hasDesktop` filter that keys off
+  `variables.wsl.enable`. That filter will collapse to nothing once
+  the desktop subtree migrates and the aggregator gets retired.
+- Final cleanup: delete `lib/`, `hosts/laptop/variables.nix`,
+  `homes/p@laptop/variables.nix`, `modules/home/default.nix`, the
+  `specialArgs.variables` slot in `flake-modules/nixos.nix`, and
+  the `extraSpecialArgs.variables` slot in
+  `flake-modules/home-manager.nix`. Move `hosts/laptop/configuration.nix`
+  contents (hostname, console.keyMap, bootloader, primary user)
+  into `flake-modules/hosts/laptop.nix` directly or into the
+  appropriate feature modules.
