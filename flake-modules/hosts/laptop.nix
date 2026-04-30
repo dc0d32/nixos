@@ -157,6 +157,7 @@ in
         config.flake.modules.homeManager.desktop-extras
         config.flake.modules.homeManager.wallpaper
         config.flake.modules.homeManager.idle
+        config.flake.modules.homeManager.freecad
       ];
 
       home.username = user;

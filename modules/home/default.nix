@@ -19,7 +19,6 @@ in
   ] ++ lib.optionals hasDesktop [
     ./desktop/niri.nix
     ./desktop/quickshell
-    ./cad/freecad.nix
   ];
 
   programs.home-manager.enable = true;
