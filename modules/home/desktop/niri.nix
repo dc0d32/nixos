@@ -275,12 +275,82 @@ in
         "Ctrl+Alt+Delete".action.quit = {};
 
         "Mod+Shift+P".action.power-off-monitors = {};
+
+        # Bring Chrome's PiP window to the current workspace. Niri has no
+        # "sticky / always-on-all-workspaces" concept, so PiP lives on the
+        # workspace where it spawned (per the window-rule below). This
+        # binding is the manual "follow me here" — finds the PiP window
+        # by title and moves it to whatever workspace is focused. Uses
+        # niri-msg JSON so we don't have to parse the human-readable
+        # output. Silently no-ops if no PiP window is open.
+        #
+        # Match by title alone: Chrome's PiP window has an empty app_id
+        # on Wayland.
+        #
+        # `move-window-to-workspace` takes a workspace REFERENCE (index
+        # or name), not a literal "focused" \u2014 so we resolve the focused
+        # workspace's idx first via a second niri-msg call.
+        "Mod+P" = {
+          hotkey-overlay.title = "Bring Chrome PiP here";
+          action.spawn = [
+            "sh"
+            "-c"
+            ''
+              id=$(${pkgs.niri}/bin/niri msg --json windows \
+                | ${pkgs.jq}/bin/jq -r '.[] | select(.title=="Picture in picture") | .id' \
+                | head -n1)
+              ws=$(${pkgs.niri}/bin/niri msg --json workspaces \
+                | ${pkgs.jq}/bin/jq -r '.[] | select(.is_focused==true) | .idx')
+              if [ -n "$id" ] && [ -n "$ws" ]; then
+                ${pkgs.niri}/bin/niri msg action move-window-to-workspace --window-id "$id" "$ws"
+              fi
+            ''
+          ];
+        };
       };
 
       window-rules = [
         {
           matches = [{ is-focused = false; }];
           opacity = 0.9;
+        }
+
+        # Chrome Picture-in-Picture window. Niri has no across-workspace
+        # sticky window support (only layer-shell surfaces persist on
+        # workspace switch), so the best we can do per-workspace is:
+        #   1. open it floating (so it sits above tiled windows),
+        #   2. anchor to the top-right corner with a small gap,
+        #   3. give it a sensible default size (480x270 = 16:9 thumbnail).
+        # Use Mod+P (defined above) to teleport an existing PiP to the
+        # currently-focused workspace when you've moved away. Matches both
+        # classic HTMLVideoElement PiP and the newer Document PiP API
+        # (YouTube Miniplayer, Discord, Meet) — Chrome titles both
+        # exactly "Picture in picture" on Wayland.
+        #
+        # Match on title only: Chrome's PiP window has an EMPTY app-id on
+        # Wayland (verified via `niri msg --json windows`). Anchored to
+        # ^…$ so we don't accidentally match a tab title that happens to
+        # contain the words.
+        {
+          matches = [{
+            title = "^Picture in picture$";
+          }];
+          open-floating = true;
+          default-floating-position = {
+            x = 32;
+            y = 32;
+            relative-to = "top-right";
+          };
+          default-column-width = { fixed = 480; };
+          default-window-height = { fixed = 270; };
+          # Don't steal focus from whatever you were doing when you hit the
+          # video's PiP button.
+          open-focused = false;
+          # Slight transparency so the PiP doesn't fully obscure whatever
+          # is underneath. Combined with the global is-focused=false rule
+          # above (opacity 0.9), an unfocused PiP renders at 0.9 * 0.8 =
+          # 0.72; focused PiP stays at 0.8.
+          opacity = 0.8;
         }
       ];
     };
