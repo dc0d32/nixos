@@ -5,6 +5,5 @@
     ./audio/pipewire.nix
     ./wsl.nix
     ./biometrics.nix
-    ./battery.nix
   ];
 }

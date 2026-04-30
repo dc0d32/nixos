@@ -70,6 +70,17 @@ in
     lang = variables.locale;
   };
 
+  battery = {
+    chargeStopThreshold = variables.battery.chargeStopThreshold;
+    chargeStartThreshold = variables.battery.chargeStartThreshold;
+    criticalPercent = variables.battery.criticalPercent;
+    criticalAction = variables.battery.criticalAction;
+    powerSaverPercent = variables.battery.powerSaverPercent;
+    swapSizeGiB = variables.battery.swapSizeGiB;
+    # btrfs root partition holding /swap/swapfile.
+    resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
+  };
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
@@ -89,6 +100,7 @@ in
         config.flake.modules.nixos.users
         config.flake.modules.nixos.fonts
         config.flake.modules.nixos.locale
+        config.flake.modules.nixos.battery
       ];
     };
   };
