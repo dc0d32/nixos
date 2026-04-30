@@ -6,7 +6,6 @@
     ./fonts.nix
     ./locale.nix
     ./users.nix
-    ./nix-settings.nix
     ./system-utils.nix
     ./wsl.nix
     ./biometrics.nix

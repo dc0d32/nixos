@@ -79,6 +79,7 @@ in
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
         config.flake.modules.nixos.networking
+        config.flake.modules.nixos.nix-settings
       ];
     };
   };
