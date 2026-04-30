@@ -11,9 +11,11 @@
 # filtering and DNS logging are NOT installed (deferred per session
 # notes 2026-04-30-family-laptop-host.md).
 #
-# Time-of-day / screen-time controls (timekpr-next) are also NOT
-# installed yet — that's a follow-up commit pending packaging the
-# upstream timekpr-next under pkgs/. See session notes.
+# Time-of-day / screen-time controls are wired via flake-modules/
+# timekpr.nix using nixpkgs' `timekpr` package (= upstream timekpr-
+# next). Per-kid policies are set in the `timekpr.users.*` block
+# below. p is added to the `timekpr` group so they can drive
+# `timekpra` / `timekprc` to make ad-hoc adjustments.
 #
 # Login activity is observable today via the systemd journal (logind
 # session opened/closed events). The wrapper `family-activity` (defined
@@ -128,6 +130,22 @@ in
     suspendAfter = 900;
   };
 
+  # ── Per-kid screen-time policies (timekpr) ───────────────────────
+  # m: weekday 06:00-21:00 window, 4h/day budget.
+  # s: weekday 07:00-22:00 window, 6h/day budget (older kid).
+  # p is unrestricted (not listed in timekpr.users) but IS in the
+  # `timekpr` group below so they can drive timekpra/timekprc.
+  timekpr.users = {
+    m = {
+      allowedHours = "06:00-21:00";
+      dailyBudgetMinutes = 240;
+    };
+    s = {
+      allowedHours = "07:00-22:00";
+      dailyBudgetMinutes = 360;
+    };
+  };
+
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
     module = {
@@ -149,6 +167,7 @@ in
         config.flake.modules.nixos.locale
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
+        config.flake.modules.nixos.timekpr
       ];
 
       networking.hostName = hostName;
@@ -163,7 +182,9 @@ in
 
       # All three accounts in one assignment (a single module-attrset
       # literal can't have two `users.users = …` entries).
-      #   - p   : admin (wheel + networkmanager)
+      #   - p   : admin (wheel + networkmanager). Also in `timekpr`
+      #           so they can drive `timekpra` to grant ad-hoc time
+      #           or adjust per-kid policies at runtime.
       #   - m,s : kid (no wheel, no networkmanager). They get
       #           video/audio so the desktop session works, and
       #           `input` so quickshell's lockscreen / idled function
@@ -173,7 +194,7 @@ in
           ${primaryUser} = {
             isNormalUser = true;
             description = primaryUser;
-            extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
+            extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" "timekpr" ];
             shell = hmPkgs.zsh;
             # Throwaway initial password; change with `passwd` on first login.
             initialPassword = "changeme";
