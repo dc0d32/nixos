@@ -3,7 +3,6 @@
     ./desktop/niri.nix
     ./desktop/login-ly.nix
     ./audio/pipewire.nix
-    ./fonts.nix
     ./locale.nix
     ./wsl.nix
     ./biometrics.nix

@@ -82,6 +82,7 @@ in
         config.flake.modules.nixos.nix-settings
         config.flake.modules.nixos.system-utils
         config.flake.modules.nixos.users
+        config.flake.modules.nixos.fonts
       ];
     };
   };
