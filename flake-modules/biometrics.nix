@@ -5,8 +5,15 @@
 #
 # Pattern A: hosts opt in by importing this module. The legacy
 # `variables.biometrics.enable` gate is gone — importing IS enabling.
+# We still publish a `biometrics.enable` *signal* option (default false,
+# set to true by this module's own config when imported) so other
+# dendritic modules (e.g. quickshell's lockscreen) can adapt their
+# UI without re-introducing variables.nix coupling.
 #
-# Top-level option:
+# Top-level options:
+#   - biometrics.enable — read-only signal; true iff this module is
+#     imported into the host. Set by mkDefault inside the module body
+#     so other modules can inspect it without forcing a value.
 #   - biometrics.cameraDevice — fallback /dev/video* path used at
 #     boot before the autodetect oneshot picks the real IR sensor.
 #     Optional; defaults to /dev/video2 to match the legacy module.
@@ -18,6 +25,17 @@ let
 in
 {
   options.biometrics = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Read-only signal: true iff the biometrics module is imported on
+        this host. Other dendritic modules (quickshell's lockscreen,
+        future per-host UI hints) inspect this to adapt their UI. Don't
+        set this manually — import flake-modules/biometrics.nix to
+        enable biometrics; the module sets this flag itself.
+      '';
+    };
     cameraDevice = lib.mkOption {
       type = lib.types.str;
       default = "/dev/video2";
@@ -30,7 +48,12 @@ in
     };
   };
 
-  config.flake.modules.nixos.biometrics = { lib, pkgs, ... }: {
+  config = {
+    # Importing this module IS enabling biometrics. Publish that fact as
+    # a signal so dependent modules (quickshell lockscreen) can read it.
+    biometrics.enable = lib.mkDefault true;
+
+    flake.modules.nixos.biometrics = { lib, pkgs, ... }: {
     # ── Fingerprint reader (Synaptics Prometheus, 06cb:00fc) ─────
     services.fprintd.enable = true;
 
@@ -325,5 +348,6 @@ in
       pkgs.bitwarden-desktop
       pkgs.v4l-utils # `v4l2-ctl` for users running `face-doctor` or debugging
     ];
+    };
   };
 }

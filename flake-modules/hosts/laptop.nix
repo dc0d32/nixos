@@ -160,6 +160,7 @@ in
         config.flake.modules.homeManager.freecad
         config.flake.modules.homeManager.neovim
         config.flake.modules.homeManager.niri
+        config.flake.modules.homeManager.quickshell
       ];
 
       home.username = user;
