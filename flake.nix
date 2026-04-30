@@ -1,8 +1,24 @@
 {
-  description = "dc0d32 NixOS + home-manager flake";
+  description = "dc0d32 NixOS + home-manager flake (dendritic substrate)";
 
+  # Top-level flake-parts configuration. Every Nix file under
+  # ./flake-modules/ is a top-level module of this configuration,
+  # auto-imported by `vic/import-tree`.
+  #
+  # See docs/sessions/2026-04-30-dendritic-migration.md for the rationale
+  # and migration plan. While the migration is in progress, legacy
+  # NixOS/HM modules under ./modules/{nixos,home}/ continue to be
+  # consumed by ./flake-modules/hosts/*.nix until each feature is
+  # migrated into its own ./flake-modules/<feature>.nix.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
+
+    import-tree.url = "github:vic/import-tree";
 
     home-manager = {
       url = "github:nix-community/home-manager";
@@ -22,48 +38,7 @@
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, home-manager, ... }:
-    let
-      mylib = import ./lib { inherit inputs; };
-
-      hostsDir = ./hosts;
-      homesDir = ./homes;
-      modulesDir = ./modules;
-
-      forAllSystems = mylib.forAllSystems;
-    in
-    {
-      inherit mylib;
-
-      nixosConfigurations = mylib.mkAllHosts { inherit hostsDir modulesDir; };
-
-      homeConfigurations = mylib.mkAllHomes { inherit homesDir hostsDir modulesDir; };
-
-      # `nix run .#new-host -- <hostname>`
-      apps = forAllSystems (system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-          newHost = import ./apps/new-host.nix { inherit pkgs; };
-        in
-        {
-          new-host = {
-            type = "app";
-            program = "${newHost}/bin/new-host";
-          };
-          default = self.apps.${system}.new-host;
-        });
-
-      devShells = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
-        in {
-          default = pkgs.mkShell {
-            packages = with pkgs; [ nix nixpkgs-fmt git ];
-          };
-        });
-
-      packages = forAllSystems (_: { });
-
-      formatter = forAllSystems (system:
-        (import nixpkgs { inherit system; }).nixpkgs-fmt);
-    };
+  outputs = inputs:
+    inputs.flake-parts.lib.mkFlake { inherit inputs; }
+      (inputs.import-tree ./flake-modules);
 }
