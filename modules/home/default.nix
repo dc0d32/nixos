@@ -20,7 +20,6 @@ in
     ./desktop/niri.nix
     ./desktop/quickshell
     ./desktop/idle.nix
-    ./desktop/wallpaper.nix
     ./cad/freecad.nix
   ];
 

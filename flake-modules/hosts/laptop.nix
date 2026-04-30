@@ -90,6 +90,10 @@ in
     autoloadDeviceDescription = variables.audio.easyeffects.autoloadDeviceDescription or "";
   };
 
+  wallpaper = {
+    intervalMinutes = variables.desktop.wallpaper.intervalMinutes or 30;
+  };
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
@@ -145,6 +149,7 @@ in
         config.flake.modules.homeManager.alacritty
         config.flake.modules.homeManager.zsh
         config.flake.modules.homeManager.desktop-extras
+        config.flake.modules.homeManager.wallpaper
       ];
 
       home.username = user;
