@@ -17,7 +17,6 @@ in
   imports = [
     ./editor/neovim.nix
   ] ++ lib.optionals hasDesktop [
-    ./desktop/extras.nix
     ./desktop/niri.nix
     ./desktop/quickshell
     ./desktop/idle.nix
