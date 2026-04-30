@@ -25,7 +25,7 @@
     ];
 
     xdg.configFile."quickshell" = {
-      source = ./qml;
+      source = ./quickshell/qml;
       recursive = true;
     };
 

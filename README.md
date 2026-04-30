@@ -1,111 +1,57 @@
 # dc0d32 / nixos
 
-Personal declarative config for NixOS (full system) and macOS (home-manager only).
+Personal declarative config for NixOS (full system) and home-manager.
+Currently configures one host: `laptop` (Lenovo X1 Yoga, x86_64-linux).
 
-Layout at a glance:
+## Layout
 
 ```
-flake.nix                   inputs + outputs, auto-discovers hosts/ and homes/
-lib/                        mkHost / mkHome helpers
-hosts/<hostname>/           NixOS system config (configuration.nix + variables.nix + hardware)
-homes/<user>@<hostname>/    home-manager user profile (works on NixOS and macOS)
-modules/nixos/              reusable system modules (niri, ly login, pipewire, gpu, power, system-utils, networking, fonts, ...)
-modules/home/               reusable user modules (neovim+LSP, zsh, alacritty, btop, build-deps, niri, waybar/quickshell, idle, chrome, git, tmux, direnv)
-apps/new-host.nix           `nix run .#new-host -- <hostname>` scaffolder
-pkgs/ overlays/             custom packages and overlays
-docs/                       design notes and AI session history (see docs/sessions/)
+flake.nix                     inputs + flake-parts substrate
+flake-modules/                dendritic feature modules (one per concern)
+  hosts/laptop.nix            host bridge: imports + per-host option values
+  <feature>.nix               each contributes flake.modules.{nixos,homeManager}.<feature>
+  quickshell/qml/             QML tree deployed to ~/.config/quickshell/
+  FusionLike/                 FreeCAD auto-startup mod (Init.py + InitGui.py)
+hosts/laptop/                 hardware-configuration.nix + audio presets/IRS dirs
+overlays/                     custom overlays (each documents why and when to delete)
+packages/                     custom package definitions
+docs/                         design notes and AI session history (see docs/sessions/)
 ```
+
+## Architecture
+
+This flake follows the **dendritic pattern** (mightyiam/dendritic):
+
+- Every Nix file under `flake-modules/` is a top-level
+  [flake-parts](https://flake.parts) module, auto-imported via
+  [import-tree](https://github.com/vic/import-tree).
+- Each feature module contributes to `flake.modules.<class>.<feature>`
+  for whichever class(es) it applies to (`nixos`, `homeManager`, or
+  both as a cross-class module).
+- Hosts opt in to a feature by including
+  `config.flake.modules.<class>.<feature>` in their `imports = [ … ]`
+  list. **Importing IS enabling** — no per-feature `enable` gate.
+- Cross-module data flows through top-level `options.<ns>` declared by
+  the feature module that owns the data, set on the host bridge file.
+  See `flake-modules/battery.nix` for a worked example.
 
 Design choices:
-- **Home Manager is standalone** (not wired into NixOS). Same HM modules apply on macOS.
-- **Everything declarative**: no separate dotfiles repo. Configs live under `modules/home/*`.
-- **Compositor**: niri. **Shell**: zsh. **Editor**: neovim. **Terminal**: alacritty.
+
+- **Home Manager is standalone** (not wired into NixOS as a module).
+- **Everything declarative**: no separate dotfiles repo. User configs
+  live under `flake-modules/<feature>.nix`.
+- **Compositor**: niri. **Shell**: zsh. **Editor**: neovim.
+  **Terminal**: alacritty.
 - **No secrets module yet** — added later if needed (sops-nix or agenix).
-
-The full design rationale (why standalone HM instead of nix-darwin, why niri, what
-Nix does to your Mac at install time, etc.) is captured in
-[`docs/sessions/2026-04-21-initial-scaffold.md`](docs/sessions/2026-04-21-initial-scaffold.md).
-When running Claude Code from a different machine on this repo, point it at that
-file first so it inherits the context.
-
-## Bootstrap: fresh NixOS
-
-```sh
-# From the live installer or a fresh install with `git` available
-nix-shell -p git
-git clone https://github.com/dc0d32/nixos ~/nixos
-cd ~/nixos
-
-# Scaffold a host entry; opens variables.nix in $EDITOR
-nix run .#new-host -- "$(hostname)"
-
-# Commit the generated host dir, then build
-git add -A
-sudo nixos-rebuild switch --flake .#"$(hostname)"
-
-# (optional) activate standalone home-manager for your user
-nix run home-manager/master -- switch --flake .#"$USER@$(hostname)"
-```
-
-## Bootstrap: fresh NixOS in WSL (incl. Windows on ARM)
-
-This flake pulls the WSL module from
-[`dc0d32/nixos-aarch64-wsl`](https://github.com/dc0d32/nixos-aarch64-wsl),
-which publishes both x86_64-linux and aarch64-linux rootfs tarballs so
-Windows on ARM works out of the box. The same flake works on x86_64 WSL.
-
-```powershell
-# 1. In Windows (PowerShell):
-wsl --install --no-distribution
-# Download the rootfs tarball from the fork's Releases:
-#   https://github.com/dc0d32/nixos-aarch64-wsl/releases
-#   pick nixos-wsl.aarch64.tar.gz on Windows-on-ARM
-#   pick nixos-wsl.x86_64.tar.gz on Intel/AMD Windows
-wsl --import NixOS $HOME\wsl\nixos .\nixos-wsl.<arch>.tar.gz --version 2
-wsl -d NixOS
-```
-
-```sh
-# 2. Inside the NixOS WSL distro:
-nix-shell -p git
-git clone https://github.com/dc0d32/nixos ~/nixos && cd ~/nixos
-
-nix run .#new-host -- "$(hostname)" --wsl
-
-git add -A
-sudo nixos-rebuild switch --flake .#"$(hostname)"
-
-# 3. Back in Windows, restart the distro so systemd picks up cleanly:
-#    wsl --terminate NixOS
-```
-
-The `--wsl` flag detects ARM vs x86_64 via `uname -m`, sets
-`variables.wsl.enable = true`, turns off niri/waybar/pipewire/ly/idle/chrome,
-and sets `gpu.driver = "none"` (WSLg handles the GPU).
-
-## Bootstrap: fresh macOS
-
-```sh
-# Install Nix via the Determinate installer (has a proper uninstaller,
-# handles APFS volume + _nixbld users + nix-daemon launchd plist cleanly)
-curl -sSf -L https://install.determinate.systems/nix | sh -s -- install
-
-git clone https://github.com/dc0d32/nixos ~/nixos
-cd ~/nixos
-
-nix run .#new-host -- "$(hostname -s)" --mac
-
-nix run home-manager/master -- switch --flake .#"$USER@$(hostname -s)"
-```
 
 ## Day-to-day
 
 ```sh
-# Rebuild NixOS
-sudo nixos-rebuild switch --flake .#<hostname>
+# Rebuild NixOS (laptop is the only configured host)
+sudo nixos-rebuild switch --flake .#laptop
 
-# Rebuild just the user environment (works on NixOS and macOS)
-home-manager switch --flake .#<user>@<hostname>
+# Rebuild user environment
+home-manager switch --flake .#'p@laptop'
 
 # Update all inputs
 nix flake update
@@ -119,36 +65,45 @@ nix fmt
 
 ## Adding a feature
 
-1. Drop a new file under `modules/nixos/` or `modules/home/`.
-2. Gate it on a flag in `variables.nix` (e.g. `variables.foo.enable`).
-3. Import it from the corresponding `default.nix`.
+1. Create `flake-modules/<feature>.nix` that contributes to
+   `flake.modules.<class>.<feature>`. Pure-leaf modules can use
+   `flake.modules.<class>.<feature> = { … };` directly. Modules that
+   need host-tunable data declare `options.<ns>` plus
+   `config.flake.modules.<class>.<feature> = let cfg = config.<ns>; in { … };`.
+2. Add `config.flake.modules.<class>.<feature>` to the appropriate
+   `imports = [ … ]` list inside `flake-modules/hosts/laptop.nix`.
+3. If the feature needs host-specific values, set them as top-level
+   option values in `hosts/laptop.nix`.
+4. `git add` the new file (the flake build only sees git-tracked files).
+5. Verify with `nix build .#nixosConfigurations.laptop.config.system.build.toplevel`
+   or `nix build .#homeConfigurations.'p@laptop'.activationPackage`.
 
-Host-specific packages live in `hosts/<h>/host-packages.nix`.
-Host-specific user overrides live in `homes/<u>@<h>/home.nix`.
+Each module begins with a short header documenting (1) why it exists
+and (2) the condition under which it can be deleted.
 
-## First-time follow-ups on a new clone
+## Adding a new host
 
-After the initial scaffold commit, before a real rebuild:
+There is no scaffolder. To add a host:
 
-1. **Produce the lockfile** on a Nix-capable machine:
-   ```sh
-   nix flake update
-   git add flake.lock && git commit -m "flake.lock"
-   ```
-2. **Smoke-test evaluation**:
-   ```sh
-   nix flake check
-   ```
-3. **Push to GitHub** if not already there:
-   ```sh
-   gh repo create dc0d32/nixos --source . --public --push
-   # or:  git remote add origin git@github.com:dc0d32/nixos.git && git push -u origin main
-   ```
+1. Create `flake-modules/hosts/<name>.nix` modeled after `laptop.nix`.
+2. Generate `hosts/<name>/hardware-configuration.nix` via
+   `sudo nixos-generate-config --show-hardware-config`.
+3. Pick which feature modules to import; set their option values.
+4. Build and switch as above.
+
+## Module conventions
+
+- Comment header on every module: (1) why it exists, (2) retirement
+  condition.
+- `lib.mkDefault` for policy values that hosts may want to override
+  without `mkForce`.
+- Top-level options live next to the module that owns them; consumed
+  by reading `config.<ns>` inside the module that contributes the
+  config.
 
 ## One-time hardware setup (laptop only)
 
-These steps are required once after the first `nixos-rebuild switch` on a new
-machine. They configure hardware that can't be fully automated declaratively.
+These steps are required once after the first `nixos-rebuild switch`.
 
 ### Fingerprint reader
 
@@ -168,15 +123,15 @@ fprintd-verify
 
 ### IR face authentication (howdy)
 
-The IR emitter needs a one-time calibration. Run this from a Wayland terminal
-(not a TTY) so the preview window can open:
+The IR emitter needs a one-time calibration. Run this from a Wayland
+terminal (not a TTY) so the preview window can open:
 
 ```sh
 sudo -E linux-enable-ir-emitter configure
 ```
 
-Follow the prompts — it will show a live IR camera preview and ask whether the
-emitter is flashing. Select the correct emitter mode when it works.
+Follow the prompts — it shows a live IR camera preview and asks whether
+the emitter is flashing. Select the correct emitter mode when it works.
 
 Then enroll your face:
 
@@ -193,32 +148,11 @@ sudo howdy test
 After both are set up, the auth order at login/lock/sudo is:
 **face → fingerprint → password** (any one is sufficient).
 
-## Known caveats / things to watch
-
-- **niri-flake outputs** — the module paths used in
-  `modules/nixos/desktop/niri.nix` and `modules/home/desktop/niri.nix`
-  (`inputs.niri.nixosModules.niri`, `inputs.niri.homeModules.niri`)
-  track upstream `github:sodiboo/niri-flake`. If they rename outputs,
-  update those two files.
-- **Nerd Fonts rename** — recent nixpkgs moved from
-  `nerdfonts.override { fonts = [...]; }` to namespaced
-  `pkgs.nerd-fonts.jetbrains-mono` etc. If `nix flake check` complains
-  in `modules/nixos/fonts.nix`, switch to the new naming.
-- **Darwin + homeManagerConfiguration** — `home-manager.lib.homeManagerConfiguration`
-  needs its `pkgs` to be built for a darwin system. `lib/default.nix :: mkHome`
-  honors `variables.system`, so always scaffold a Mac host with
-  `nix run .#new-host -- <name> --mac` (which sets the right system string).
-- **Line endings on Windows** — `.gitattributes` forces LF on all text files.
-  Nix will reject CRLF in some contexts. Don't disable this.
-- **Hardware config placeholder** — `hosts/_template/hardware-configuration.nix`
-  is intentionally empty so that a forgotten `nixos-generate-config` step fails
-  loudly at rebuild time instead of booting a broken system.
-
 ## Repository conventions
 
-- Nix code is formatted with `nixpkgs-fmt` (see `flake.nix :: formatter`).
+- Nix code is formatted with `nixpkgs-fmt` (see
+  `flake-modules/formatter.nix`).
 - Commit messages: short imperative subject; body for the "why".
-- One module per concern; each module gates on
-  `variables.<ns>.<name>.enable`.
-- Do not import modules globally unless they're safe to always apply
-  (see `modules/nixos/default.nix` for the aggregator pattern).
+- Line endings stay LF (enforced by `.gitattributes`).
+- Substantial sessions get a note in `docs/sessions/YYYY-MM-DD-<slug>.md`.
+- Past session notes are immutable.

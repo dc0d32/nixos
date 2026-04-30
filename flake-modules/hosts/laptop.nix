@@ -1,39 +1,20 @@
 # laptop — primary dev machine (Lenovo X1 Yoga, x86_64-linux).
 #
-# DENDRITIC MIGRATION NOTE: this host module is currently a *bridge*
-# between the new flake-parts substrate and the legacy
-# ./modules/{nixos,home}/ tree. It absorbs what `lib/mkHost` and
-# `lib/mkHome` used to do (read variables.nix, thread it through
-# specialArgs, build a home-manager pkgs instance with overlays).
+# Dendritic host module. Sets top-level option values for every
+# feature module this host imports, and lists the full set of
+# {nixos, homeManager} contributions to wire up.
 #
-# As features migrate into ./flake-modules/<feature>.nix, the
-# `imports` lists below shrink. When the legacy tree is empty:
-#   - the `imports = [ ../../modules/nixos ];` line goes away
-#   - the `imports = [ ../../modules/home ];` line goes away
-#   - hosts/laptop/configuration.nix's responsibilities collapse into
-#     this file
-#   - hosts/laptop/variables.nix is deleted; its remaining values move
-#     into option settings on the relevant feature modules below
-#
-# Until then, this file is intentionally a thin shim. Don't add
-# feature config here — add a feature module under ./flake-modules/
-# instead.
+# To add a feature: write flake-modules/<feature>.nix that contributes
+# to flake.modules.<class>.<feature>, then add a line to the
+# `imports = [ … ]` list below for whichever class it belongs to.
 { inputs, lib, config, ... }:
 let
   hostName = "laptop";
-  variables = import ../../hosts/laptop/variables.nix;
-  userVariables = import (../../homes + "/p@laptop/variables.nix");
+  user = "p";
+  system = "x86_64-linux";
+  stateVersion = "25.11";
 
-  system = variables.system or "x86_64-linux";
-
-  hmVariables = variables // userVariables // {
-    user = variables.user;
-    hostname = hostName;
-  };
-  user = hmVariables.user;
-
-  # HM pkgs instance. Mirrors the pre-dendritic mkHome:
-  #   - apply repo-wide overlays (overlays/default.nix)
+  # HM pkgs instance with repo-wide overlays.
   #   - allowUnfree for chrome/vscode/etc.
   #   - allowAliases = false to silence transitive deprecation warnings
   #     (e.g. nvim-treesitter-legacy) on pinned nixos-unstable
@@ -54,62 +35,74 @@ in
   host = {
     name = hostName;
     user = user;
-    inherit system;
-    stateVersion = hmVariables.stateVersion or "25.11";
+    inherit system stateVersion;
   };
 
   git = {
-    name = variables.git.name or variables.user or "change me";
-    email = variables.git.email or "change@me.invalid";
+    name = "CHANGEME";
+    email = "CHANGEME@example.com";
   };
 
-  gpu.driver = variables.gpu.driver or "none";
+  gpu.driver = "intel";
 
   locale = {
-    timezone = variables.timezone;
-    lang = variables.locale;
+    timezone = "America/Los_Angeles";
+    lang = "en_US.UTF-8";
   };
 
   battery = {
-    chargeStopThreshold = variables.battery.chargeStopThreshold;
-    chargeStartThreshold = variables.battery.chargeStartThreshold;
-    criticalPercent = variables.battery.criticalPercent;
-    criticalAction = variables.battery.criticalAction;
-    powerSaverPercent = variables.battery.powerSaverPercent;
-    swapSizeGiB = variables.battery.swapSizeGiB;
+    # Lenovo X1 Yoga supports kernel charge thresholds via
+    # /sys/class/power_supply/BAT0/charge_control_*_threshold.
+    # Capping at 80% extends battery lifespan substantially. Set to 100
+    # (and recharge to full) before flying or other long unplug.
+    chargeStopThreshold = 80;
+    chargeStartThreshold = 75;
+    # UPower CriticalAction at this percent. Hibernate requires a swap
+    # area large enough for RAM. Falls back to PowerOff if hibernate
+    # fails.
+    criticalPercent = 10;
+    criticalAction = "Hibernate";
+    # Switch to power-profiles-daemon "power-saver" at this percent on
+    # battery; restored to whatever profile was active when we descended
+    # past the threshold the next time we go above it. Implemented by
+    # the UPower watcher inside the idled user daemon.
+    powerSaverPercent = 40;
+    # Swap file size (GiB). Hibernate needs swap >= RAM. 32 GiB matches
+    # this host's 31 GiB RAM with a margin. Created at /swap/swapfile on
+    # btrfs (CoW disabled per kernel requirement).
+    swapSizeGiB = 32;
     # btrfs root partition holding /swap/swapfile.
     resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
   };
 
   audio = {
-    preset = variables.audio.easyeffects.preset or null;
-    presetsDir = variables.audio.easyeffects.presetsDir or null;
-    irsDir = variables.audio.easyeffects.irsDir or null;
-    autoloadDevice = variables.audio.easyeffects.autoloadDevice or null;
-    autoloadDeviceProfile = variables.audio.easyeffects.autoloadDeviceProfile or "";
-    autoloadDeviceDescription = variables.audio.easyeffects.autoloadDeviceDescription or "";
+    preset = "X1Yoga7-Dynamic-Detailed";
+    presetsDir = ../../hosts/laptop/audio-presets;
+    irsDir = ../../hosts/laptop/audio-irs;
+    # Autoload: apply preset automatically when this output device appears.
+    # Get the device name with: wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
+    autoloadDevice = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
+    autoloadDeviceProfile = "Speaker";
+    autoloadDeviceDescription = "Alder Lake PCH-P High Definition Audio Controller Speaker";
   };
 
   wallpaper = {
-    intervalMinutes = variables.desktop.wallpaper.intervalMinutes or 30;
+    intervalMinutes = 30;
   };
 
+  # Auto-lock / DPMS / suspend timings (seconds).
   idle = {
-    lockAfter = variables.idle.lockAfter or 900;
-    dpmsAfter = variables.idle.dpmsAfter or 1020;
-    suspendAfter = variables.idle.suspendAfter or 1800;
+    lockAfter = 300;
+    dpmsAfter = 420;
+    suspendAfter = 900;
   };
 
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
-    specialArgs.variables = variables;
     module = {
       imports = [
-        ../../hosts/laptop/configuration.nix
-        # Migrated dendritic feature modules (NixOS side). The
-        # legacy ../../modules/nixos aggregator was removed in the
-        # niri commit — every NixOS-class feature now lives under
-        # ./flake-modules/.
+        ../../hosts/laptop/hardware-configuration.nix
+        # Migrated dendritic feature modules (NixOS side).
         config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
@@ -125,19 +118,47 @@ in
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
       ];
+
+      # Host identity + base packages + primary user. These were the
+      # last bits of the legacy hosts/laptop/configuration.nix; folded
+      # in here to eliminate the duplicate level of indirection.
+      networking.hostName = hostName;
+      console.keyMap = "us";
+
+      # Bootloader: standard UEFI boot.
+      boot.loader.systemd-boot.enable = lib.mkDefault true;
+      boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+      boot.kernelPackages = hmPkgs.linuxPackages_latest;
+
+      # Primary user.
+      users.users.${user} = {
+        isNormalUser = true;
+        description = user;
+        # `input` group: required by idled to read /dev/input/event*
+        # directly. See flake-modules/idle.nix and packages/idled/.
+        extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
+        shell = hmPkgs.zsh;
+      };
+
+      # Extra system packages specific to this host. Most packages live
+      # in home-manager; reserve this for things that must exist at the
+      # system level (early boot tools, recovery shell tools).
+      environment.systemPackages = with hmPkgs; [
+        git
+        vim
+        curl
+        wget
+      ];
+
+      system.stateVersion = stateVersion;
     };
   };
 
   configurations.homeManager."${user}@${hostName}" = {
     pkgs = hmPkgs;
-    extraSpecialArgs.variables = hmVariables;
     module = {
       imports = [
-        ../../modules/home
-        (../../homes + "/p@laptop/home.nix")
-        # Migrated dendritic feature modules (HM side). Each entry
-        # corresponds to a removed `imports` line in
-        # modules/home/default.nix.
+        # Migrated dendritic feature modules (HM side).
         config.flake.modules.homeManager.git
         config.flake.modules.homeManager.tmux
         config.flake.modules.homeManager.direnv
@@ -163,12 +184,21 @@ in
         config.flake.modules.homeManager.quickshell
       ];
 
+      # HM manages itself (last bit from the legacy modules/home/default.nix).
+      programs.home-manager.enable = true;
+
+      # Per-user session vars (last bit from the legacy
+      # homes/p@laptop/home.nix). Editor pinned to nvim because
+      # flake-modules/neovim.nix sets defaultEditor=true but some shells
+      # / terminals don't pick that up via update-alternatives.
+      home.sessionVariables = {
+        EDITOR = "nvim";
+        VISUAL = "nvim";
+      };
+
       home.username = user;
-      home.homeDirectory =
-        if lib.hasSuffix "darwin" system
-        then "/Users/${user}"
-        else "/home/${user}";
-      home.stateVersion = hmVariables.stateVersion or "25.11";
+      home.homeDirectory = "/home/${user}";
+      home.stateVersion = stateVersion;
     };
   };
 }
