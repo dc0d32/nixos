@@ -16,7 +16,6 @@ in
 {
   imports = [
   ] ++ lib.optionals hasDesktop [
-    ./desktop/niri.nix
     ./desktop/quickshell
   ];
 
