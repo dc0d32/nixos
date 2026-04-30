@@ -95,11 +95,11 @@ in
     specialArgs.variables = variables;
     module = {
       imports = [
-        ../../modules/nixos
         ../../hosts/laptop/configuration.nix
-        # Migrated dendritic feature modules (NixOS side). Each entry
-        # corresponds to a removed `imports` line in
-        # modules/nixos/default.nix.
+        # Migrated dendritic feature modules (NixOS side). The
+        # legacy ../../modules/nixos aggregator was removed in the
+        # niri commit — every NixOS-class feature now lives under
+        # ./flake-modules/.
         config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
@@ -113,6 +113,7 @@ in
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.login-ly
+        config.flake.modules.nixos.niri
       ];
     };
   };
