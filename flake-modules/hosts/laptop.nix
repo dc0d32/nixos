@@ -63,6 +63,8 @@ in
     email = variables.git.email or "change@me.invalid";
   };
 
+  gpu.driver = variables.gpu.driver or "none";
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
@@ -74,6 +76,7 @@ in
         # corresponds to a removed `imports` line in
         # modules/nixos/default.nix.
         config.flake.modules.nixos.hardware-hacking
+        config.flake.modules.nixos.gpu
       ];
     };
   };
