@@ -65,6 +65,11 @@ in
 
   gpu.driver = variables.gpu.driver or "none";
 
+  locale = {
+    timezone = variables.timezone;
+    lang = variables.locale;
+  };
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
@@ -83,6 +88,7 @@ in
         config.flake.modules.nixos.system-utils
         config.flake.modules.nixos.users
         config.flake.modules.nixos.fonts
+        config.flake.modules.nixos.locale
       ];
     };
   };
