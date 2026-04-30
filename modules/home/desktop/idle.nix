@@ -58,7 +58,7 @@ let
   '' + batteryToml;
 in
 lib.mkIf (cfg.enable) {
-  home.packages = with pkgs; [ brightnessctl idled ];
+  home.packages = with pkgs; [ brightnessctl idled wayland-pipewire-idle-inhibit ];
 
   xdg.configFile."idled/config.toml" = {
     force = true;
@@ -94,6 +94,56 @@ lib.mkIf (cfg.enable) {
       RestrictRealtime = true;
       SystemCallArchitectures = "native";
       Environment = "RUST_LOG=info";
+    };
+
+    Install = {
+      WantedBy = [ "graphical-session.target" ];
+    };
+  };
+
+  # PipeWire → ScreenSaver inhibit bridge.
+  #
+  # idled hosts an org.freedesktop.ScreenSaver D-Bus server (see
+  # packages/idled/src/screensaver.rs). Chrome on fullscreen video calls
+  # it directly, but background audio (Spotify, podcasts, mpv-without-
+  # ScreenSaver-support) does not. wayland-pipewire-idle-inhibit watches
+  # PipeWire output streams and calls our Inhibit while any stream has
+  # been active for at least --media-minimum-duration seconds.
+  #
+  # `--idle-inhibitor d-bus` (instead of the default `wayland`) targets
+  # ScreenSaver instead of asking the compositor to register a Wayland
+  # idle-inhibit object — niri honors Wayland inhibits but doesn't
+  # translate them to anything idled can see. ScreenSaver is the bridge
+  # that closes that gap.
+  #
+  # 5s minimum duration matches the bridge default; long enough to ignore
+  # blip notification sounds and short enough to catch songs.
+  systemd.user.services.wayland-pipewire-idle-inhibit = {
+    Unit = {
+      Description = "PipeWire → ScreenSaver idle inhibitor bridge";
+      # Order after idled so the ScreenSaver service is registered before
+      # we try to call it. Soft dependency — bridge will retry if idled
+      # isn't up yet, but ordering avoids spurious early errors.
+      After = [ "graphical-session.target" "idled.service" ];
+      PartOf = [ "graphical-session.target" ];
+      Requires = [ "pipewire.service" ];
+    };
+
+    Service = {
+      ExecStart = "${pkgs.wayland-pipewire-idle-inhibit}/bin/wayland-pipewire-idle-inhibit --idle-inhibitor d-bus --media-minimum-duration 5";
+      Restart = "on-failure";
+      RestartSec = 5;
+      MemoryMax = "64M";
+      NoNewPrivileges = true;
+      ProtectSystem = "strict";
+      ProtectHome = "read-only";
+      ProtectKernelTunables = true;
+      ProtectKernelModules = true;
+      ProtectControlGroups = true;
+      RestrictNamespaces = true;
+      LockPersonality = true;
+      RestrictRealtime = true;
+      SystemCallArchitectures = "native";
     };
 
     Install = {

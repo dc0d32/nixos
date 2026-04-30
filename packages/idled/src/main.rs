@@ -49,6 +49,7 @@ use tracing::{debug, error, info, warn};
 mod dbus;
 mod input;
 mod power;
+mod screensaver;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Kernel-input idle manager")]
@@ -188,9 +189,21 @@ async fn main() -> Result<()> {
     });
 
     // Spawn dbus task: PrepareForSleep + BlockInhibited + (optional) lock-on-sleep.
+    //
+    // Two independent inhibitor sources, OR'd in the tick loop:
+    //   * `logind_inhibitor`     — set by dbus::run when logind's
+    //     BlockInhibited contains "idle" (i.e. someone holds a
+    //     `systemd-inhibit --what=idle` lease).
+    //   * `screensaver_inhibitor` — set by screensaver::run when at least
+    //     one client holds a cookie via org.freedesktop.ScreenSaver.Inhibit
+    //     (Chrome on fullscreen video, mpv, wayland-pipewire-idle-inhibit
+    //     bridge with --idle-inhibitor d-bus, etc.).
+    // Each source owns its own flag so neither overwrites the other on
+    // an unrelated state change.
     let dbus_state = state.clone();
-    let inhibitor = Arc::new(Mutex::new(false));
-    let dbus_inhibitor = inhibitor.clone();
+    let logind_inhibitor = Arc::new(Mutex::new(false));
+    let screensaver_inhibitor = Arc::new(Mutex::new(false));
+    let dbus_inhibitor = logind_inhibitor.clone();
     let lock_cfg = cfg
         .general
         .lock_before_sleep
@@ -208,6 +221,19 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         if let Err(e) = dbus::run(dbus_state, dbus_inhibitor, lock_cfg).await {
             error!(error = %e, "dbus task exited");
+        }
+    });
+
+    // Spawn ScreenSaver D-Bus server (session bus). Catches inhibits from
+    // Chrome (fullscreen video), mpv, and the `wayland-pipewire-idle-
+    // inhibit` bridge run with `--idle-inhibitor d-bus`. Owns the
+    // `screensaver_inhibitor` flag exclusively; idled OR's both flags in
+    // the tick loop. If another screensaver service is already running on
+    // the session bus, this task fails and exits cleanly; logind path stays.
+    let ss_inhibitor = screensaver_inhibitor.clone();
+    tokio::spawn(async move {
+        if let Err(e) = screensaver::run(ss_inhibitor).await {
+            warn!(error = %e, "screensaver task exited");
         }
     });
 
@@ -271,7 +297,13 @@ async fn main() -> Result<()> {
                 }
             }
             _ = interval.tick() => {
-                let inhibited = respect_inhib && *inhibitor.lock().await;
+                // Inhibited if EITHER source has a hold. Locked separately
+                // so a slow ScreenSaver Inhibit call can't block reading
+                // the logind flag and vice-versa.
+                let inhibited = respect_inhib && (
+                    *logind_inhibitor.lock().await
+                    || *screensaver_inhibitor.lock().await
+                );
                 if inhibited {
                     // Don't fire anything while inhibited. Don't clear fired
                     // either — that's an input's job.

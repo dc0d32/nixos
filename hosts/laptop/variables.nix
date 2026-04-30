@@ -49,7 +49,7 @@
   login.ly.enable = true;
 
   # Auto-lock / DPMS / suspend timings (seconds). Applied by
-  # modules/home/desktop/idle.nix via stasis under the user's session.
+  # modules/home/desktop/idle.nix via the `idled` user daemon.
   idle = {
     enable = true;
     lockAfter = 300;
