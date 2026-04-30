@@ -81,6 +81,15 @@ in
     resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
   };
 
+  audio = {
+    preset = variables.audio.easyeffects.preset or null;
+    presetsDir = variables.audio.easyeffects.presetsDir or null;
+    irsDir = variables.audio.easyeffects.irsDir or null;
+    autoloadDevice = variables.audio.easyeffects.autoloadDevice or null;
+    autoloadDeviceProfile = variables.audio.easyeffects.autoloadDeviceProfile or "";
+    autoloadDeviceDescription = variables.audio.easyeffects.autoloadDeviceDescription or "";
+  };
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
@@ -101,6 +110,7 @@ in
         config.flake.modules.nixos.fonts
         config.flake.modules.nixos.locale
         config.flake.modules.nixos.battery
+        config.flake.modules.nixos.audio
       ];
     };
   };
@@ -124,6 +134,7 @@ in
         config.flake.modules.homeManager.gh
         config.flake.modules.homeManager.ai-cli
         config.flake.modules.homeManager.hardware-hacking
+        config.flake.modules.homeManager.audio
       ];
 
       home.username = user;

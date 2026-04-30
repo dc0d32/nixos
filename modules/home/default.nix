@@ -20,7 +20,6 @@ in
     ./editor/vscode.nix
     ./terminal/alacritty.nix
   ] ++ lib.optionals hasDesktop [
-    ./audio/easyeffects.nix
     ./desktop/extras.nix
     ./desktop/niri.nix
     ./desktop/polkit-agent.nix
