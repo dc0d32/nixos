@@ -18,7 +18,7 @@
 # Until then, this file is intentionally a thin shim. Don't add
 # feature config here — add a feature module under ./flake-modules/
 # instead.
-{ inputs, lib, ... }:
+{ inputs, lib, config, ... }:
 let
   hostName = "laptop";
   variables = import ../../hosts/laptop/variables.nix;
@@ -47,6 +47,16 @@ let
   };
 in
 {
+  # ── Top-level option values supplied by this host ────────────────
+  # Each setting here is read by a feature module under
+  # ./flake-modules/<feature>.nix. See that module for the option
+  # type and how it's consumed.
+  git = {
+    name = variables.git.name or variables.user or "change me";
+    email = variables.git.email or "change@me.invalid";
+  };
+
+  # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     specialArgs.variables = variables;
     module = {
@@ -64,6 +74,9 @@ in
       imports = [
         ../../modules/home
         (../../homes + "/p@laptop/home.nix")
+        # Migrated dendritic feature modules. Each entry corresponds
+        # to a removed `imports` line in modules/home/default.nix.
+        config.flake.modules.homeManager.git
       ];
 
       home.username = user;

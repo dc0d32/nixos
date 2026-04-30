@@ -24,7 +24,6 @@ in
     ./tools/gh.nix
     ./tools/ai-cli.nix
     ./tools/hardware-hacking.nix
-    ./git.nix
     ./tmux.nix
     ./direnv.nix
     ./fonts.nix
