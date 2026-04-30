@@ -9,7 +9,6 @@
     ./users.nix
     ./nix-settings.nix
     ./system-utils.nix
-    ./power.nix
     ./wsl.nix
     ./biometrics.nix
     ./battery.nix

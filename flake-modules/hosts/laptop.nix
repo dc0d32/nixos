@@ -77,6 +77,7 @@ in
         # modules/nixos/default.nix.
         config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.gpu
+        config.flake.modules.nixos.power
       ];
     };
   };
