@@ -17,18 +17,12 @@ in
   imports = [
     ./shell/zsh.nix
     ./editor/neovim.nix
-    ./editor/vscode.nix
-    ./terminal/alacritty.nix
   ] ++ lib.optionals hasDesktop [
     ./desktop/extras.nix
     ./desktop/niri.nix
-    ./desktop/polkit-agent.nix
-    ./desktop/waybar.nix
     ./desktop/quickshell
     ./desktop/idle.nix
     ./desktop/wallpaper.nix
-    ./apps/chrome.nix
-    ./apps/bitwarden.nix
     ./cad/freecad.nix
   ];
 

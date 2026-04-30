@@ -138,6 +138,11 @@ in
         config.flake.modules.homeManager.ai-cli
         config.flake.modules.homeManager.hardware-hacking
         config.flake.modules.homeManager.audio
+        config.flake.modules.homeManager.polkit-agent
+        config.flake.modules.homeManager.chrome
+        config.flake.modules.homeManager.bitwarden
+        config.flake.modules.homeManager.vscode
+        config.flake.modules.homeManager.alacritty
       ];
 
       home.username = user;
