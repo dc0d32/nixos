@@ -189,3 +189,45 @@ and the aggregators.
   explicit `imports = [ ./modules/nixos ];` in
   `hosts/laptop.nix`. As features migrate, that imports list
   shrinks until the aggregator is empty and can be deleted.
+
+## Progress checkpoint (after 13 feature commits)
+
+Substrate (`5f8c406`) plus 13 feature migrations. Current NixOS-only
+aggregator (`modules/nixos/default.nix`) has shrunk from 13 imports
+to 5: `desktop/niri.nix`, `desktop/login-ly.nix`, `audio/pipewire.nix`,
+`wsl.nix`, `biometrics.nix`. HM aggregator still has the bigger
+features (`zsh`, `neovim`, `vscode`, `alacritty`, the desktop subtree
+including quickshell, easyeffects, chrome, bitwarden, freecad).
+
+Two patterns established:
+
+1. **Pure-leaf module** (no top-level options): one file with just
+   `flake.modules.<class>.<name> = { … };`. Import the contributed
+   value from the host file. Examples: `power`, `networking`,
+   `system-utils`, `users`, `tmux`, `direnv`, `btop`, `gh`,
+   `build-deps`, `ai-cli`.
+
+2. **Module with top-level options**: declares `options.<ns>` at the
+   top level and contributes `config.flake.modules.<class>.<name> = …`.
+   The host file sets the option values; the contributed module
+   captures them in a let-binding from the *outer* flake-parts
+   `config` (the inner module's `config` parameter shadows it).
+   Examples: `git`, `gpu`, `host`, `locale`, `battery`,
+   `hardware-hacking` (via the `host.user` option).
+
+NIT learned this session: when a single module file mixes `options`
+with `flake.modules.*`, the latter must be wrapped in an explicit
+`config = { … }`. Otherwise the module system reports
+"unsupported attribute `flake`". Pure-leaf modules (no `options`)
+don't need the wrapper.
+
+Closure-equivalent (not byte-identical) commits so far:
+- `8d5fbe0` (HM tools batch) — `home.packages` reorder.
+- `1e064a8` (hardware-hacking) — `home.packages` reorder.
+- `c9f9ca2` (system-utils) — `environment.systemPackages` reorder.
+
+All other commits in this session are byte-identical.
+
+Current baselines:
+- NixOS toplevel: `dd1mi40w7bxrj2njlnzc2ympfcfk99xl-nixos-system-laptop-26.05.20260418.b12141e`
+- HM generation:  `pvssiljf0x44m132gfzk62rjgd7l7q21-home-manager-generation`
