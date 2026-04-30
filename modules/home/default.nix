@@ -24,9 +24,6 @@ in
     ./tools/gh.nix
     ./tools/ai-cli.nix
     ./tools/hardware-hacking.nix
-    ./tmux.nix
-    ./direnv.nix
-    ./fonts.nix
   ] ++ lib.optionals hasDesktop [
     ./audio/easyeffects.nix
     ./desktop/extras.nix

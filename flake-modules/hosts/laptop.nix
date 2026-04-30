@@ -77,6 +77,9 @@ in
         # Migrated dendritic feature modules. Each entry corresponds
         # to a removed `imports` line in modules/home/default.nix.
         config.flake.modules.homeManager.git
+        config.flake.modules.homeManager.tmux
+        config.flake.modules.homeManager.direnv
+        config.flake.modules.homeManager.fonts
       ];
 
       home.username = user;
