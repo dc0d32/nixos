@@ -15,7 +15,6 @@ let
 in
 {
   imports = [
-    ./editor/neovim.nix
   ] ++ lib.optionals hasDesktop [
     ./desktop/niri.nix
     ./desktop/quickshell

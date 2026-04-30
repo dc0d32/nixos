@@ -158,6 +158,7 @@ in
         config.flake.modules.homeManager.wallpaper
         config.flake.modules.homeManager.idle
         config.flake.modules.homeManager.freecad
+        config.flake.modules.homeManager.neovim
       ];
 
       home.username = user;
