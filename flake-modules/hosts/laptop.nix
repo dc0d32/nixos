@@ -32,11 +32,13 @@ in
   # Each setting here is read by a feature module under
   # ./flake-modules/<feature>.nix. See that module for the option
   # type and how it's consumed.
-  host = {
-    name = hostName;
-    user = user;
-    inherit system stateVersion;
-  };
+  #
+  # NOTE: per-host values that are conceptually per-NixOS-config
+  # (hostname, primary user, system tuple, state version) are NOT set
+  # at the flake-parts level — they live inside the
+  # `configurations.nixos.${hostName}.module` block below. Setting
+  # them up here would create a flake-parts singleton that conflicts
+  # the moment a second host with different values shows up.
 
   git = {
     name = "CHANGEME";
@@ -123,6 +125,7 @@ in
       # last bits of the legacy hosts/laptop/configuration.nix; folded
       # in here to eliminate the duplicate level of indirection.
       networking.hostName = hostName;
+      users.primary = user;
       console.keyMap = "us";
 
       # Bootloader: standard UEFI boot.

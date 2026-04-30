@@ -16,12 +16,12 @@
 #   - That requires `--impure` for every build, breaks `nix flake
 #     check`, and prevents cross-architecture evaluation.
 #
-# Note on the top-level `host` option: this module deliberately does
-# NOT set `host = { ... }`. The `host.user` value is set once by the
-# laptop bridge (and is identical across hosts in this repo). The
-# `host.{name,system,stateVersion}` fields are declared but currently
-# unread by any feature module; per-host name/system/stateVersion are
-# captured locally below and used directly in each per-config block.
+# Note: this module deliberately does NOT set any top-level
+# (flake-parts level) host metadata options. Per-host values like the
+# hostname, primary user, and system tuple are conceptually per-NixOS-
+# config; they live inside each per-config `module = { ... }` block
+# below. The `users.primary` option declared by flake-modules/users.nix
+# is set per-config the same way.
 #
 # Rebuild from inside WSL:
 #   sudo nixos-rebuild switch --flake .#wsl       # x86_64 Windows
@@ -63,6 +63,7 @@ let
     # us; do it here.
     nixpkgs.hostPlatform = system;
     networking.hostName = name;
+    users.primary = user;
 
     # Skip explicit users.users.${user}: the WSL fork creates the
     # default user itself. Shell is forced to zsh by

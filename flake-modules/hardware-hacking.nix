@@ -4,8 +4,8 @@
 #
 # Cross-class footprint:
 #   - flake.modules.nixos.hardware-hacking — udev rules, dialout/plugdev
-#     group membership for `host.user`. Retire individual rules when
-#     upstream nixpkgs udev packages cover them.
+#     group membership for `config.users.primary`. Retire individual
+#     rules when upstream nixpkgs udev packages cover them.
 #   - flake.modules.homeManager.hardware-hacking — user-space CLI tools
 #     (usbutils, picocom, esptool, dfu-util, flashrom) and EDA (kicad,
 #     Linux only).
@@ -13,14 +13,18 @@
 # Pattern A enable: a host enables this feature by importing both
 # contributed modules from its host file. There is no `enable` flag.
 #
+# Reads `config.users.primary` from the inner NixOS config (declared by
+# flake-modules/users.nix). The previous version read the flake-parts
+# singleton `config.host.user`, which is now retired.
+#
 # Migrated from modules/{nixos,home}/hardware-hacking.nix (and
 # modules/home/tools/hardware-hacking.nix). Replaces the
 # variables.hardwareHacking.enable gate.
-{ config, ... }:
+{ ... }:
 {
-  flake.modules.nixos.hardware-hacking = {
+  flake.modules.nixos.hardware-hacking = { config, ... }: {
     # Add the user to groups needed for serial/USB device access.
-    users.users.${config.host.user}.extraGroups = [ "dialout" "plugdev" "uucp" ];
+    users.users.${config.users.primary}.extraGroups = [ "dialout" "plugdev" "uucp" ];
 
     services.udev.extraRules = ''
       # CP210x USB-serial (common on ESP32/ESP8266 devboards)
