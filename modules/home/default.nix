@@ -19,10 +19,6 @@ in
     ./editor/neovim.nix
     ./editor/vscode.nix
     ./terminal/alacritty.nix
-    ./tools/btop.nix
-    ./tools/build-deps.nix
-    ./tools/gh.nix
-    ./tools/ai-cli.nix
     ./tools/hardware-hacking.nix
   ] ++ lib.optionals hasDesktop [
     ./audio/easyeffects.nix

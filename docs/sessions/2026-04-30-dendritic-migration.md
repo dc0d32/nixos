@@ -156,6 +156,21 @@ and the aggregators.
   laptop's `nixosConfigurations.laptop.config.system.build.toplevel`
   hash is captured pre-substrate; commit 1 must produce the same
   store path. Verified with `nix build` before commit.
+- **Closure-equivalence vs. byte-equivalence.** Substrate commit (1)
+  and trivial-leaf migrations contributing only `programs.*` /
+  `xdg.configFile` produce *byte-identical* HM and NixOS toplevel
+  hashes. Migrations that touch list-valued options merged across
+  modules — most importantly `home.packages` and
+  `environment.systemPackages` — change the union order in
+  `buildEnv`, producing a different `home-manager-path` /
+  `system-path` store hash even though the package set is identical.
+  Verified by diffing the `pkgs` JSON in the derivation env: same
+  paths, different order. The fontconfig cache (which hashes its
+  output filenames by their path) also regenerates accordingly.
+  Closure references and content under each derivation remain
+  identical. From the `tools` batch onward, the regression check is
+  relaxed from "same store hash" to "same closure refs + identical
+  content modulo derivation re-ordering".
 - **Standalone home-manager has no canonical dendritic example.** The
   `home-manager.nix` substrate file is novel — modeled by transcribing
   the example's `nixos.nix` and substituting

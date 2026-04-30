@@ -80,6 +80,10 @@ in
         config.flake.modules.homeManager.tmux
         config.flake.modules.homeManager.direnv
         config.flake.modules.homeManager.fonts
+        config.flake.modules.homeManager.btop
+        config.flake.modules.homeManager.build-deps
+        config.flake.modules.homeManager.gh
+        config.flake.modules.homeManager.ai-cli
       ];
 
       home.username = user;
