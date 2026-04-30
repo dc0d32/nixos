@@ -80,6 +80,7 @@ in
         config.flake.modules.nixos.power
         config.flake.modules.nixos.networking
         config.flake.modules.nixos.nix-settings
+        config.flake.modules.nixos.system-utils
       ];
     };
   };
