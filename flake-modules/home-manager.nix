@@ -11,12 +11,9 @@
 # `pkgs` (with the repo's overlays applied). The substrate just glues
 # them together.
 #
-# No upstream dendritic example for this — modeled on
-# ./nixos.nix and lib/default.nix's pre-dendritic mkHome.
-#
-# Safe to delete in the cleanup commit that completes the migration
-# (i.e. when every HM module has been converted into a feature module
-# under flake.modules.homeManager.<feature>).
+# No upstream dendritic example for this — modeled on ./nixos.nix.
+# Permanent substrate: required for as long as we want standalone HM
+# (i.e. the option of running on macOS without nix-darwin).
 { lib, config, inputs, ... }:
 {
   options.configurations.homeManager = lib.mkOption {
