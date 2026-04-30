@@ -51,6 +51,13 @@ in
   # Each setting here is read by a feature module under
   # ./flake-modules/<feature>.nix. See that module for the option
   # type and how it's consumed.
+  host = {
+    name = hostName;
+    user = user;
+    inherit system;
+    stateVersion = hmVariables.stateVersion or "25.11";
+  };
+
   git = {
     name = variables.git.name or variables.user or "change me";
     email = variables.git.email or "change@me.invalid";
@@ -63,6 +70,10 @@ in
       imports = [
         ../../modules/nixos
         ../../hosts/laptop/configuration.nix
+        # Migrated dendritic feature modules (NixOS side). Each entry
+        # corresponds to a removed `imports` line in
+        # modules/nixos/default.nix.
+        config.flake.modules.nixos.hardware-hacking
       ];
     };
   };
@@ -74,8 +85,9 @@ in
       imports = [
         ../../modules/home
         (../../homes + "/p@laptop/home.nix")
-        # Migrated dendritic feature modules. Each entry corresponds
-        # to a removed `imports` line in modules/home/default.nix.
+        # Migrated dendritic feature modules (HM side). Each entry
+        # corresponds to a removed `imports` line in
+        # modules/home/default.nix.
         config.flake.modules.homeManager.git
         config.flake.modules.homeManager.tmux
         config.flake.modules.homeManager.direnv
@@ -84,6 +96,7 @@ in
         config.flake.modules.homeManager.build-deps
         config.flake.modules.homeManager.gh
         config.flake.modules.homeManager.ai-cli
+        config.flake.modules.homeManager.hardware-hacking
       ];
 
       home.username = user;
