@@ -112,6 +112,7 @@ in
         config.flake.modules.nixos.battery
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.biometrics
+        config.flake.modules.nixos.login-ly
       ];
     };
   };
