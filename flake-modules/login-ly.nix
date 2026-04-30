@@ -31,7 +31,7 @@
         clear_password = true;
         hide_borders = false;
         blank_box = true;
-        bigclock = false;
+        bigclock = true;
       };
     };
   };
