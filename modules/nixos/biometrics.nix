@@ -26,6 +26,17 @@ in
     enable = true;
     control = lib.mkDefault "sufficient";
     settings.video.device_path = lib.mkDefault cameraDevice;
+
+    # Allow darker rooms. The default `dark_threshold = 60` means a frame
+    # is rejected if more than 60% of its pixels fall in the lowest 1/8
+    # of the histogram (i.e. the IR-illuminated face has too little
+    # contrast against the background). Raising to 85 accepts dimmer
+    # rooms; the false-accept risk is unchanged because the actual face
+    # match still uses the `certainty` threshold (3.5).
+    # Source: howdy/src/config.ini comment on dark_threshold.
+    # mkForce because upstream nixos/modules/services/security/howdy pins
+    # this to 60 at normal priority, so mkDefault loses the merge.
+    settings.video.dark_threshold = lib.mkForce 85;
   };
 
   services.linux-enable-ir-emitter = lib.mkIf enabled {
