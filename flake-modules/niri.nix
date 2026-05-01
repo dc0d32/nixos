@@ -430,6 +430,20 @@
       };
 
       window-rules = [
+        # Uniform 4px rounded corners on every window. Niri's
+        # window-rule property `geometry-corner-radius` takes per-corner
+        # values (no shorthand in the niri-flake Nix schema), so we set
+        # all four explicitly. No `matches` key = applies to every
+        # window; later rules can override per-window if ever needed.
+        {
+          geometry-corner-radius = {
+            top-left = 4.0;
+            top-right = 4.0;
+            bottom-right = 4.0;
+            bottom-left = 4.0;
+          };
+        }
+
         {
           matches = [{ is-focused = false; }];
           opacity = 0.9;
