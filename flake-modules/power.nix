@@ -4,8 +4,6 @@
 # Pattern A: hosts opt in by importing this module. WSL hosts simply
 # don't import it. No options needed — the policy here is uniform
 # across hosts that want it.
-#
-# Migrated from modules/nixos/power.nix.
 { ... }:
 {
   flake.modules.nixos.power = { lib, ... }: {

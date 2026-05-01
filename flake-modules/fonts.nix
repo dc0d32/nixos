@@ -15,10 +15,6 @@
 # `pkgs.nerdfonts.override { fonts = [ ... ]; }` aggregate to
 # individual attrs under `pkgs.nerd-fonts.<name>` in nixpkgs. Retire
 # this comment once we're well past that transition.
-#
-# Migrated from modules/nixos/fonts.nix and modules/home/fonts.nix
-# (the latter was already moved to flake-modules/fonts.nix in commit
-# 1be551a — this commit folds the NixOS side in alongside it).
 { lib, ... }:
 {
   flake.modules.nixos.fonts = { pkgs, ... }: {

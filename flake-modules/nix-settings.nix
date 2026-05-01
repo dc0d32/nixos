@@ -14,8 +14,6 @@
 # (e.g. the recurring nvim-treesitter-legacy one) on every rebuild.
 # Pinned nixos-unstable: we deliberately update inputs and don't need
 # the shims.
-#
-# Migrated from modules/nixos/nix-settings.nix.
 { ... }:
 {
   flake.modules.nixos.nix-settings = { lib, ... }: {

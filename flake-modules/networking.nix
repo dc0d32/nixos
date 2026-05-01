@@ -4,8 +4,6 @@
 # import it (the WSL fork manages networking from the Windows side).
 # mkDefault on both settings so a host that *does* import this can
 # still override either knob without ceremony.
-#
-# Migrated from modules/nixos/networking.nix.
 { ... }:
 {
   flake.modules.nixos.networking = { lib, ... }: {

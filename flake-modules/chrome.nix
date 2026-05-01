@@ -4,8 +4,6 @@
 #
 # Pattern A: hosts opt in by importing this module. Darwin hosts
 # simply don't import it.
-#
-# Migrated from modules/home/apps/chrome.nix.
 { ... }:
 {
   flake.modules.homeManager.chrome = { pkgs, ... }: {

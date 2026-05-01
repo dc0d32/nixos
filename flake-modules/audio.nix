@@ -19,19 +19,15 @@
 # WSL / headless / desktops without speakers simply don't import the
 # HM side.
 #
-# Top-level options absorb the per-host data that used to live under
-# variables.audio.easyeffects.* — preset name, the on-disk preset
-# directory, the IRS directory, and the autoload-target sink. The
-# preset and IRS dirs are paths into the host's own directory (e.g.
-# hosts/laptop/audio-presets/) so they ship with the host they
+# Top-level options absorb the per-host data — preset name, the on-disk
+# preset directory, the IRS directory, and the autoload-target sink.
+# The preset and IRS dirs are paths into the host's own directory (e.g.
+# hosts/pb-x1/audio-presets/) so they ship with the host they
 # describe.
 #
 # Retire when: you switch off EasyEffects entirely (e.g. moving DSP
 # into native PipeWire filter graphs), or upstream EasyEffects starts
 # shipping its own systemd unit and we can drop the inline one.
-#
-# Migrated from modules/nixos/audio/pipewire.nix and
-# modules/home/audio/easyeffects.nix.
 { lib, config, ... }:
 let
   cfg = config.audio;

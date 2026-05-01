@@ -2,11 +2,11 @@
 # `idled` user daemon (packages/idled/), plus a PipeWire→ScreenSaver
 # inhibit bridge so background audio prevents idle.
 #
-# Migrated from modules/home/desktop/idle.nix. Pattern A: importing this
-# module IS enabling it. Three top-level options carry the per-stage
-# timeouts (publicly tweakable per-host); the battery-watcher TOML block
-# is emitted only when `battery.powerSaverPercent > 0` (already published
-# by flake-modules/battery.nix).
+# Pattern A: importing this module IS enabling it. Three top-level
+# options carry the per-stage timeouts (publicly tweakable per-host);
+# the battery-watcher TOML block is emitted only when
+# `battery.powerSaverPercent > 0` (already published by
+# flake-modules/battery.nix).
 #
 # Why idled (not stasis/swayidle/hypridle): every wayland-protocol idle
 # daemon depends on smithay's ext_idle_notifier_v1, which is broken on

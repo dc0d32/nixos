@@ -1,10 +1,9 @@
 # Wallpaper rotation: awww daemon + a systemd timer that pulls a fresh
 # nature/landscape image from Wallhaven every `intervalMinutes`.
 #
-# Migrated from modules/home/desktop/wallpaper.nix. Pattern A: importing
-# this module IS enabling it (legacy `desktop.wallpaper.enable` gate
-# dropped). The poll interval and storage directory remain configurable
-# via top-level `wallpaper.*` options.
+# Pattern A: importing this module IS enabling it. The poll interval
+# and storage directory are configurable via top-level `wallpaper.*`
+# options.
 #
 # Retire when: wallpaper provider changes (e.g. local image rotation,
 # different API), or awww is replaced by a different wallpaper agent.

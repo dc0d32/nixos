@@ -15,8 +15,6 @@
 # Pattern A: hosts opt in by importing this module. Tied to the
 # niri user session because spawn-at-startup is a niri-specific
 # option; non-desktop hosts simply don't import this.
-#
-# Migrated from modules/home/desktop/polkit-agent.nix.
 { ... }:
 {
   flake.modules.homeManager.polkit-agent = { pkgs, lib, ... }: {

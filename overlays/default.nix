@@ -6,8 +6,8 @@
 # entry from the list below.
 #
 # Consumed by:
-#   - lib/default.nix (mkHome's pkgs instance)
-#   - modules/nixos/nix-settings.nix (nixpkgs.overlays for NixOS systems)
+#   - flake-modules/nix-settings.nix (sets `nixpkgs.overlays` system-wide).
+#   - Each host bridge's `mkPkgs` factory (HM-side pkgs instance).
 [
   (import ./nvim-treesitter-pin.nix)
   (import ./idled.nix)

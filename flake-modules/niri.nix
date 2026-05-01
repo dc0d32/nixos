@@ -19,11 +19,7 @@
 # Pattern A: hosts opt in by importing this module. Headless / WSL
 # hosts simply don't import it, so inputs.niri's modules are never
 # imported either — desktops that don't run niri don't pay the eval
-# cost.
-#
-# Migrated from modules/nixos/desktop/niri.nix and
-# modules/home/desktop/niri.nix. Keybinds and window-rules carried
-# over verbatim.
+#   cost.
 #
 # Retire when: the user switches Wayland compositor (hyprland, sway,
 # etc.) or niri grows to the size of warranting a dedicated subtree.

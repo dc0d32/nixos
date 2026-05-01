@@ -4,7 +4,6 @@
 # stay real QML (editor highlighting, hot reload) instead of nix-embedded
 # strings.
 #
-# Migrated from modules/home/desktop/quickshell/{default.nix,qml/}.
 # Pattern A: importing this module IS enabling it (legacy
 # `desktop.quickshell.enable` gate dropped). Reads `biometrics.enable`
 # (published as a signal by flake-modules/biometrics.nix) to set the

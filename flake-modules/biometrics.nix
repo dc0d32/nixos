@@ -3,12 +3,11 @@
 # password-first behavior + a Bitwarden polkit policy that pipes its
 # unlock through the same biometric stack.
 #
-# Pattern A: hosts opt in by importing this module. The legacy
-# `variables.biometrics.enable` gate is gone — importing IS enabling.
-# We still publish a `biometrics.enable` *signal* option (default false,
-# set to true by this module's own config when imported) so other
-# dendritic modules (e.g. quickshell's lockscreen) can adapt their
-# UI without re-introducing variables.nix coupling.
+# Pattern A: hosts opt in by importing this module. Importing IS
+# enabling. We still publish a `biometrics.enable` *signal* option
+# (default false, set to true by this module's own config when imported)
+# so other dendritic modules (e.g. quickshell's lockscreen) can adapt
+# their UI without coupling to a host-level flag.
 #
 # Top-level options:
 #   - biometrics.enable — read-only signal; true iff this module is
@@ -16,9 +15,7 @@
 #     so other modules can inspect it without forcing a value.
 #   - biometrics.cameraDevice — fallback /dev/video* path used at
 #     boot before the autodetect oneshot picks the real IR sensor.
-#     Optional; defaults to /dev/video2 to match the legacy module.
-#
-# Migrated from modules/nixos/biometrics.nix.
+#     Optional; defaults to /dev/video2.
 { lib, config, ... }:
 let
   cfg = config.biometrics;

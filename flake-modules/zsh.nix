@@ -1,8 +1,6 @@
 # zsh + companion shell tools (starship, fzf, zoxide, eza, dircolors,
 # ripgrep/fd/bat/jq/htop) — interactive shell environment.
 #
-# Migrated from modules/home/shell/zsh.nix. Pure-leaf module; no host data.
-#
 # Retire when: the user no longer wants zsh as their interactive shell or
 # wants the companion tools split out per-feature.
 {

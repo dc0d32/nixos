@@ -1,14 +1,6 @@
 # Desktop extras: clipboard, screenshot annotation, screen recording,
 # GTK/Qt theming, cursor theme, file/image/video viewers, notifications.
 #
-# Migrated from modules/home/desktop/extras.nix. Pattern A: importing this
-# module IS enabling it; the legacy `desktop.niri.enable` gate is dropped
-# (hosts that don't want desktop tools simply don't import this module).
-#
-# The legacy ssh-agent block was tied to variables.sshAgent.enable=false on
-# the laptop; not migrated. If a future host needs it, add a separate
-# ssh-agent feature module rather than coupling it to desktop extras.
-#
 # Retire when: laptop drops Wayland desktop or these tools are split into
 # per-concern modules (theming, clipboard, viewers, etc.).
 {

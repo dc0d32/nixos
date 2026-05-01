@@ -1,6 +1,4 @@
 # btop — cross-platform system / process monitor with TTY-friendly theme.
-#
-# Migrated from modules/home/tools/btop.nix.
 {
   flake.modules.homeManager.btop = {
     programs.btop = {

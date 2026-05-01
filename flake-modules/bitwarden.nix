@@ -12,8 +12,6 @@
 # flake-modules/biometrics.nix (security.polkit.extraConfig +
 # security.pam.services.bitwarden), because it must register at the
 # system level for polkit to find it.
-#
-# Migrated from modules/home/apps/bitwarden.nix.
 { ... }:
 {
   flake.modules.homeManager.bitwarden = { pkgs, ... }: {

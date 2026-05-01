@@ -2,8 +2,6 @@
 # every system that imports this module. Keep this list lean; host-
 # specific extras belong in hosts/<h>/host-packages.nix or the user's
 # home.nix.
-#
-# Migrated from modules/home/tools/build-deps.nix.
 {
   flake.modules.homeManager.build-deps = { pkgs, ... }: {
     home.packages = with pkgs; [

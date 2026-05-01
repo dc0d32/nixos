@@ -1,8 +1,6 @@
 # Visual Studio Code (Microsoft's signed builds, unfree).
 #
 # Pattern A: hosts opt in by importing this module.
-#
-# Migrated from modules/home/editor/vscode.nix.
 { ... }:
 {
   flake.modules.homeManager.vscode = { pkgs, ... }: {

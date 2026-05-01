@@ -16,10 +16,6 @@
 # Reads `config.users.primary` from the inner NixOS config (declared by
 # flake-modules/users.nix). The previous version read the flake-parts
 # singleton `config.host.user`, which is now retired.
-#
-# Migrated from modules/{nixos,home}/hardware-hacking.nix (and
-# modules/home/tools/hardware-hacking.nix). Replaces the
-# variables.hardwareHacking.enable gate.
 { ... }:
 {
   flake.modules.nixos.hardware-hacking = { config, ... }: {

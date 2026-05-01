@@ -7,8 +7,6 @@
 # Niri (or any other Wayland/X session module) provides its own
 # wayland-sessions/.desktop entry; ly will list whatever's available
 # automatically.
-#
-# Migrated from modules/nixos/desktop/login-ly.nix.
 { ... }:
 {
   flake.modules.nixos.login-ly = { lib, ... }: {

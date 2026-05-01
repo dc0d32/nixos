@@ -6,10 +6,6 @@
 #
 # mkDefault on both settings so WSL / hosts can override cleanly even
 # when the option is set here.
-#
-# Migrated from modules/nixos/locale.nix. Replaces the
-# `variables.timezone` / `variables.locale` strings with typed
-# top-level options.
 { lib, config, ... }:
 let
   # Capture from outer flake-parts scope; the inner NixOS module's

@@ -11,9 +11,6 @@
 # hosts simply don't import it. The "none" value exists for hosts
 # that import the module but want a no-op driver setup (e.g. for the
 # hardware.graphics defaults without picking a vendor).
-#
-# Migrated from modules/nixos/gpu.nix. Replaces the
-# variables.gpu.driver string with a typed top-level option.
 { lib, config, ... }:
 let
   # Captured from the flake-parts top-level scope. Inside the NixOS

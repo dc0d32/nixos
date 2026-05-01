@@ -9,9 +9,8 @@
 #     https://btrfs.readthedocs.io/en/latest/Swapfile.html).
 #   * The "switch to power-saver at N%" trigger lives in the
 #     user-level idled daemon (packages/idled/), not here. This module
-#     publishes `battery.powerSaverPercent` so the (still-pending)
-#     dendritic idle module can read it without going through
-#     variables.nix.
+#     publishes `battery.powerSaverPercent` so flake-modules/idle.nix
+#     can read it without going through a top-level singleton.
 #
 # Pattern A: hosts opt in by importing this module. Hosts without a
 # battery (desktops, VMs) simply don't import it.
@@ -19,8 +18,6 @@
 # Cross-class footprint: NixOS only for now. The companion HM-side
 # `idle` module will read the same top-level `battery.*` options once
 # it migrates.
-#
-# Migrated from modules/nixos/battery.nix.
 { lib, config, ... }:
 let
   cfg = config.battery;
@@ -179,7 +176,7 @@ in
         current=$(awk -F= '/^resume_offset=/ {print $2}' /proc/cmdline 2>/dev/null || true)
         if [ "$current" != "$offset" ]; then
           echo "battery-resume-offset: cmdline has resume_offset=$current but swapfile lives at $offset" >&2
-          echo "battery-resume-offset: edit hosts/laptop/configuration.nix:" >&2
+          echo "battery-resume-offset: edit your host bridge (e.g. flake-modules/hosts/<name>.nix):" >&2
           echo "  boot.kernelParams = [ \"resume_offset=$offset\" ];" >&2
           echo "  then nixos-rebuild switch and reboot once for hibernate-resume to work." >&2
         fi

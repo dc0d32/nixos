@@ -2,7 +2,7 @@
 # this exists (smithay #1892 / niri ext_idle_notifier_v1 breakage).
 #
 # Built from the local source tree. Wired into pkgs.idled via
-# overlays/idled.nix, then consumed by modules/home/desktop/idle.nix as a
+# overlays/idled.nix, then consumed by flake-modules/idle.nix as a
 # user systemd service.
 { lib
 , rustPlatform

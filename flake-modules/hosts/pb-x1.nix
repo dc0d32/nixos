@@ -137,9 +137,7 @@ in
         config.flake.modules.nixos.niri
       ];
 
-      # Host identity + base packages + primary user. These were the
-      # last bits of the legacy hosts/laptop/configuration.nix; folded
-      # in here to eliminate the duplicate level of indirection.
+      # Host identity + base packages + primary user.
       networking.hostName = hostName;
       users.primary = user;
       console.keyMap = "us";
@@ -206,11 +204,10 @@ in
         # config.flake.modules.homeManager.secrets
       ];
 
-      # HM manages itself (last bit from the legacy modules/home/default.nix).
+      # HM manages itself.
       programs.home-manager.enable = true;
 
-      # Per-user session vars (last bit from the legacy
-      # homes/<user>@<host>/home.nix). Editor pinned to nvim because
+      # Per-user session vars. Editor pinned to nvim because
       # flake-modules/neovim.nix sets defaultEditor=true but some shells
       # / terminals don't pick that up via update-alternatives.
       home.sessionVariables = {

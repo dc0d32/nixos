@@ -1,9 +1,6 @@
 # FreeCAD with a "feels like Fusion 360" preference pack, a few staple
 # addons, and a Wayland-native binary.
 #
-# Migrated from modules/home/cad/freecad.nix. Pattern A: importing this
-# module IS enabling it (legacy `cad.freecad.enable` gate dropped).
-#
 # Why the gymnastics
 # ------------------
 # FreeCAD persists user preferences in a runtime-mutable XML file

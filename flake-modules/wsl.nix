@@ -23,7 +23,7 @@
 # sharing; mkForce makes sure those layers don't accidentally
 # re-enable on WSL even if their host file wires them in.
 #
-# Migrated from modules/nixos/wsl.nix. Refactored to drop the
+# Refactored to drop the
 # flake-parts-level `wsl.defaultUser` singleton in favor of a proper
 # per-NixOS-config option.
 { ... }:

@@ -1,10 +1,6 @@
 # alacritty — GPU-accelerated terminal.
 #
 # Pattern A: hosts opt in by importing this module.
-#
-# Migrated from modules/home/terminal/alacritty.nix. The legacy
-# module was unconditional; making it opt-in here is consistent with
-# every other dendritic feature.
 { ... }:
 {
   flake.modules.homeManager.alacritty = {

@@ -5,8 +5,6 @@
 # instead — that one is contributed to home-manager.
 #
 # Pattern A: hosts opt in by importing this module.
-#
-# Migrated from modules/nixos/system-utils.nix.
 { ... }:
 {
   flake.modules.nixos.system-utils = { pkgs, ... }: {

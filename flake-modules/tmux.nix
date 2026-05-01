@@ -2,8 +2,6 @@
 # 256-color/truecolor passthrough, Mod+|/Mod+- splits).
 #
 # No host-supplied data; identical config across hosts that want tmux.
-#
-# Migrated from modules/home/tmux.nix.
 {
   flake.modules.homeManager.tmux = {
     programs.tmux = {

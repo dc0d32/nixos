@@ -1,9 +1,6 @@
 # Cross-platform neovim with sensible defaults, LSP, treesitter, completion,
 # fuzzy finder, git signs, theming. Works on NixOS and macOS.
 #
-# Migrated from modules/home/editor/neovim.nix. Pure-leaf module; no host
-# data, no enable gate (Pattern A: importing IS enabling).
-#
 # Design:
 # - Uses home-manager's programs.neovim (not nixvim) to keep config portable
 #   and readable. Lua lives in a single initLua block.
