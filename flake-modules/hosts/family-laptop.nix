@@ -83,6 +83,10 @@ let
       config.flake.modules.homeManager.chromium-managed
       config.flake.modules.homeManager.fonts
 
+      # Native Zoom client (school meetings; PWA experience is poor).
+      # See flake-modules/zoom.nix.
+      config.flake.modules.homeManager.zoom
+
       # Desktop session (compositor + bar/lockscreen + auto-lock + wallpaper)
       config.flake.modules.homeManager.niri
       config.flake.modules.homeManager.quickshell
@@ -190,6 +194,10 @@ in
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chromium-managed
+        # Steam (system-wide programs.steam.enable). Game/store/chat
+        # restrictions are configured per-Steam-account in Steam's
+        # built-in Family View, not here. See flake-modules/steam.nix.
+        config.flake.modules.nixos.steam
         # ── Secrets (sops-nix) ──
         # Uncomment after bootstrap (see secrets/README.md):
         # config.flake.modules.nixos.secrets
