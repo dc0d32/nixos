@@ -240,3 +240,126 @@ manual systemctl restart that was previously necessary.
   env-import for free (shared homeManager.niri module) but neither
   imports `wallpaper`, so the awww-daemon hardening is a no-op
   there. Confirmed both HM closures still build clean.
+
+## Follow-up (same session, after live verification)
+
+After `home-manager switch` and a niri re-login, two issues
+surfaced that needed follow-on commits.
+
+### easyeffects double-start (commit `a9ac936`)
+
+Predicted side-effect (env-import unblocks easyeffects.service) was
+**wrong** — the unit was still failing, but with a different
+signature than before:
+
+```
+Process: 10765 ExecStart=…/easyeffects --hide-window (code=exited, status=0/SUCCESS)
+…
+easyeffects.service: Scheduled restart job, restart counter is at 10.
+easyeffects.service: Start request repeated too quickly.
+easyeffects.service: Failed with result 'start-limit-hit'.
+```
+
+10 successful exits in <2 seconds — not a Wayland crash. `pgrep`
+revealed the smoking gun:
+
+```
+11009 easyeffects --gapplication-service
+```
+
+That process was launched by niri spawn-at-startup
+(`flake-modules/quickshell.nix:46`, ironically inside the quickshell
+module). The systemd unit defined in `flake-modules/audio.nix:155`
+also tries to launch easyeffects (`--hide-window`). The
+niri-spawned process won the race and claimed the unique-name on
+the session bus; the systemd unit's invocation found the primary
+already there, handed off as a remote-control client, and exited
+status=0 in ~170ms. Combined with `Restart=always` (correct for the
+DSP supervision use case), systemd loops and trips StartLimitBurst.
+
+**Fix**: drop the spawn-at-startup line; the systemd unit is the
+canonical owner per audio.nix's design comments (it IS the primary
+GApplication, owns the unix socket, runs DSP, restarts on
+suspend/resume disconnects). One owner, no race.
+
+The bug was pre-existing — easyeffects had been failing every
+session — but was masked by the fact that the niri-spawned daemon
+was actually doing the audio work. The user only noticed because
+the post-wallpaper-fix verification surfaced the failed unit.
+
+After commit `a9ac936` + activation:
+- killed orphan `easyeffects --gapplication-service` (PID 11009).
+- `Restart=always` immediately spawned a replacement under the
+  systemd unit (PID 23187).
+- `systemctl --user status easyeffects` shows active running, single
+  PID, owned by `easyeffects.service`.
+
+### Python IndentationError in fetch script (commit `a0fcef9`)
+
+Pre-commit `nix fmt` (nixpkgs-fmt) on the wallpaper.nix changes in
+`0007775` rebalanced indentation inside the Nix indented-string
+literal that holds the fetch script. The Python heredoc body
+passed to `python3 -c "…"` ended up 2 columns deeper than the
+surrounding shell statements. Nix's indented-string strip removes
+the **minimum common leading whitespace**, so those 2 columns
+survived into the rendered script:
+
+```sh
+$ cat /nix/store/…-wallpaper-fetch
+…
+json=$(/nix/store/…/curl -fsSL "$api")
+
+  # Pick a random result from the page and extract its image URL
+  img_url=$(echo "$json" | /nix/store/…/python3 -c "
+  import json, sys, random       # ← 2 leading spaces, Python errors
+  …
+```
+
+First post-`home-manager switch` timer fire failed with:
+
+```
+IndentationError: unexpected indent
+wallpaper-fetch.service: Failed with result 'exit-code'.
+```
+
+**Fix**: re-indent lines 71-94 to match the surrounding heredoc
+body (8 spaces, not 10), and add an in-source NOTE comment warning
+future formatters/maintainers off the python heredoc indent.
+
+After commit `a0fcef9` + activation + manual trigger:
+- `wallpaper-fetch.service` exited status=0/SUCCESS in 178ms.
+- `~/.wallpaper/20260501-075113.jpg` fetched, `current.jpg`
+  updated.
+- `systemctl --user is-system-running` reports `running` (was
+  `degraded` before the fix).
+
+### Lesson
+
+`nix fmt` does not understand semantics inside Nix indented
+strings. When such a string contains a whitespace-significant
+embedded language (Python, YAML, Makefile, here-doc-passed shell),
+formatter-induced re-indentation can silently shift the rendered
+content and break it at runtime. Two mitigations going forward:
+
+1. Keep entire heredoc bodies at one consistent indent level,
+   matching the surrounding statements. Mixed indent levels inside
+   the heredoc are a footgun because nixpkgs-fmt may rebalance
+   them in surprising ways.
+2. Add a NOTE comment immediately above any whitespace-significant
+   embedded block, naming the formatter trap explicitly. Done in
+   `wallpaper.nix` for the python heredoc.
+
+A more thorough fix would be to extract embedded languages into
+their own files (`pkgs.writeText` or out-of-band) so the formatter
+never sees them. Not done here because the python is 5 lines and
+extraction would be heavier than the inline footgun. Consider it
+if any embedded block grows past ~20 lines.
+
+### Updated commit list
+
+- `0007775` — niri env-import + awww-daemon hardening +
+  wallpaper-fetch socket poll. (Introduced the python indent bug.)
+- `a9ac936` — drop duplicate easyeffects spawn-at-startup (the
+  systemd unit is the canonical owner).
+- `a0fcef9` — fix python IndentationError in fetch script
+  (re-indent heredoc body, add NOTE comment).
