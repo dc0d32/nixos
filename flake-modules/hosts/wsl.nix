@@ -27,6 +27,10 @@
 #   sudo nixos-rebuild switch --flake .#wsl       # x86_64 Windows
 #   sudo nixos-rebuild switch --flake .#wsl-arm   # Windows on ARM
 #   home-manager switch --flake .#'p@wsl'         # or 'p@wsl-arm'
+#
+# Retire when: both WSL distros are decommissioned (no Windows host
+#   needs a NixOS-in-WSL environment), OR the x86_64/aarch64 split
+#   collapses to a single arch and one of the two configs is dropped.
 { inputs, config, ... }:
 let
   user = "p";

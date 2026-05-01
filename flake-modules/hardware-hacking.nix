@@ -16,6 +16,10 @@
 # Reads `config.users.primary` from the inner NixOS config (declared by
 # flake-modules/users.nix). The previous version read the flake-parts
 # singleton `config.host.user`, which is now retired.
+#
+# Retire when: USB/serial/JTAG/firmware-flashing work is no longer done
+#   from any host in the repo (e.g. all hardware hacking moves to a
+#   dedicated bench machine outside this flake).
 { ... }:
 {
   flake.modules.nixos.hardware-hacking = { config, ... }: {

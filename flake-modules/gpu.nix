@@ -11,6 +11,11 @@
 # hosts simply don't import it. The "none" value exists for hosts
 # that import the module but want a no-op driver setup (e.g. for the
 # hardware.graphics defaults without picking a vendor).
+#
+# Retire when: NixOS upstream auto-detects and configures the right
+#   GPU stack (intel-media / amdgpu / nvidia) such that no per-host
+#   `gpu.driver` selection is needed, OR every host in the repo
+#   converges on a single driver and this dispatcher becomes overkill.
 { lib, config, ... }:
 let
   # Captured from the flake-parts top-level scope. Inside the NixOS

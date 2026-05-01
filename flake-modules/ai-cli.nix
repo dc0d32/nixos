@@ -25,6 +25,10 @@
 #        '';
 # This pattern keeps secret values out of the Nix store; only the file path
 # (a public path under /run/user/<uid>/secrets/) appears in zshrc.
+#
+# Retire when: neither github-copilot-cli nor opencode is part of the daily
+#   workflow, or both are replaced by a different AI CLI surface (e.g. a
+#   single editor-integrated assistant).
 {
   flake.modules.homeManager.ai-cli = { pkgs, ... }: {
     home.packages = with pkgs; [

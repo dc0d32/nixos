@@ -26,6 +26,11 @@
 # Refactored to drop the
 # flake-parts-level `wsl.defaultUser` singleton in favor of a proper
 # per-NixOS-config option.
+#
+# Retire when: WSL2 is no longer the dev environment for any host, OR
+#   Microsoft ships a NixOS-native WSL distribution (or upstream NixOS
+#   absorbs the dc0d32/nixos-aarch64-wsl fork) that makes this wrapper
+#   unnecessary.
 { ... }:
 {
   flake.modules.nixos.wsl = { inputs, lib, pkgs, config, ... }: {

@@ -2,6 +2,10 @@
 # every system that imports this module. Keep this list lean; host-
 # specific extras belong in hosts/<h>/host-packages.nix or the user's
 # home.nix.
+#
+# Retire when: per-project nix shells / devShells fully replace the
+#   need for a user-level baseline toolchain, OR the contents move
+#   into more focused per-language modules.
 {
   flake.modules.homeManager.build-deps = { pkgs, ... }: {
     home.packages = with pkgs; [

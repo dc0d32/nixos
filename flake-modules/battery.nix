@@ -18,6 +18,11 @@
 # Cross-class footprint: NixOS only for now. The companion HM-side
 # `idle` module will read the same top-level `battery.*` options once
 # it migrates.
+#
+# Retire when: no host in the repo runs on battery (all are docked
+#   desktops, VMs, or servers), OR the kernel's charge-threshold sysfs
+#   interface plus UPower hibernate hand-off become a NixOS-native
+#   option that supersedes this module.
 { lib, config, ... }:
 let
   cfg = config.battery;

@@ -10,6 +10,10 @@
 # from inputs.nixos-wsl) can read them from the module function's
 # arguments. The dendritic migration is complete; this is now a
 # permanent piece of substrate.
+#
+# Retire when: dendritic pattern itself is dropped. As long as
+#   flake.modules.nixos.* is the publication channel, this dispatcher
+#   is required.
 { lib, config, inputs, ... }:
 {
   options.configurations.nixos = lib.mkOption {

@@ -3,6 +3,9 @@
 # https://flake.parts/options/flake-parts-modules.html
 #
 # Safe to delete only if/when the dendritic pattern itself is abandoned.
+#
+# Retire when: never. flake-parts is the core abstraction this entire
+#   tree is built on; removing it means rewriting the flake from scratch.
 { inputs, ... }:
 {
   imports = [

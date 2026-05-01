@@ -4,6 +4,10 @@
 # Pattern A: hosts opt in by importing this module. WSL hosts simply
 # don't import it. No options needed — the policy here is uniform
 # across hosts that want it.
+#
+# Retire when: NixOS upstream's logind defaults match this lid/power
+#   policy out of the box, OR power management moves to a host-specific
+#   module because the uniform policy stops fitting every box.
 { ... }:
 {
   flake.modules.nixos.power = { lib, ... }: {

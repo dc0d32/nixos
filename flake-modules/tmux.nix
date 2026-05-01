@@ -2,6 +2,10 @@
 # 256-color/truecolor passthrough, Mod+|/Mod+- splits).
 #
 # No host-supplied data; identical config across hosts that want tmux.
+#
+# Retire when: tmux is dropped from the daily workflow, or replaced by
+#   a different multiplexer (e.g. zellij, screen) on every host that
+#   imports it.
 {
   flake.modules.homeManager.tmux = {
     programs.tmux = {

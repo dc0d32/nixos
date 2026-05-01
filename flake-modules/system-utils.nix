@@ -5,6 +5,10 @@
 # instead — that one is contributed to home-manager.
 #
 # Pattern A: hosts opt in by importing this module.
+#
+# Retire when: NixOS upstream's default systemPackages cover the
+#   recovery/partitioning baseline, OR this list is split into more
+#   focused modules (e.g. a dedicated `recovery-tools`, `fs-tools`).
 { ... }:
 {
   flake.modules.nixos.system-utils = { pkgs, ... }: {

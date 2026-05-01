@@ -15,6 +15,10 @@
 # Pattern A: hosts opt in by importing this module. Tied to the
 # niri user session because spawn-at-startup is a niri-specific
 # option; non-desktop hosts simply don't import this.
+#
+# Retire when: niri is replaced by a compositor that ships its own
+#   polkit agent (e.g. KDE/GNOME), OR hyprpolkitagent is superseded by
+#   a maintained Wayland-native alternative we'd rather use.
 { ... }:
 {
   flake.modules.homeManager.polkit-agent = { pkgs, lib, ... }: {

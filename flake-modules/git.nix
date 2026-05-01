@@ -23,6 +23,10 @@
 # the main user.* block).
 #
 # Cross-class footprint: home-manager only (one user per host).
+#
+# Retire when: git is no longer the SCM in use (e.g. jj/sapling takes
+#   over), OR identity propagation moves into a dedicated identity
+#   module shared across services beyond just git.
 { lib, config, ... }:
 let
   cfg = config.git;

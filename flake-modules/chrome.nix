@@ -4,6 +4,10 @@
 #
 # Pattern A: hosts opt in by importing this module. Darwin hosts
 # simply don't import it.
+#
+# Retire when: Chrome is no longer needed on any host, or replaced by
+#   a different browser as the daily driver (e.g. Firefox, Brave,
+#   Chromium with a different flag set).
 { ... }:
 {
   flake.modules.homeManager.chrome = { pkgs, ... }: {

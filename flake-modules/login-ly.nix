@@ -7,6 +7,10 @@
 # Niri (or any other Wayland/X session module) provides its own
 # wayland-sessions/.desktop entry; ly will list whatever's available
 # automatically.
+#
+# Retire when: ly is replaced by a different display manager (gdm,
+#   sddm, greetd+tuigreet) on every host that imports it, OR auto-login
+#   straight into the Wayland session removes the need for a DM at all.
 { ... }:
 {
   flake.modules.nixos.login-ly = { lib, ... }: {

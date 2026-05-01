@@ -14,6 +14,12 @@
 # No upstream dendritic example for this — modeled on ./nixos.nix.
 # Permanent substrate: required for as long as we want standalone HM
 # (i.e. the option of running on macOS without nix-darwin).
+#
+# Retire when: never, while standalone home-manager is supported. As
+#   long as `flake.homeConfigurations.<name>` is the publication
+#   channel for HM, this dispatcher is required. Would only go away
+#   if HM were folded into NixOS-as-a-module everywhere (which AGENTS.md
+#   explicitly forbids).
 { lib, config, inputs, ... }:
 {
   options.configurations.homeManager = lib.mkOption {

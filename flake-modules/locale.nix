@@ -6,6 +6,11 @@
 #
 # mkDefault on both settings so WSL / hosts can override cleanly even
 # when the option is set here.
+#
+# Retire when: NixOS upstream gains a first-class per-host locale/tz
+#   preset that supersedes a hand-rolled options module, OR every host
+#   in the repo converges on identical timezone+lang and the indirection
+#   stops earning its keep.
 { lib, config, ... }:
 let
   # Capture from outer flake-parts scope; the inner NixOS module's

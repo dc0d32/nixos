@@ -11,6 +11,10 @@
 # To add a feature: write flake-modules/<feature>.nix that contributes
 # to flake.modules.<class>.<feature>, then add a line to the
 # `imports = [ … ]` list below for whichever class it belongs to.
+#
+# Retire when: this host is decommissioned, replaced by a successor
+#   (e.g. pb-x2 / a different Lenovo gen), or its role merges with
+#   another host bridge.
 { inputs, lib, config, ... }:
 let
   hostName = "pb-x1";

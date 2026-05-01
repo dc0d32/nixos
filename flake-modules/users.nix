@@ -14,6 +14,10 @@
 # Pattern A: hosts opt in by importing this module. Currently every
 # host does, because `users.defaultUserShell = pkgs.zsh` is a
 # precondition for the rest of the modules to compose cleanly.
+#
+# Retire when: NixOS gains a first-class per-host "primary user"
+#   option upstream, OR every consumer of users.primary is refactored
+#   to look up the user some other way.
 { ... }:
 {
   flake.modules.nixos.users = { lib, pkgs, ... }: {

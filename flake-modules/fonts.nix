@@ -15,6 +15,11 @@
 # `pkgs.nerdfonts.override { fonts = [ ... ]; }` aggregate to
 # individual attrs under `pkgs.nerd-fonts.<name>` in nixpkgs. Retire
 # this comment once we're well past that transition.
+#
+# Retire when: the chosen font stack (Rec Mono / Inter / Noto / nerd
+#   variants) changes substantially, OR NixOS upstream ships sane
+#   default mono/sans/serif/emoji families and a fontconfig rendering
+#   policy that match what this module produces.
 { lib, ... }:
 {
   flake.modules.nixos.fonts = { pkgs, ... }: {

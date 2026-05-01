@@ -12,6 +12,10 @@
 # flake-modules/biometrics.nix (security.polkit.extraConfig +
 # security.pam.services.bitwarden), because it must register at the
 # system level for polkit to find it.
+#
+# Retire when: Bitwarden is replaced by a different password manager
+#   (e.g. 1Password, KeePassXC), OR every host migrates to the
+#   Bitwarden web/PWA client and the desktop app is no longer wanted.
 { ... }:
 {
   flake.modules.homeManager.bitwarden = { pkgs, ... }: {

@@ -14,6 +14,11 @@
 # (e.g. the recurring nvim-treesitter-legacy one) on every rebuild.
 # Pinned nixos-unstable: we deliberately update inputs and don't need
 # the shims.
+#
+# Retire when: NixOS upstream defaults converge on flakes-on, weekly-GC,
+#   store-optimisation, and allowAliases-off such that this opinionated
+#   wrapper stops adding value, OR the repo-wide overlays move to a
+#   different injection point.
 { ... }:
 {
   flake.modules.nixos.nix-settings = { lib, ... }: {

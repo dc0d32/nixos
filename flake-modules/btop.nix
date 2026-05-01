@@ -1,4 +1,7 @@
 # btop — cross-platform system / process monitor with TTY-friendly theme.
+#
+# Retire when: btop is no longer used / dropped from the daily workflow,
+#   or replaced by a different process monitor (e.g. htop, bottom).
 {
   flake.modules.homeManager.btop = {
     programs.btop = {
