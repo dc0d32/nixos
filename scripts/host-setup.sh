@@ -265,7 +265,10 @@ mount_subvol() {
 
     if mountpoint -q "$target"; then
         local cur_src cur_subvol
-        cur_src=$(findmnt -no SOURCE "$target")
+        # --nofsroot strips the "[/subvol]" annotation findmnt
+        # otherwise appends to btrfs SOURCE, so the comparison to
+        # the bare $P2 path actually works.
+        cur_src=$(findmnt --nofsroot -no SOURCE "$target")
         cur_subvol=$(findmnt -no FSROOT "$target" | sed 's|^/||')
         if [[ "$cur_src" == "$P2" && "$cur_subvol" == "$subvol" ]]; then
             echo "  ok: $target already mounted ($P2 subvol=$subvol)"
@@ -289,7 +292,7 @@ mount_esp() {
 
     if mountpoint -q "$target"; then
         local cur_src
-        cur_src=$(findmnt -no SOURCE "$target")
+        cur_src=$(findmnt --nofsroot -no SOURCE "$target")
         if [[ "$cur_src" == "$P1" ]]; then
             echo "  ok: $target already mounted ($P1)"
             return 0
@@ -675,8 +678,22 @@ do_install() {
         echo "       expected /dev/disk/by-uuid/<uuid> for fileSystems.\"/\".device" >&2
         abort_revert
     fi
-    mnt_dev=$(findmnt -no SOURCE /mnt)
-    mnt_uuid=$(blkid -s UUID -o value "$mnt_dev")
+    # findmnt's default SOURCE output annotates btrfs subvolumes as
+    # "/dev/foo[/subvol]". --nofsroot strips the bracketed part so
+    # blkid gets a bare device path. Without this, blkid gets handed
+    # "/dev/nvme0n1p2[/root]", returns empty + exit 2, set -e fires,
+    # script dies silently mid-substitution.
+    mnt_dev=$(findmnt --nofsroot -no SOURCE /mnt)
+    if [[ -z "$mnt_dev" ]]; then
+        echo "error: findmnt --nofsroot -no SOURCE /mnt returned empty" >&2
+        abort_revert
+    fi
+    mnt_uuid=$(blkid -s UUID -o value "$mnt_dev" 2>/dev/null || true)
+    if [[ -z "$mnt_uuid" ]]; then
+        echo "error: blkid could not read UUID from $mnt_dev" >&2
+        echo "       (does the device have a recognised filesystem signature?)" >&2
+        abort_revert
+    fi
     # Strip the "/dev/disk/by-uuid/" prefix if present, so we can
     # compare bare UUIDs.
     nix_root_uuid="${nix_root_dev#/dev/disk/by-uuid/}"
