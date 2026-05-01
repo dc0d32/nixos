@@ -6,9 +6,14 @@
 #     a WirePlumber rule that caps output volume at 100% to prevent
 #     digital clipping via the volume slider/keybinds.
 #   - flake.modules.homeManager.audio — EasyEffects + plugin libs,
-#     deploys per-host preset JSON, IRS impulse responses, and an
-#     autoload rule that applies the chosen preset when the configured
-#     sink appears.
+#     deploys per-host preset JSON, IRS impulse responses, an autoload
+#     rule that applies the chosen preset when the configured sink
+#     appears, and a user systemd service that runs EasyEffects with
+#     --hide-window so the audio DSP keeps running across window-close,
+#     suspend/resume, and Wayland reconnect events. Open the GUI on
+#     demand by running `easyeffects` (no flags); closing the window
+#     leaves the daemon alive because it's the GApplication primary,
+#     and the launched UI is just a remote that exits when dismissed.
 #
 # Pattern A: hosts opt in by importing this module on either class.
 # WSL / headless / desktops without speakers simply don't import the
@@ -20,6 +25,10 @@
 # preset and IRS dirs are paths into the host's own directory (e.g.
 # hosts/laptop/audio-presets/) so they ship with the host they
 # describe.
+#
+# Retire when: you switch off EasyEffects entirely (e.g. moving DSP
+# into native PipeWire filter graphs), or upstream EasyEffects starts
+# shipping its own systemd unit and we can drop the inline one.
 #
 # Migrated from modules/nixos/audio/pipewire.nix and
 # modules/home/audio/easyeffects.nix.
@@ -117,6 +126,69 @@ in
       pkgs.deepfilternet
       pkgs.speexdsp
     ];
+
+    # Run EasyEffects as a supervised user service with a hidden
+    # window. Background:
+    #   - Easy Effects 8.x (Qt port) exits when its window closes; the
+    #     audio processing dies with the GUI.
+    #   - On suspend / niri restart / pipewire reconnect storm, the
+    #     Wayland connection breaks ("The Wayland connection broke. Did
+    #     the Wayland compositor die?") and the process exits cleanly.
+    #     With no supervisor it just stays dead and your audio loses
+    #     all DSP until you remember to relaunch.
+    #   - --service-mode and --gapplication-service are *remote-control*
+    #     flags: they connect to /run/user/$UID/EasyEffectsServer on an
+    #     existing primary instance, send a "be in service mode"
+    #     message, and exit. Used as the unit's ExecStart they exit in
+    #     ~170 ms with status 0 and the unit goes inactive. So we don't
+    #     use them.
+    # Instead we run plain `easyeffects --hide-window`. The unit IS
+    # the primary GApplication: it owns the unix socket, runs DSP, and
+    # never shows a window. Subsequent invocations of `easyeffects`
+    # (e.g. from the desktop entry) connect to this primary as remotes,
+    # show the GUI, and exit on close without taking the daemon with
+    # them.
+    #
+    # The wireplumber + pipewire user services live in
+    # services.pipewire on the NixOS side; we only need to wait on
+    # them here. graphical-session.target ensures we stop on logout.
+    systemd.user.services.easyeffects = {
+      Unit = {
+        Description = "Easy Effects (audio DSP daemon)";
+        After = [
+          "pipewire.service"
+          "wireplumber.service"
+          "graphical-session.target"
+        ];
+        Wants = [
+          "pipewire.service"
+          "wireplumber.service"
+        ];
+        PartOf = [ "graphical-session.target" ];
+        # Bound the restart loop: 10 attempts in 5 minutes, then give
+        # up and let the user investigate. StartLimit* keys live in
+        # [Unit], not [Service] — systemd warns and ignores them
+        # otherwise.
+        StartLimitBurst = 10;
+        StartLimitIntervalSec = 300;
+      };
+
+      Service = {
+        Type = "exec";
+        ExecStart = "${pkgs.easyeffects}/bin/easyeffects --hide-window";
+        # Restart on ANY exit, including clean (status 0) exits. The
+        # Wayland-disconnect path on suspend/resume and the
+        # `easyeffects --quit` remote-control flag both cause the
+        # primary to exit cleanly; with Restart=on-failure the
+        # supervisor would let DSP stay dead. The StartLimitBurst cap
+        # in [Unit] bounds runaway loops if pipewire is genuinely
+        # broken.
+        Restart = "always";
+        RestartSec = 3;
+      };
+
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
 
     # EasyEffects (newer versions) stores presets and IRS under
     # ~/.local/share/easyeffects/. Deploying to ~/.config/easyeffects/
