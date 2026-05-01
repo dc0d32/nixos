@@ -173,6 +173,13 @@ in
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
+    # Marked placeholder until the real hardware-configuration.nix is
+    # generated on the actual laptop. The auto-check skips placeholders
+    # so pure `nix flake check` keeps passing on the dev box. To
+    # smoke-build anyway:
+    #   NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
+    #     .#nixosConfigurations.family-laptop.config.system.build.toplevel
+    placeholder = true;
     module = {
       imports = [
         ../../hosts/family-laptop/hardware-configuration.nix

@@ -181,10 +181,19 @@ in
   };
 
   # NixOS configurations -- one per (name, system) pair.
+  # All ah-N hosts are placeholders until their VMs are provisioned and
+  # `nixos-generate-config` overwrites their hardware-configuration.nix.
+  # The auto-check skips placeholders so pure `nix flake check` keeps
+  # passing on the dev box. To smoke-build anyway:
+  #   NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
+  #     .#nixosConfigurations.ah-1.config.system.build.toplevel
   configurations.nixos = builtins.listToAttrs (map
     ({ name, system }: {
       inherit name;
-      value.module = mkNixosModule { inherit name system; };
+      value = {
+        placeholder = true;
+        module = mkNixosModule { inherit name system; };
+      };
     })
     hosts);
 

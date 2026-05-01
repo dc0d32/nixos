@@ -21,13 +21,35 @@ home-manager switch --flake .#'p@pb-x1'
 # Format
 nix fmt
 
-# Evaluate without building
+# Evaluate without building (use --impure if any host is a placeholder;
+# see "Placeholder hosts" below)
 nix flake check
+NIXOS_ALLOW_PLACEHOLDER=1 nix flake check --impure
 
 # Agent-side smoke build (no activation, no sudo)
 nix build .#nixosConfigurations.pb-x1.config.system.build.toplevel
 nix build .#homeConfigurations.'p@pb-x1'.activationPackage
+
+# Smoke-build a placeholder host (family-laptop, ah-1):
+NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
+    .#nixosConfigurations.family-laptop.config.system.build.toplevel
 ```
+
+## Placeholder hosts
+
+Hosts whose `hosts/<name>/hardware-configuration.nix` is the all-zeros
+sentinel (currently `family-laptop` and `ah-1`) carry an assertion
+that aborts evaluation of `system.build.toplevel` unless
+`NIXOS_ALLOW_PLACEHOLDER=1` is in the environment. This keeps a real
+`sudo nixos-rebuild switch` from accidentally activating an unbootable
+config, while still letting smoke-builds proceed on a dev machine.
+
+The host bridge marks the config with `placeholder = true;` so the
+auto-generated `flake.checks.<system>.configurations:nixos:<name>`
+entry is filtered out — but `nix flake check` itself also walks every
+entry in `nixosConfigurations`, which is built-in CLI behavior we
+can't suppress. Use `--impure` for `nix flake check` while any host
+is still placeholder.
 
 ## Architecture
 

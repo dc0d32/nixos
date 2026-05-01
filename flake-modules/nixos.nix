@@ -31,6 +31,19 @@
               `inputs` is always added.
             '';
           };
+          placeholder = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Mark this configuration as a placeholder (its
+              hardware-configuration.nix is the all-zeros sentinel).
+              The auto-generated `checks.<system>.configurations:nixos:<name>`
+              entry is skipped so pure `nix flake check` still passes.
+              Smoke-build with `nix build --impure
+              .#nixosConfigurations.<name>.config.system.build.toplevel`
+              and NIXOS_ALLOW_PLACEHOLDER=1.
+            '';
+          };
         };
       }
     );
@@ -39,7 +52,7 @@
 
   config.flake = {
     nixosConfigurations = lib.flip lib.mapAttrs config.configurations.nixos (
-      _name: { module, specialArgs }: lib.nixosSystem {
+      _name: { module, specialArgs, ... }: lib.nixosSystem {
         specialArgs = { inherit inputs; } // specialArgs;
         modules = [ module ];
       }
@@ -47,7 +60,9 @@
   };
 
   config.perSystem = { system, ... }: {
-    checks = lib.pipe config.flake.nixosConfigurations [
+    checks = lib.pipe config.configurations.nixos [
+      (lib.filterAttrs (_name: cfg: !cfg.placeholder))
+      (lib.mapAttrs (name: _cfg: config.flake.nixosConfigurations.${name}))
       (lib.filterAttrs (_name: nixos: nixos.config.nixpkgs.hostPlatform.system == system))
       (lib.mapAttrs' (name: nixos: lib.nameValuePair "configurations:nixos:${name}" nixos.config.system.build.toplevel))
     ];
