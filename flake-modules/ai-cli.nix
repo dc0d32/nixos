@@ -10,21 +10,10 @@
 # - opencode: this very tool. Config lives at ~/.config/opencode/.
 #
 # API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc) are NOT installed here.
-# Hosts that need them should:
-#   1. Import config.flake.modules.homeManager.secrets (and set
-#      secrets.{ageKeyFile,commonFile} per flake-modules/secrets.nix).
-#   2. Declare the secrets in their host bridge:
-#        sops.secrets.openai_api_key    = {};
-#        sops.secrets.anthropic_api_key = {};
-#   3. Source the decrypted files into the shell, e.g.:
-#        programs.zsh.initContent = lib.mkAfter ''
-#          [ -r ${config.sops.secrets.openai_api_key.path} ] && \
-#            export OPENAI_API_KEY="$(cat ${config.sops.secrets.openai_api_key.path})"
-#          [ -r ${config.sops.secrets.anthropic_api_key.path} ] && \
-#            export ANTHROPIC_API_KEY="$(cat ${config.sops.secrets.anthropic_api_key.path})"
-#        '';
-# This pattern keeps secret values out of the Nix store; only the file path
-# (a public path under /run/user/<uid>/secrets/) appears in zshrc.
+# These tools authenticate via gh (`gh auth login`) or read keys from the
+# user's shell environment / app keystores. There is no secrets framework
+# in this repo today (see AGENTS.md); export keys from ~/.zshenv or a
+# similar untracked dotfile until a secrets module is wired.
 #
 # Retire when: neither github-copilot-cli nor opencode is part of the daily
 #   workflow, or both are replaced by a different AI CLI surface (e.g. a

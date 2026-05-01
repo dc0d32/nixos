@@ -37,19 +37,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # sops-nix — declarative secret decryption at activation time, both
-    # NixOS-scope (/run/secrets) and home-manager-scope
-    # (~/.config/sops-nix/secrets). Wired from flake-modules/secrets.nix.
-    sops-nix = {
-      url = "github:Mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # git-hooks.nix — declarative pre-commit hooks. We use it to wire
     # gitleaks (secret scanner) into every commit, since this repo is
-    # public and a leaked plaintext API key / age private key would be
-    # immediately scraped by GitHub's bot ecosystem. Wired from
-    # flake-modules/dev-shell.nix.
+    # public and a leaked plaintext API key would be immediately scraped
+    # by GitHub's bot ecosystem. Wired from flake-modules/dev-shell.nix.
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";

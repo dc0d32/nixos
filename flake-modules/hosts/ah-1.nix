@@ -104,8 +104,7 @@ let
     boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
 
     # Service-account user. Throwaway initial password; rotate on
-    # first login or replace with sops-managed hashedPasswordFile
-    # once secrets are bootstrapped (see secrets/README.md).
+    # first login.
     users.users.${user} = {
       isNormalUser = true;
       description = user;

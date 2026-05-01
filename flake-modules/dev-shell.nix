@@ -24,8 +24,10 @@
 #   - gitleaks      : scans staged content for secrets (API keys, age private
 #                     keys, AWS creds, etc). REPO IS PUBLIC — a leaked token
 #                     gets scraped within minutes of pushing, so this is the
-#                     last line of defense before sops-encrypted secrets land
-#                     in `secrets/*.yaml`.
+#                     last line of defense against an accidental paste of an
+#                     API key, password, or other credential into a tracked
+#                     file. Stays useful even though the repo currently has
+#                     no secrets framework wired (see AGENTS.md).
 #   - nixpkgs-fmt   : keeps `.nix` formatting consistent with `nix fmt`.
 #
 # To activate the hooks, enter the devShell once (`nix develop` or, if you use

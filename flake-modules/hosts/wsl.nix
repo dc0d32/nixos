@@ -107,28 +107,6 @@ in
     email = "CHANGEME@example.com";
   };
 
-  # ── Secrets (sops-nix) — opt-in ─────────────────────────────────
-  # Uncomment after running the bootstrap in secrets/README.md.
-  # NixOS-side sops on WSL is awkward (no boot-time activation in WSL2),
-  # so this host uses HM-side secrets only.
-  #
-  # Bootstrap inside each WSL distro:
-  #   mkdir -p ~/.config/sops/age
-  #   nix shell nixpkgs#age -c age-keygen -o ~/.config/sops/age/keys.txt
-  #   chmod 600 ~/.config/sops/age/keys.txt
-  # then add the printed public key to .sops.yaml's personal recipients
-  # and re-encrypt secrets/common.yaml. Then:
-  #   1. Drop the literal git.name / git.email above and use
-  #      `git.identityFile = config.sops.secrets.git_identity.path;`
-  #      inside hmModule below (where `config` is the HM-side config).
-  #   2. Add `config.flake.modules.homeManager.secrets` to hmModule's
-  #      `imports` list.
-  #   3. Set the values here:
-  # secrets = {
-  #   ageKeyFile = "/home/p/.config/sops/age/keys.txt";
-  #   commonFile = ../../secrets/common.yaml;
-  # };
-
   locale = {
     timezone = "America/Los_Angeles";
     lang = "en_US.UTF-8";

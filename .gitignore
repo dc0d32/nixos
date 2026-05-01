@@ -6,10 +6,6 @@ result-*
 .DS_Store
 .claude/settings.local.json
 
-# sops-nix private keys — must NEVER be committed.
-# These paths are conventional locations sops-nix reads from. We don't
-# expect them to ever appear inside the repo, but a `git add .` from the
-# wrong directory could pull them in. Belt + suspenders.
-*age/keys.txt
-key.txt
-*.age
+# git-hooks.nix shellHook materializes a .pre-commit-config.yaml symlink
+# pointing into the nix store. Local-only artifact; not part of the flake.
+.pre-commit-config.yaml

@@ -44,18 +44,6 @@ in
     email = "CHANGEME@example.com";
   };
 
-  # ── Secrets (sops-nix) — opt-in ─────────────────────────────────
-  # Uncomment after running the bootstrap in secrets/README.md, then:
-  #   1. Drop the literal git.name / git.email above and use
-  #      `git.identityFile = config.sops.secrets.git_identity.path;`
-  #      inside the `module = { ... }` block of the homeManager config below
-  #      (where `config` resolves to the HM-side config).
-  #   2. Set the values here:
-  # secrets = {
-  #   ageKeyFile = "/home/${user}/.config/sops/age/keys.txt";
-  #   commonFile = ../../secrets/common.yaml;
-  # };
-
   gpu.driver = "intel";
 
   locale = {
@@ -173,9 +161,6 @@ in
         # Host-specific delta on top of the desktop bundle:
         # the X1-Yoga-7 has audio presets only valid on this hardware.
         config.flake.modules.homeManager.audio
-        # ── Secrets (sops-nix) ──
-        # Uncomment after bootstrap (see secrets/README.md):
-        # config.flake.modules.homeManager.secrets
       ];
 
       # HM manages itself.

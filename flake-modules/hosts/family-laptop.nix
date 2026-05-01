@@ -88,17 +88,6 @@ in
     email = "CHANGEME@example.com";
   };
 
-  # ── Secrets (sops-nix) — opt-in ─────────────────────────────────
-  # Uncomment after running the bootstrap in secrets/README.md.
-  # The 3 user password hashes (p, m, s) live in secrets/family-laptop.yaml
-  # under keys users_p_password_hash, users_m_password_hash, users_s_password_hash.
-  # secrets = {
-  #   ageKeyFile       = "/home/${primaryUser}/.config/sops/age/keys.txt";
-  #   systemAgeKeyFile = "/var/lib/sops-nix/key.txt";
-  #   commonFile       = ../../secrets/common.yaml;
-  #   hostFile         = ../../secrets/family-laptop.yaml;
-  # };
-
   # GPU driver is a guess — revisit after generating real hardware-config.
   gpu.driver = "intel";
 
@@ -174,9 +163,6 @@ in
         # restrictions are configured per-Steam-account in Steam's
         # built-in Family View, not here. See flake-modules/steam.nix.
         config.flake.modules.nixos.steam
-        # ── Secrets (sops-nix) ──
-        # Uncomment after bootstrap (see secrets/README.md):
-        # config.flake.modules.nixos.secrets
       ];
 
       networking.hostName = hostName;
@@ -200,17 +186,7 @@ in
       #           for them too (idled reads /dev/input/event*).
       #
       # Initial passwords are throwaway literals (`changeme`); rotate them
-      # with `passwd` on first login. Once secrets are bootstrapped (see
-      # secrets/README.md), replace each `initialPassword = "changeme"` with:
-      #   hashedPasswordFile = config.sops.secrets.users_${user}_password_hash.path;
-      # and declare the secrets in this module:
-      #   sops.secrets = {
-      #     users_p_password_hash = { neededForUsers = true; };
-      #     users_m_password_hash = { neededForUsers = true; };
-      #     users_s_password_hash = { neededForUsers = true; };
-      #   };
-      # `neededForUsers` puts the secret at /run/secrets-for-users/, which is
-      # available before the user-creation activation script runs.
+      # with `passwd` on first login.
       users.users =
         {
           ${primaryUser} = {
@@ -253,11 +229,7 @@ in
       "${primaryUser}@${hostName}" = {
         pkgs = hmPkgs;
         module = {
-          imports = config.flake.lib.bundles.homeManager.desktop ++ [
-            # ── Secrets (sops-nix) ──
-            # Uncomment after bootstrap (see secrets/README.md):
-            # config.flake.modules.homeManager.secrets
-          ];
+          imports = config.flake.lib.bundles.homeManager.desktop;
 
           programs.home-manager.enable = true;
 
