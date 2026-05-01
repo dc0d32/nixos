@@ -7,9 +7,9 @@
 # pb-x1 and pb-t480.
 #
 # = dev ++ [
-#     alacritty bitwarden chrome desktop-extras fonts freecad
-#     hardware-hacking idle niri polkit-agent quickshell vscode
-#     wallpaper
+#     alacritty bitwarden bluetooth chrome desktop-extras fonts
+#     freecad hardware-hacking idle niri polkit-agent quickshell
+#     vscode wallpaper
 #   ]
 #
 # Adding a new module that should appear on every adult desktop:
@@ -25,6 +25,7 @@
     ++ (with config.flake.modules.homeManager; [
       alacritty
       bitwarden
+      bluetooth
       chrome
       desktop-extras
       fonts

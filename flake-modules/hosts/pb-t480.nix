@@ -176,6 +176,7 @@ in
         config.flake.modules.nixos.fonts
         config.flake.modules.nixos.locale
         config.flake.modules.nixos.battery
+        config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr

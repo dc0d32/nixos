@@ -9,6 +9,7 @@
 #
 # Members (parallel to base+desktop, intentionally):
 #   - alacritty, btop, neovim, zsh         minimal CLI surface
+#   - bluetooth                            blueman applet for tray pairing
 #   - chromium-managed                     policy-restricted browser
 #   - desktop-extras, fonts                desktop niceties
 #   - idle, niri, polkit-agent, quickshell, wallpaper   compositor stack
@@ -22,6 +23,7 @@
 {
   flake.lib.bundles.homeManager.kid = with config.flake.modules.homeManager; [
     alacritty
+    bluetooth
     btop
     chromium-managed
     desktop-extras
