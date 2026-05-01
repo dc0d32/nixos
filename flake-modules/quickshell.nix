@@ -42,8 +42,17 @@
       QUICKSHELL_LOCK_FINGERPRINT = if config.biometrics.enable then "1" else "";
     };
 
+    # easyeffects is intentionally NOT spawned here; the canonical owner
+    # is `systemd.user.services.easyeffects` in flake-modules/audio.nix
+    # (Restart=always, primary GApplication, owns the unix socket and
+    # runs DSP). If we ALSO spawn `easyeffects --gapplication-service`
+    # from niri, the niri-spawned process wins the race, then the
+    # systemd unit's `easyeffects --hide-window` invocation finds the
+    # primary already on the bus, hands off as a remote, and exits
+    # cleanly. Restart=always then loops it 10x and trips
+    # StartLimitBurst, leaving the unit failed even though DSP is
+    # actually running. One owner, no race.
     programs.niri.settings.spawn-at-startup = lib.mkAfter [
-      { command = [ "easyeffects" "--gapplication-service" ]; }
       { command = [ "quickshell" ]; }
     ];
   };
