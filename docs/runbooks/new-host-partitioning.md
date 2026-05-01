@@ -5,16 +5,16 @@ layout as `pb-x1`. Adapted from the live layout on this machine
 (2026-05-01); update if the substrate diverges.
 
 > **Tip:** the manual partition + mount + install sequence in this
-> document is also encoded as `scripts/mount-host.sh`. From the live
+> document is also encoded as `scripts/host-setup.sh`. From the live
 > USB, the full install reduces to:
 >
 > ```sh
-> sudo scripts/mount-host.sh /dev/nvme0n1 --partition  # destructive: wipe + format + mount
+> sudo scripts/host-setup.sh /dev/nvme0n1 --partition  # destructive: wipe + format + mount
 > # or, if disk is already partitioned:
-> sudo scripts/mount-host.sh /dev/nvme0n1              # mount-only, idempotent
+> sudo scripts/host-setup.sh /dev/nvme0n1              # mount-only, idempotent
 >
 > # then, in the cloned flake repo:
-> sudo scripts/mount-host.sh --install pb-t480         # gen hwconfig + git add + verify + nixos-install
+> sudo scripts/host-setup.sh --install pb-t480         # gen hwconfig + git add + verify + nixos-install
 > ```
 >
 > The `--install` mode regenerates `hosts/<hostname>/hardware-configuration.nix`,

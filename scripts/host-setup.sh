@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mount-host.sh — install-time helpers for this flake's hosts.
+# host-setup.sh — install-time setup for this flake's hosts.
 #
 # Three modes, picked by flag:
 #
@@ -23,10 +23,10 @@
 #   doesn't count" rule from AGENTS.md into one auditable script.
 #
 # Usage:
-#   sudo ./scripts/mount-host.sh /dev/nvme0n1                # mount-only
-#   sudo ./scripts/mount-host.sh /dev/nvme0n1 --partition    # destructive
-#   sudo ./scripts/mount-host.sh --install pb-t480           # full install
-#   sudo ./scripts/mount-host.sh --help
+#   sudo ./scripts/host-setup.sh /dev/nvme0n1                # mount-only
+#   sudo ./scripts/host-setup.sh /dev/nvme0n1 --partition    # destructive
+#   sudo ./scripts/host-setup.sh --install pb-t480           # full install
+#   sudo ./scripts/host-setup.sh --help
 #
 # Layout assumed (matches docs/runbooks/new-host-partitioning.md):
 #   p1: 1 GiB vfat ESP                    → /mnt/boot
