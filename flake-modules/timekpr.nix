@@ -92,7 +92,8 @@ let
   renderAllowedHours = window:
     let
       m = builtins.match "([0-9]+):([0-9]+)-([0-9]+):([0-9]+)" window;
-      _ = if m == null
+      _ =
+        if m == null
         then throw "timekpr: allowedHours must match HH:MM-HH:MM, got: ${window}"
         else null;
       # Strip leading zeros before lib.toInt — it rejects "06" as
@@ -101,11 +102,12 @@ let
       stripZeros = s:
         let s' = lib.removePrefix "0" s;
         in if s' == "" then "0"
-           else if lib.hasPrefix "0" s' then stripZeros s'
-           else s';
+        else if lib.hasPrefix "0" s' then stripZeros s'
+        else s';
       startH = lib.toInt (stripZeros (builtins.elemAt m 0));
       endH = lib.toInt (stripZeros (builtins.elemAt m 2));
-      _check = if startH < 0 || startH > 23 || endH < 0 || endH > 24 || startH >= endH
+      _check =
+        if startH < 0 || startH > 23 || endH < 0 || endH > 24 || startH >= endH
         then throw "timekpr: allowedHours invalid range: ${window}"
         else null;
       hours = lib.range startH (endH - 1);

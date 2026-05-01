@@ -44,6 +44,16 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # git-hooks.nix — declarative pre-commit hooks. We use it to wire
+    # gitleaks (secret scanner) into every commit, since this repo is
+    # public and a leaked plaintext API key / age private key would be
+    # immediately scraped by GitHub's bot ecosystem. Wired from
+    # flake-modules/dev-shell.nix.
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:

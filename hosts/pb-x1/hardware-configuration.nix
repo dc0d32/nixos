@@ -5,7 +5,8 @@
 
 {
   imports =
-    [ (modulesPath + "/installer/scan/not-detected.nix")
+    [
+      (modulesPath + "/installer/scan/not-detected.nix")
     ];
 
   boot.initrd.availableKernelModules = [ "xhci_pci" "thunderbolt" "nvme" ];
@@ -14,25 +15,29 @@
   boot.extraModulePackages = [ ];
 
   fileSystems."/" =
-    { device = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
+    {
+      device = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
       fsType = "btrfs";
       options = [ "subvol=root" ];
     };
 
   fileSystems."/nix" =
-    { device = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
+    {
+      device = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
       fsType = "btrfs";
       options = [ "subvol=nix" ];
     };
 
   fileSystems."/home" =
-    { device = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
+    {
+      device = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
       fsType = "btrfs";
       options = [ "subvol=home" ];
     };
 
   fileSystems."/boot" =
-    { device = "/dev/disk/by-uuid/A128-EA3F";
+    {
+      device = "/dev/disk/by-uuid/A128-EA3F";
       fsType = "vfat";
       options = [ "fmask=0022" "dmask=0022" ];
     };

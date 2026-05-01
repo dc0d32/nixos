@@ -5,3 +5,11 @@ result-*
 *.swp
 .DS_Store
 .claude/settings.local.json
+
+# sops-nix private keys — must NEVER be committed.
+# These paths are conventional locations sops-nix reads from. We don't
+# expect them to ever appear inside the repo, but a `git add .` from the
+# wrong directory could pull them in. Belt + suspenders.
+*age/keys.txt
+key.txt
+*.age

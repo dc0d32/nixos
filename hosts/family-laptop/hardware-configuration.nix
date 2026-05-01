@@ -19,7 +19,8 @@
 
 {
   imports =
-    [ (modulesPath + "/installer/scan/not-detected.nix")
+    [
+      (modulesPath + "/installer/scan/not-detected.nix")
     ];
 
   boot.initrd.availableKernelModules = [ ];
@@ -29,7 +30,8 @@
 
   # Sentinel UUID — all-zeros is invalid; do not boot with this.
   fileSystems."/" =
-    { device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
+    {
+      device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
       fsType = "ext4";
     };
 
