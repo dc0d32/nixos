@@ -37,6 +37,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # nixos-hardware — community-maintained hardware-specific NixOS
+    # modules (kernel modules, firmware, sane defaults, quirks). Used
+    # by laptop hosts to import their model-specific module
+    # (e.g. lenovo-thinkpad-t480) instead of hand-rolling each fix.
+    # Pinned to nixpkgs-follows-free release branch (no nixpkgs input
+    # to override).
+    nixos-hardware.url = "github:NixOS/nixos-hardware";
+
     # git-hooks.nix — declarative pre-commit hooks. We use it to wire
     # gitleaks (secret scanner) into every commit, since this repo is
     # public and a leaked plaintext API key would be immediately scraped

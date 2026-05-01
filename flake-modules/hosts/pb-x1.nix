@@ -51,30 +51,10 @@ in
     lang = "en_US.UTF-8";
   };
 
-  battery = {
-    # Lenovo X1 Yoga supports kernel charge thresholds via
-    # /sys/class/power_supply/BAT0/charge_control_*_threshold.
-    # Capping at 80% extends battery lifespan substantially. Set to 100
-    # (and recharge to full) before flying or other long unplug.
-    chargeStopThreshold = 80;
-    chargeStartThreshold = 75;
-    # UPower CriticalAction at this percent. Hibernate requires a swap
-    # area large enough for RAM. Falls back to PowerOff if hibernate
-    # fails.
-    criticalPercent = 10;
-    criticalAction = "Hibernate";
-    # Switch to power-profiles-daemon "power-saver" at this percent on
-    # battery; restored to whatever profile was active when we descended
-    # past the threshold the next time we go above it. Implemented by
-    # the UPower watcher inside the idled user daemon.
-    powerSaverPercent = 40;
-    # Swap file size (GiB). Hibernate needs swap >= RAM. 32 GiB matches
-    # this host's 31 GiB RAM with a margin. Created at /swap/swapfile on
-    # btrfs (CoW disabled per kernel requirement).
-    swapSizeGiB = 32;
-    # btrfs root partition holding /swap/swapfile.
-    resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
-  };
+  # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
+  # below, NOT here. battery.nix declares its options as NixOS module
+  # options (per-NixOS-config) so multi-laptop hosts can each carry
+  # their own resumeDevice / thresholds without singleton conflicts.
 
   audio = {
     preset = "X1Yoga7-Dynamic-Detailed";
@@ -91,12 +71,11 @@ in
     intervalMinutes = 30;
   };
 
-  # Auto-lock / DPMS / suspend timings (seconds).
-  idle = {
-    lockAfter = 300;
-    dpmsAfter = 420;
-    suspendAfter = 900;
-  };
+  # NOTE: `idle.*` is set inside `configurations.homeManager."${user}@${hostName}".module`
+  # below, NOT here. idle.nix declares its options as HM module
+  # options (per-HM-config) so multi-laptop hosts can each carry
+  # their own timeout policies and powerSaverPercent without
+  # singleton conflicts.
 
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
@@ -124,6 +103,34 @@ in
       networking.hostName = hostName;
       users.primary = user;
       console.keyMap = "us";
+
+      # Battery / hibernate config (declared as a NixOS module option
+      # by flake-modules/battery.nix). Lenovo X1 Yoga supports kernel
+      # charge thresholds via /sys/class/power_supply/BAT0/
+      # charge_control_*_threshold. Capping at 80% extends battery
+      # lifespan substantially. Set to 100 (and recharge to full)
+      # before flying or other long unplug.
+      battery = {
+        chargeStopThreshold = 80;
+        chargeStartThreshold = 75;
+        # UPower CriticalAction at this percent. Hibernate requires a
+        # swap area large enough for RAM. Falls back to PowerOff if
+        # hibernate fails.
+        criticalPercent = 10;
+        criticalAction = "Hibernate";
+        # Switch to power-profiles-daemon "power-saver" at this
+        # percent on battery; restored when we go back above it.
+        # Implemented by the UPower watcher inside the idled user
+        # daemon.
+        powerSaverPercent = 40;
+        # Swap file size (GiB). Hibernate needs swap >= RAM. 32 GiB
+        # matches this host's 31 GiB RAM with a margin. Created at
+        # /swap/swapfile on btrfs (CoW disabled per kernel
+        # requirement).
+        swapSizeGiB = 32;
+        # btrfs root partition holding /swap/swapfile.
+        resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
+      };
 
       # Bootloader: standard UEFI boot.
       boot.loader.systemd-boot.enable = lib.mkDefault true;
@@ -165,6 +172,18 @@ in
 
       # HM manages itself.
       programs.home-manager.enable = true;
+
+      # Auto-lock / DPMS / suspend timings (seconds), plus the
+      # power-saver-percent threshold mirrored from battery on the
+      # NixOS side (40% — see battery block in the NixOS module
+      # above). Declared here because idle.nix is HM-side and its
+      # options are scoped per-HM-config.
+      idle = {
+        lockAfter = 300;
+        dpmsAfter = 420;
+        suspendAfter = 900;
+        powerSaverPercent = 40;
+      };
 
       # Per-user session vars. Editor pinned to nvim because
       # flake-modules/neovim.nix sets defaultEditor=true but some shells

@@ -33,7 +33,7 @@
 # Retire when: this host is decommissioned or replaced by a successor
 #   (e.g. pb-t14 / a different ThinkPad gen), OR split into separate
 #   per-kid hosts, OR replaced by a proper multi-seat configuration.
-{ lib, config, ... }:
+{ lib, config, inputs, ... }:
 let
   hostName = "pb-t480";
   primaryUser = "p";
@@ -71,6 +71,16 @@ let
 
     programs.home-manager.enable = true;
 
+    # Auto-lock / DPMS / suspend timings (seconds). Tighter for kid
+    # accounts — they leave sessions unattended more often. No
+    # powerSaverPercent (default 0 = disabled): kids' charge
+    # behavior isn't worth automating.
+    idle = {
+      lockAfter = 300;
+      dpmsAfter = 420;
+      suspendAfter = 900;
+    };
+
     home.sessionVariables = {
       EDITOR = "nvim";
       VISUAL = "nvim";
@@ -89,6 +99,10 @@ in
   };
 
   # GPU driver is a guess — revisit after generating real hardware-config.
+  # T480 SKUs ship with Intel UHD 620 alone, or Intel + Nvidia MX150
+  # Optimus. Today this module only knows intel/amd/nvidia/none — proper
+  # PRIME/Optimus support is a follow-up commit once the real bus IDs
+  # are known from `lspci -nn | grep -E 'VGA|3D'`.
   gpu.driver = "intel";
 
   locale = {
@@ -96,22 +110,21 @@ in
     lang = "en_US.UTF-8";
   };
 
+  # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
+  # below, NOT here — see the same note in pb-x1.nix.
+
   wallpaper = {
     intervalMinutes = 30;
   };
+
+  # NOTE: `idle.*` is set inside each HM module block below, NOT
+  # here — see the same note in pb-x1.nix.
 
   # Chromium managed-policy file applied to /etc/chromium/policies/
   # managed/ on this host. See flake-modules/chromium-managed.nix
   # for why this exists and hosts/pb-t480/chromium-policy.md
   # for what each policy does.
   chromium-managed.policyFile = ../../hosts/pb-t480/chromium-policy.json;
-
-  # Auto-lock / DPMS / suspend timings (seconds).
-  idle = {
-    lockAfter = 300;
-    dpmsAfter = 420;
-    suspendAfter = 900;
-  };
 
   # ── Per-kid screen-time policies (timekpr) ───────────────────────
   # m: weekday 06:00-21:00 window, 4h/day budget.
@@ -142,11 +155,18 @@ in
       imports = [
         ../../hosts/pb-t480/hardware-configuration.nix
 
+        # Hardware-specific defaults from nixos-hardware (kernel
+        # modules, firmware, T480 quirks). Pulls in things like
+        # thinkpad_acpi, microcode, sane TLP-vs-PPD defaults, etc.
+        inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t480
+
         # Feature modules. NOT importing:
-        #   - audio (X1-Yoga-specific presets; no presets for this host yet)
-        #   - battery (hardware-specific; hwconfig isn't real yet)
+        #   - audio (X1-Yoga-specific presets; no T480 preset authored yet)
         #   - hardware-hacking (kids don't need dialout/plugdev)
-        #   - biometrics (no fingerprint reader assumed; revisit after hwconfig)
+        #   - biometrics (X1-Yoga-specific: hardcodes Synaptics
+        #     Prometheus + howdy IR camera; T480 has fingerprint but
+        #     no IR camera. Needs splitting into fingerprint/face
+        #     submodules in a follow-up commit.)
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
         config.flake.modules.nixos.networking
@@ -155,6 +175,7 @@ in
         config.flake.modules.nixos.users
         config.flake.modules.nixos.fonts
         config.flake.modules.nixos.locale
+        config.flake.modules.nixos.battery
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr
@@ -168,6 +189,30 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
       console.keyMap = "us";
+
+      # Battery / hibernate config (declared as a NixOS module option
+      # by flake-modules/battery.nix). T480 has BAT0 (external
+      # swappable, primary) and BAT1 (internal). battery.nix only
+      # writes charge thresholds to BAT0 today; BAT1 silently charges
+      # to 100%. Splitting per-battery thresholds is a future
+      # enhancement.
+      #
+      # The resumeDevice placeholder below trips the runtime warning
+      # service `battery-resume-offset` in battery.nix on first boot
+      # until updated. The service prints the exact `boot.kernelParams`
+      # line to add once the real swapfile is provisioned. Capture the
+      # real UUID from:
+      #   blkid -s UUID -o value $(findmnt -no SOURCE /)
+      battery = {
+        chargeStopThreshold = 80;
+        chargeStartThreshold = 75;
+        criticalPercent = 10;
+        criticalAction = "Hibernate";
+        powerSaverPercent = 40;
+        swapSizeGiB = 32;
+        # CHANGEME after first install on real hardware.
+        resumeDevice = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
+      };
 
       # Bootloader: standard UEFI boot. Override if the real hardware
       # is BIOS/legacy.
@@ -232,6 +277,17 @@ in
           imports = config.flake.lib.bundles.homeManager.desktop;
 
           programs.home-manager.enable = true;
+
+          # Auto-lock / DPMS / suspend timings (seconds), plus the
+          # power-saver-percent threshold mirrored from battery on
+          # the NixOS side (40% — see battery block in the NixOS
+          # module above). Same values as pb-x1.
+          idle = {
+            lockAfter = 300;
+            dpmsAfter = 420;
+            suspendAfter = 900;
+            powerSaverPercent = 40;
+          };
 
           home.sessionVariables = {
             EDITOR = "nvim";
