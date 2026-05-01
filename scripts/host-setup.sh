@@ -645,9 +645,36 @@ do_install() {
     # busts the flake source-copy cache. Compare to blkid's view of
     # /mnt — they MUST match or the new system won't find its root.
     echo ">> resolving fileSystems.\"/\".device via nix eval --refresh …"
-    local nix_root_dev mnt_uuid mnt_dev nix_root_uuid
+    local nix_root_dev mnt_uuid mnt_dev nix_root_uuid nix_eval_rc
+    # Capture exit code separately so a non-zero `nix eval` (network
+    # fetch failure, store permission issues, eval error, etc.) shows
+    # a clear diagnostic instead of `set -e` killing us silently via
+    # the $(...) substitution. Stderr passes through to the user.
+    set +e
     nix_root_dev=$(nix "${NIX_EXTRA_OPTS[@]}" eval --refresh --impure --raw \
         "$flake_root#nixosConfigurations.$HOSTNAME.config.fileSystems.\"/\".device")
+    nix_eval_rc=$?
+    set -e
+    if (( nix_eval_rc != 0 )); then
+        echo
+        echo "error: nix eval failed (exit $nix_eval_rc)." >&2
+        echo "       see stderr above for the actual failure. Common causes" >&2
+        echo "       on a live installer ISO:" >&2
+        echo "         - network: --refresh re-fetches every flake input" >&2
+        echo "           (niri, nixos-hardware, etc). Check connectivity." >&2
+        echo "         - flake input fetch rate-limited (github 60 req/h" >&2
+        echo "           unauthenticated). Wait or set GITHUB_TOKEN." >&2
+        echo "         - host bridge module evaluation error. Try without" >&2
+        echo "           --refresh by re-running the same command." >&2
+        echo "         - missing tool in installer (git, etc)." >&2
+        abort_revert
+    fi
+    if [[ -z "$nix_root_dev" ]]; then
+        echo
+        echo "error: nix eval succeeded but returned empty string." >&2
+        echo "       expected /dev/disk/by-uuid/<uuid> for fileSystems.\"/\".device" >&2
+        abort_revert
+    fi
     mnt_dev=$(findmnt -no SOURCE /mnt)
     mnt_uuid=$(blkid -s UUID -o value "$mnt_dev")
     # Strip the "/dev/disk/by-uuid/" prefix if present, so we can
