@@ -68,30 +68,35 @@ in
         api="https://wallhaven.cc/api/v1/search?q=nature,landscape&categories=100&purity=100&sorting=random&atleast=1920x1200&ratios=16x9,16x10"
         json=$(${pkgs.curl}/bin/curl -fsSL "$api")
 
-          # Pick a random result from the page and extract its image URL
-          img_url=$(echo "$json" | ${pkgs.python3}/bin/python3 -c "
-          import json, sys, random
-          d = json.load(sys.stdin)
-          items = d.get('data', [])
-          if not items: sys.exit(1)
-          print(random.choice(items)['path'])
-          ")
+        # Pick a random result from the page and extract its image URL.
+        # NOTE: the python heredoc body MUST sit at the same column as
+        # the surrounding shell statements. Nix's indented-string
+        # strip removes the minimum common leading whitespace; if these
+        # python lines drift even one column further in, Python sees
+        # leading spaces and dies with IndentationError. Don't reformat.
+        img_url=$(echo "$json" | ${pkgs.python3}/bin/python3 -c "
+        import json, sys, random
+        d = json.load(sys.stdin)
+        items = d.get('data', [])
+        if not items: sys.exit(1)
+        print(random.choice(items)['path'])
+        ")
 
-          ext="''${img_url##*.}"
-          dest="$dir/$(date +%Y%m%d-%H%M%S).$ext"
-          current="$dir/current.$ext"
+        ext="''${img_url##*.}"
+        dest="$dir/$(date +%Y%m%d-%H%M%S).$ext"
+        current="$dir/current.$ext"
 
-          ${pkgs.curl}/bin/curl -fsSL -o "$dest" "$img_url"
+        ${pkgs.curl}/bin/curl -fsSL -o "$dest" "$img_url"
 
-          # Atomically update the current symlink (also keep a .jpg alias for lock screen)
-          ln -sf "$dest" "$current"
-          ln -sf "$dest" "$dir/current.jpg"
+        # Atomically update the current symlink (also keep a .jpg alias for lock screen)
+        ln -sf "$dest" "$current"
+        ln -sf "$dest" "$dir/current.jpg"
 
-          # Apply to running awww instance
-          ${pkgs.awww}/bin/awww img "$current" --transition-type fade --transition-duration 1 || true
+        # Apply to running awww instance
+        ${pkgs.awww}/bin/awww img "$current" --transition-type fade --transition-duration 1 || true
 
-          # Keep only the 10 most recent files (exclude symlinks)
-          find "$dir" -maxdepth 1 -type f | sort | head -n -10 | xargs -r rm -f
+        # Keep only the 10 most recent files (exclude symlinks)
+        find "$dir" -maxdepth 1 -type f | sort | head -n -10 | xargs -r rm -f
       '';
     in
     {
