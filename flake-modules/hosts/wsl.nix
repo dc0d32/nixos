@@ -31,22 +31,14 @@
 # Retire when: both WSL distros are decommissioned (no Windows host
 #   needs a NixOS-in-WSL environment), OR the x86_64/aarch64 split
 #   collapses to a single arch and one of the two configs is dropped.
-{ inputs, config, ... }:
+{ config, ... }:
 let
   user = "p";
   stateVersion = "25.11";
 
-  # Per-arch pkgs instance, with repo-wide overlays applied. Memoised
-  # via `let` so each system is imported once even though both NixOS
-  # and HM sides reference it.
-  mkPkgs = system: import inputs.nixpkgs {
-    inherit system;
-    overlays = import ../../overlays;
-    config = {
-      allowUnfree = true;
-      allowAliases = false;
-    };
-  };
+  # Per-arch pkgs instance, supplied by the shared factory in
+  # ../mk-pkgs.nix. Both NixOS and HM sides reference this.
+  mkPkgs = config.flake.lib.mkPkgs;
 
   # NixOS module shared by both wsl and wsl-arm. Headless WSL only —
   # NOT importing: gpu, power, networking (NetworkManager), battery,

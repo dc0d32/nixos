@@ -33,7 +33,7 @@
 #
 # Retire when: split into separate per-kid hosts, or replaced by a
 # proper multi-seat configuration.
-{ inputs, lib, config, ... }:
+{ lib, config, ... }:
 let
   hostName = "family-laptop";
   primaryUser = "p";
@@ -42,14 +42,8 @@ let
   stateVersion = "25.11";
 
   # HM pkgs instance shared by all three HM configs on this host.
-  hmPkgs = import inputs.nixpkgs {
-    inherit system;
-    overlays = import ../../overlays;
-    config = {
-      allowUnfree = true;
-      allowAliases = false;
-    };
-  };
+  # Built via the shared factory in ../mk-pkgs.nix.
+  hmPkgs = config.flake.lib.mkPkgs system;
 
   # Convenience wrapper for p to view kid-account login activity.
   # Reads from the systemd journal (which p can read via wheel

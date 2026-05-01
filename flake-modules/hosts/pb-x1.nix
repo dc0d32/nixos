@@ -15,25 +15,16 @@
 # Retire when: this host is decommissioned, replaced by a successor
 #   (e.g. pb-x2 / a different Lenovo gen), or its role merges with
 #   another host bridge.
-{ inputs, lib, config, ... }:
+{ lib, config, ... }:
 let
   hostName = "pb-x1";
   user = "p";
   system = "x86_64-linux";
   stateVersion = "25.11";
 
-  # HM pkgs instance with repo-wide overlays.
-  #   - allowUnfree for chrome/vscode/etc.
-  #   - allowAliases = false to silence transitive deprecation warnings
-  #     (e.g. nvim-treesitter-legacy) on pinned nixos-unstable
-  hmPkgs = import inputs.nixpkgs {
-    inherit system;
-    overlays = import ../../overlays;
-    config = {
-      allowUnfree = true;
-      allowAliases = false;
-    };
-  };
+  # HM pkgs instance built via the shared factory in
+  # ../mk-pkgs.nix (overlays + allowUnfree + allowAliases=false).
+  hmPkgs = config.flake.lib.mkPkgs system;
 in
 {
   # ── Top-level option values supplied by this host ────────────────

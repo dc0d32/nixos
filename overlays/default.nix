@@ -7,7 +7,8 @@
 #
 # Consumed by:
 #   - flake-modules/nix-settings.nix (sets `nixpkgs.overlays` system-wide).
-#   - Each host bridge's `mkPkgs` factory (HM-side pkgs instance).
+#   - flake-modules/mk-pkgs.nix (the shared HM-side `pkgs` factory each
+#     host bridge calls via `config.flake.lib.mkPkgs`).
 [
   (import ./nvim-treesitter-pin.nix)
   (import ./idled.nix)

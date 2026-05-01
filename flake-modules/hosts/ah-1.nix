@@ -66,21 +66,14 @@
 #   - The ah-N family converges with another host class to the point
 #     where one host module can serve both (unlikely -- desktop and
 #     server are intentionally divergent).
-{ inputs, config, ... }:
+{ config, ... }:
 let
   user = "nas";
   stateVersion = "25.11";
 
-  # Per-arch pkgs instance with repo-wide overlays applied. Memoised
-  # via let-binding so each system is imported once.
-  mkPkgs = system: import inputs.nixpkgs {
-    inherit system;
-    overlays = import ../../overlays;
-    config = {
-      allowUnfree = true;
-      allowAliases = false;
-    };
-  };
+  # Per-arch pkgs instance, supplied by the shared factory in
+  # ../mk-pkgs.nix.
+  mkPkgs = config.flake.lib.mkPkgs;
 
   # NixOS module shared by every ah-N. Headless server-class --
   # NOT importing: gpu, power, battery, audio, biometrics, login-ly,
