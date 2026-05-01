@@ -1,0 +1,37 @@
+{
+  "BrowserSignin": 2,
+  "RestrictSigninToPattern": ".*@gmail\\.com",
+  "IncognitoModeAvailability": 1,
+  "DeveloperToolsAvailability": 2,
+  "ForceGoogleSafeSearch": true,
+  "ForceYouTubeRestrict": 2,
+  "PasswordManagerEnabled": false,
+  "BrowserGuestModeEnabled": false,
+  "BrowserAddPersonEnabled": false,
+  "MetricsReportingEnabled": false,
+  "ExtensionSettings": {
+    "*": {
+      "installation_mode": "blocked",
+      "blocked_install_message": "Extensions are managed by your parent. Ask them to add an extension here."
+    },
+    "ddkjiahejlhfcafbddmgiahcphecmpfh": {
+      "installation_mode": "force_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx",
+      "toolbar_pin": "force_pinned"
+    },
+    "nngceckbapebfimnlniiiahkandclblb": {
+      "installation_mode": "force_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx",
+      "toolbar_pin": "force_pinned"
+    },
+    "3rdparty": {
+      "extensions": {
+        "nngceckbapebfimnlniiiahkandclblb": {
+          "environment": {
+            "base": "https://bitwarden.bitset.cc"
+          }
+        }
+      }
+    }
+  }
+}

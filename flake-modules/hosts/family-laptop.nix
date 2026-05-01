@@ -73,10 +73,14 @@ let
   # and no admin apps. `username` parameterises the imports.
   mkKidHmModule = username: {
     imports = [
-      # Shell + terminal + browser
+      # Shell + terminal + browser. Kids get chromium-managed
+      # (Family-Link-aware policy lockdown) instead of chrome,
+      # because Linux has no per-user policy mechanism so the only
+      # way to scope policies to the kids is to give them a
+      # different browser binary. See flake-modules/chromium-managed.nix.
       config.flake.modules.homeManager.zsh
       config.flake.modules.homeManager.alacritty
-      config.flake.modules.homeManager.chrome
+      config.flake.modules.homeManager.chromium-managed
       config.flake.modules.homeManager.fonts
 
       # Desktop session (compositor + bar/lockscreen + auto-lock + wallpaper)
@@ -134,6 +138,12 @@ in
     intervalMinutes = 30;
   };
 
+  # Chromium managed-policy file applied to /etc/chromium/policies/
+  # managed/ on this host. See flake-modules/chromium-managed.nix
+  # for why this exists and hosts/family-laptop/chromium-policy.md
+  # for what each policy does.
+  chromium-managed.policyFile = ../../hosts/family-laptop/chromium-policy.json;
+
   # Auto-lock / DPMS / suspend timings (seconds).
   idle = {
     lockAfter = 300;
@@ -179,6 +189,7 @@ in
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr
+        config.flake.modules.nixos.chromium-managed
         # ── Secrets (sops-nix) ──
         # Uncomment after bootstrap (see secrets/README.md):
         # config.flake.modules.nixos.secrets
