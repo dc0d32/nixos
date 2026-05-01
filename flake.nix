@@ -25,10 +25,21 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    niri = {
-      url = "github:sodiboo/niri-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # niri-flake — scrollable-tiling Wayland compositor.
+    #
+    # We deliberately do NOT set `inputs.nixpkgs.follows = "nixpkgs"`
+    # here. niri-flake publishes prebuilt binaries to niri.cachix.org
+    # keyed off ITS OWN nixpkgs pin; overriding that pin diverges every
+    # closure hash from cachix and forces a local source rebuild of
+    # niri (slow on weak laptops, sometimes flaky on intermittent
+    # networks — observed during pb-t480 install). Letting niri keep
+    # its own nixpkgs costs a slightly bigger eval-time closure but
+    # gives us cache hits.
+    #
+    # The niri-flake NixOS module also auto-installs the cachix
+    # substituter on first rebuild (see niri-flake README / opt-out via
+    # `niri-flake.cache.enable = false;`). We do not opt out.
+    niri.url = "github:sodiboo/niri-flake";
 
     # NixOS inside WSL. Use dc0d32/nixos-aarch64-wsl
     # aarch64-linux rootfs for Windows on ARM; also works fine on x86_64.
