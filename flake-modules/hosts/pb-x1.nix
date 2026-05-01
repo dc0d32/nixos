@@ -169,31 +169,10 @@ in
   configurations.homeManager."${user}@${hostName}" = {
     pkgs = hmPkgs;
     module = {
-      imports = [
-        # Migrated dendritic feature modules (HM side).
-        config.flake.modules.homeManager.git
-        config.flake.modules.homeManager.tmux
-        config.flake.modules.homeManager.direnv
-        config.flake.modules.homeManager.fonts
-        config.flake.modules.homeManager.btop
-        config.flake.modules.homeManager.build-deps
-        config.flake.modules.homeManager.gh
-        config.flake.modules.homeManager.ai-cli
-        config.flake.modules.homeManager.hardware-hacking
+      imports = config.flake.lib.bundles.homeManager.desktop ++ [
+        # Host-specific delta on top of the desktop bundle:
+        # the X1-Yoga-7 has audio presets only valid on this hardware.
         config.flake.modules.homeManager.audio
-        config.flake.modules.homeManager.polkit-agent
-        config.flake.modules.homeManager.chrome
-        config.flake.modules.homeManager.bitwarden
-        config.flake.modules.homeManager.vscode
-        config.flake.modules.homeManager.alacritty
-        config.flake.modules.homeManager.zsh
-        config.flake.modules.homeManager.desktop-extras
-        config.flake.modules.homeManager.wallpaper
-        config.flake.modules.homeManager.idle
-        config.flake.modules.homeManager.freecad
-        config.flake.modules.homeManager.neovim
-        config.flake.modules.homeManager.niri
-        config.flake.modules.homeManager.quickshell
         # ── Secrets (sops-nix) ──
         # Uncomment after bootstrap (see secrets/README.md):
         # config.flake.modules.homeManager.secrets

@@ -77,21 +77,10 @@ let
   };
 
   # Headless-friendly home-manager module shared by p@wsl and
-  # p@wsl-arm. NOT importing the GUI-only modules (alacritty,
-  # desktop-extras, wallpaper, idle, freecad, niri, quickshell,
-  # vscode, chrome, bitwarden, polkit-agent, audio, fonts, hardware-hacking).
+  # p@wsl-arm. Uses the `dev` bundle (= base CLI tools + ai-cli +
+  # build-deps); GUI/desktop modules are intentionally excluded.
   hmModule = {
-    imports = [
-      config.flake.modules.homeManager.git
-      config.flake.modules.homeManager.tmux
-      config.flake.modules.homeManager.direnv
-      config.flake.modules.homeManager.btop
-      config.flake.modules.homeManager.build-deps
-      config.flake.modules.homeManager.gh
-      config.flake.modules.homeManager.ai-cli
-      config.flake.modules.homeManager.zsh
-      config.flake.modules.homeManager.neovim
-    ];
+    imports = config.flake.lib.bundles.homeManager.dev;
 
     programs.home-manager.enable = true;
 

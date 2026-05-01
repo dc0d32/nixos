@@ -62,37 +62,12 @@ let
       --no-pager
   '';
 
-  # Per-kid home-manager module. Same desktop session as p (so the box
-  # looks the same regardless of who's logged in) but no dev tooling
-  # and no admin apps. `username` parameterises the imports.
+  # Per-kid home-manager module. Uses the `kid` bundle: minimal CLI,
+  # chromium-managed (Family-Link-policy-locked) instead of chrome,
+  # zoom for school, full compositor stack, no dev tooling, no admin
+  # apps. `username` parameterises the home.* fields below.
   mkKidHmModule = username: {
-    imports = [
-      # Shell + terminal + browser. Kids get chromium-managed
-      # (Family-Link-aware policy lockdown) instead of chrome,
-      # because Linux has no per-user policy mechanism so the only
-      # way to scope policies to the kids is to give them a
-      # different browser binary. See flake-modules/chromium-managed.nix.
-      config.flake.modules.homeManager.zsh
-      config.flake.modules.homeManager.alacritty
-      config.flake.modules.homeManager.chromium-managed
-      config.flake.modules.homeManager.fonts
-
-      # Native Zoom client (school meetings; PWA experience is poor).
-      # See flake-modules/zoom.nix.
-      config.flake.modules.homeManager.zoom
-
-      # Desktop session (compositor + bar/lockscreen + auto-lock + wallpaper)
-      config.flake.modules.homeManager.niri
-      config.flake.modules.homeManager.quickshell
-      config.flake.modules.homeManager.wallpaper
-      config.flake.modules.homeManager.idle
-      config.flake.modules.homeManager.polkit-agent
-      config.flake.modules.homeManager.desktop-extras
-
-      # Light extras
-      config.flake.modules.homeManager.btop
-      config.flake.modules.homeManager.neovim
-    ];
+    imports = config.flake.lib.bundles.homeManager.kid;
 
     programs.home-manager.enable = true;
 
@@ -278,29 +253,7 @@ in
       "${primaryUser}@${hostName}" = {
         pkgs = hmPkgs;
         module = {
-          imports = [
-            config.flake.modules.homeManager.git
-            config.flake.modules.homeManager.tmux
-            config.flake.modules.homeManager.direnv
-            config.flake.modules.homeManager.fonts
-            config.flake.modules.homeManager.btop
-            config.flake.modules.homeManager.build-deps
-            config.flake.modules.homeManager.gh
-            config.flake.modules.homeManager.ai-cli
-            config.flake.modules.homeManager.hardware-hacking
-            config.flake.modules.homeManager.polkit-agent
-            config.flake.modules.homeManager.chrome
-            config.flake.modules.homeManager.bitwarden
-            config.flake.modules.homeManager.vscode
-            config.flake.modules.homeManager.alacritty
-            config.flake.modules.homeManager.zsh
-            config.flake.modules.homeManager.desktop-extras
-            config.flake.modules.homeManager.wallpaper
-            config.flake.modules.homeManager.idle
-            config.flake.modules.homeManager.freecad
-            config.flake.modules.homeManager.neovim
-            config.flake.modules.homeManager.niri
-            config.flake.modules.homeManager.quickshell
+          imports = config.flake.lib.bundles.homeManager.desktop ++ [
             # ── Secrets (sops-nix) ──
             # Uncomment after bootstrap (see secrets/README.md):
             # config.flake.modules.homeManager.secrets

@@ -128,20 +128,12 @@ let
     system.stateVersion = stateVersion;
   };
 
-  # Headless HM bundle shared by every nas@ah-N. Mirrors the wsl.nix
-  # set (same SSH muscle memory) minus build-deps (these are service
-  # hosts, not dev workstations -- pull build-deps in per-host if a
-  # specific VM needs gcc/make for compiling some daemon).
+  # Headless HM bundle shared by every nas@ah-N. Uses the `base`
+  # bundle (CLI essentials only); these are service hosts, not dev
+  # workstations, so no ai-cli or build-deps. Pull `dev` instead per
+  # host if a specific VM needs gcc/make for compiling some daemon.
   hmModule = {
-    imports = [
-      config.flake.modules.homeManager.git
-      config.flake.modules.homeManager.tmux
-      config.flake.modules.homeManager.direnv
-      config.flake.modules.homeManager.btop
-      config.flake.modules.homeManager.gh
-      config.flake.modules.homeManager.zsh
-      config.flake.modules.homeManager.neovim
-    ];
+    imports = config.flake.lib.bundles.homeManager.base;
 
     programs.home-manager.enable = true;
 

@@ -25,9 +25,11 @@
     home.packages = [ pkgs.hyprpolkitagent ];
 
     # hyprpolkitagent ships a polkitagent binary at libexec/. Spawn
-    # it at niri startup. Concatenated via mkAfter into the shared
-    # spawn-at-startup list.
-    programs.niri.settings.spawn-at-startup = lib.mkAfter [
+    # it at niri startup. mkOrder 1490 places it just before the
+    # default mkAfter slot (1500) used by quickshell, so the polkit
+    # agent is up first regardless of which order the calling host
+    # bridge listed the imports in.
+    programs.niri.settings.spawn-at-startup = lib.mkOrder 1490 [
       { command = [ "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent" ]; }
     ];
   };
