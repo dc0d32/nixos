@@ -105,6 +105,7 @@ PanelWindow {
         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
         spacing: 8
         Network    { id: networkChip }
+        Bluetooth  { id: bluetoothChip }
         Volume     { id: volumeChip }
         Battery    { id: batteryChip }
         PowerProfile { id: powerProfileChip }
@@ -129,6 +130,7 @@ PanelWindow {
   }
 
   readonly property real networkCX:      chipCX(networkChip)
+  readonly property real bluetoothCX:    chipCX(bluetoothChip)
   readonly property real notifCX:        chipCX(notifChip)
   readonly property real volumeCX:       chipCX(volumeChip)
   readonly property real batteryCX:      chipCX(batteryChip)
@@ -145,6 +147,13 @@ PanelWindow {
     text: networkChip.state === "wifi"  ? "WiFi: "  + networkChip.label
         : networkChip.state === "wired" ? "Wired: " + networkChip.label
         : "Not connected"
+  }
+  BarTooltip {
+    chipCenterX: bar.bluetoothCX; shown: bluetoothChip.tooltipShown
+    text: !bluetoothChip.powered                  ? "Bluetooth: off"
+        : bluetoothChip.connectedCount === 0      ? "Bluetooth: on"
+        : bluetoothChip.connectedCount === 1      ? "Bluetooth: " + bluetoothChip.label
+                                                  : "Bluetooth: " + bluetoothChip.connectedCount + " devices"
   }
   BarTooltip {
     chipCenterX: bar.volumeCX; shown: volumeChip.tooltipShown
@@ -184,6 +193,7 @@ PanelWindow {
   // ── flyouts ───────────────────────────────────────────────────────────
   NotificationFlyout { chipCenterX: bar.notifCX; chipWidth: notifChip.width; server: bar.notificationServer }
   NetworkFlyout    { chipCenterX: bar.networkCX;    chipWidth: networkChip.width }
+  BluetoothFlyout  { chipCenterX: bar.bluetoothCX;  chipWidth: bluetoothChip.width }
   VolumeFlyout     { chipCenterX: bar.volumeCX;     chipWidth: volumeChip.width }
   BatteryFlyout    { chipCenterX: bar.batteryCX;    chipWidth: batteryChip.width }
   WeatherFlyout    { chipCenterX: bar.weatherCX;    chipWidth: weatherChip.width }
