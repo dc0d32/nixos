@@ -4,6 +4,16 @@ How to partition a fresh disk for a NixOS host that follows the same
 layout as `pb-x1`. Adapted from the live layout on this machine
 (2026-05-01); update if the substrate diverges.
 
+> **Tip:** the manual partition + mount sequence in this document is
+> also encoded as `scripts/mount-host.sh`. From the live USB:
+> - `sudo scripts/mount-host.sh /dev/nvme0n1 --partition` —
+>   destructive: wipe + GPT + ESP + btrfs + subvols + mount.
+> - `sudo scripts/mount-host.sh /dev/nvme0n1` (no flag) — mount-only,
+>   re-enters an existing layout under `/mnt`. Idempotent and safe.
+> Use the script when you're rebooting into the USB repeatedly during
+> install troubleshooting; use the steps below if you want to learn
+> what each command does or you've diverged from the canonical layout.
+
 This is the layout flake-modules/battery.nix assumes for the
 hibernate swapfile: a single btrfs filesystem with a `root`
 subvolume, and `/swap/swapfile` provisioned by NixOS into it (CoW
