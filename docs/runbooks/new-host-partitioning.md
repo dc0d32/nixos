@@ -4,15 +4,30 @@ How to partition a fresh disk for a NixOS host that follows the same
 layout as `pb-x1`. Adapted from the live layout on this machine
 (2026-05-01); update if the substrate diverges.
 
-> **Tip:** the manual partition + mount sequence in this document is
-> also encoded as `scripts/mount-host.sh`. From the live USB:
-> - `sudo scripts/mount-host.sh /dev/nvme0n1 --partition` —
->   destructive: wipe + GPT + ESP + btrfs + subvols + mount.
-> - `sudo scripts/mount-host.sh /dev/nvme0n1` (no flag) — mount-only,
->   re-enters an existing layout under `/mnt`. Idempotent and safe.
-> Use the script when you're rebooting into the USB repeatedly during
-> install troubleshooting; use the steps below if you want to learn
-> what each command does or you've diverged from the canonical layout.
+> **Tip:** the manual partition + mount + install sequence in this
+> document is also encoded as `scripts/mount-host.sh`. From the live
+> USB, the full install reduces to:
+>
+> ```sh
+> sudo scripts/mount-host.sh /dev/nvme0n1 --partition  # destructive: wipe + format + mount
+> # or, if disk is already partitioned:
+> sudo scripts/mount-host.sh /dev/nvme0n1              # mount-only, idempotent
+>
+> # then, in the cloned flake repo:
+> sudo scripts/mount-host.sh --install pb-t480         # gen hwconfig + git add + verify + nixos-install
+> ```
+>
+> The `--install` mode regenerates `hosts/<hostname>/hardware-configuration.nix`,
+> `git add`s it (the AGENTS.md gotcha that bites everyone exactly once),
+> verifies via `nix eval --refresh` that the resolved root device UUID
+> matches what's actually mounted at `/mnt`, and only then runs
+> `nixos-install`. It refuses to proceed if `/mnt/boot` isn't a vfat
+> mountpoint — the failure mode that left earlier installs booting
+> into a kernel waiting for the all-zeros sentinel UUID.
+>
+> Use the script during install troubleshooting; use the manual steps
+> below if you want to learn what each command does or you've diverged
+> from the canonical layout.
 
 This is the layout flake-modules/battery.nix assumes for the
 hibernate swapfile: a single btrfs filesystem with a `root`

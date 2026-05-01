@@ -1,21 +1,31 @@
 #!/usr/bin/env bash
-# mount-host.sh — bring a target disk's partitions back under /mnt
-# (default), or partition+format+mount a fresh disk from scratch
-# (--partition mode).
+# mount-host.sh — install-time helpers for this flake's hosts.
+#
+# Three modes, picked by flag:
+#
+#   (default)      mount existing partitions under /mnt. Idempotent.
+#   --partition    DESTRUCTIVE: wipe + GPT + ESP + btrfs + subvols + mount.
+#   --install <h>  generate hardware-config, git add it, sanity-check
+#                  via nix eval, then run nixos-install --root /mnt
+#                  --flake .#<h>. Assumes /mnt is already mounted (run
+#                  the default mode first if needed).
 #
 # Why this exists:
-#   Re-entering a partially-installed system from the NixOS USB takes
+#   Re-entering a partially-installed system from the NixOS USB took
 #   six commands of muscle memory (mount root subvol, mkdir
-#   boot/home/nix, mount each subvol, mount ESP). Easy to typo and
-#   easy to forget --options. Mistakes here either silently install
-#   the bootloader to the wrong place (entries land on btrfs root,
-#   not the ESP) or, in --partition mode, obliterate the wrong disk.
-#   Encode the layout from docs/runbooks/new-host-partitioning.md
-#   into one auditable shell script.
+#   boot/home/nix, mount each subvol, mount ESP) plus an awkward
+#   nixos-generate-config + git add + nixos-install dance. Each step
+#   is an opportunity to silently install bootloader entries to a
+#   non-ESP /mnt/boot, leave the regenerated hwconfig untracked
+#   (flake silently uses the placeholder), or, in --partition mode,
+#   obliterate the wrong disk. Encode the layout from
+#   docs/runbooks/new-host-partitioning.md and the "git add or it
+#   doesn't count" rule from AGENTS.md into one auditable script.
 #
 # Usage:
-#   sudo ./scripts/mount-host.sh /dev/nvme0n1                # mount-only (default)
-#   sudo ./scripts/mount-host.sh /dev/nvme0n1 --partition    # destructive: wipe + format + mount
+#   sudo ./scripts/mount-host.sh /dev/nvme0n1                # mount-only
+#   sudo ./scripts/mount-host.sh /dev/nvme0n1 --partition    # destructive
+#   sudo ./scripts/mount-host.sh --install pb-t480           # full install
 #   sudo ./scripts/mount-host.sh --help
 #
 # Layout assumed (matches docs/runbooks/new-host-partitioning.md):
@@ -33,12 +43,16 @@
 #   `[0-9]$` test on the disk name (NVMe ends in a digit → needs `p`).
 #
 # Safety:
-#   - Refuses to run as non-root (mount/mkfs/wipefs need it).
-#   - Refuses --partition without an interactive confirm prompt that
-#     echoes back the disk identity (model + size + serial via lsblk)
-#     and demands the literal word YES (uppercase).
-#   - Mount-only mode is idempotent: if /mnt is already mounted with
-#     the right device, it just verifies the rest and exits 0.
+#   - Refuses to run as non-root (mount/mkfs/wipefs/nixos-install need it).
+#   - --partition demands the literal word YES (uppercase) at an
+#     interactive prompt and echoes the disk identity (model/size/
+#     serial via lsblk) first.
+#   - --install also demands YES, after showing the diff against the
+#     committed hardware-config and the resolved root device that
+#     Nix will install (via `nix eval --refresh`).
+#   - Mount-only is idempotent: if a target is already correctly
+#     mounted, it skips; if mounted to something else, it errors out
+#     instead of clobbering.
 #
 # Retire when: you replace this with a disko-based declarative
 #   partitioning module and ditch manual mount sequences entirely.
@@ -47,25 +61,58 @@ set -euo pipefail
 
 # ── arg parsing ───────────────────────────────────────────────────
 DISK=""
-PARTITION_MODE=0
+HOSTNAME=""
+MODE="mount"   # one of: mount | partition | install
 SHOW_HELP=0
 
 usage() {
-    sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
 }
 
+# Lightweight state machine. --install consumes the next positional
+# token as the hostname; --partition is a flag toggle on top of mount;
+# the bare positional is the disk (required for mount/partition,
+# rejected for install).
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -h|--help)        SHOW_HELP=1; shift ;;
-        --partition)      PARTITION_MODE=1; shift ;;
-        --)               shift; break ;;
+        -h|--help)
+            SHOW_HELP=1
+            shift
+            ;;
+        --partition)
+            if [[ "$MODE" == "install" ]]; then
+                echo "error: --partition and --install are mutually exclusive" >&2
+                exit 2
+            fi
+            MODE="partition"
+            shift
+            ;;
+        --install)
+            if [[ "$MODE" == "partition" ]]; then
+                echo "error: --partition and --install are mutually exclusive" >&2
+                exit 2
+            fi
+            MODE="install"
+            shift
+            if [[ $# -eq 0 || "$1" =~ ^- ]]; then
+                echo "error: --install requires a hostname argument" >&2
+                exit 2
+            fi
+            HOSTNAME="$1"
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
         -*)
             echo "error: unknown flag: $1" >&2
             exit 2
             ;;
         *)
             if [[ -z "$DISK" ]]; then
-                DISK="$1"; shift
+                DISK="$1"
+                shift
             else
                 echo "error: unexpected positional arg: $1" >&2
                 exit 2
@@ -79,32 +126,49 @@ if (( SHOW_HELP )); then
     exit 0
 fi
 
-if [[ -z "$DISK" ]]; then
-    echo "error: missing disk argument" >&2
-    echo "usage: $0 <disk> [--partition]" >&2
-    echo "       $0 --help" >&2
-    exit 2
-fi
+# Mode-specific arg validation.
+case "$MODE" in
+    mount|partition)
+        if [[ -z "$DISK" ]]; then
+            echo "error: missing disk argument" >&2
+            echo "usage: $0 <disk> [--partition]" >&2
+            echo "       $0 --install <hostname>" >&2
+            echo "       $0 --help" >&2
+            exit 2
+        fi
+        ;;
+    install)
+        if [[ -n "$DISK" ]]; then
+            echo "error: --install does not take a disk argument" >&2
+            echo "       (mount the disk first with: $0 <disk>)" >&2
+            exit 2
+        fi
+        ;;
+esac
 
 # ── preconditions ─────────────────────────────────────────────────
 if [[ "$EUID" -ne 0 ]]; then
-    echo "error: must run as root (need mount / mkfs / wipefs)" >&2
+    echo "error: must run as root (need mount / mkfs / wipefs / nixos-install)" >&2
     exit 2
 fi
 
-if [[ ! -b "$DISK" ]]; then
-    echo "error: $DISK is not a block device" >&2
-    exit 2
+# Disk-related setup is only needed for mount/partition modes.
+P1=""
+P2=""
+if [[ "$MODE" != "install" ]]; then
+    if [[ ! -b "$DISK" ]]; then
+        echo "error: $DISK is not a block device" >&2
+        exit 2
+    fi
+    # Resolve partition suffix style. NVMe / mmcblk style ends in a
+    # digit and uses pN; sd/vd/hd style appends N directly.
+    case "$DISK" in
+        *[0-9]) PSEP="p" ;;
+        *)      PSEP=""  ;;
+    esac
+    P1="${DISK}${PSEP}1"
+    P2="${DISK}${PSEP}2"
 fi
-
-# Resolve partition suffix style. NVMe / mmcblk style ends in a
-# digit and uses pN; sd/vd/hd style appends N directly.
-case "$DISK" in
-    *[0-9]) PSEP="p" ;;
-    *)      PSEP=""  ;;
-esac
-P1="${DISK}${PSEP}1"
-P2="${DISK}${PSEP}2"
 
 # Required tools. lsblk + mount + umount + mkdir + mountpoint are
 # coreutils/util-linux core; the rest depend on mode.
@@ -120,14 +184,23 @@ require_tool umount
 require_tool findmnt
 require_tool blkid
 
-if (( PARTITION_MODE )); then
-    require_tool wipefs
-    require_tool sgdisk
-    require_tool parted
-    require_tool mkfs.fat
-    require_tool mkfs.btrfs
-    require_tool btrfs
-fi
+case "$MODE" in
+    partition)
+        require_tool wipefs
+        require_tool sgdisk
+        require_tool parted
+        require_tool mkfs.fat
+        require_tool mkfs.btrfs
+        require_tool btrfs
+        ;;
+    install)
+        require_tool git
+        require_tool nix
+        require_tool nixos-generate-config
+        require_tool nixos-install
+        require_tool diff
+        ;;
+esac
 
 # ── helper: show what we're about to touch ────────────────────────
 show_disk() {
@@ -308,16 +381,158 @@ do_mount() {
     echo "  /     $(blkid -s UUID -o value "$P2")  (btrfs, used for fileSystems and resumeDevice)"
     echo "  /boot $(blkid -s UUID -o value "$P1")  (vfat ESP)"
     echo
-    echo "next steps (in /mnt or wherever your flake checkout lives):"
+    echo "next steps:"
+    echo "  sudo $0 --install <hostname>           # auto-generate hwconfig + nixos-install"
+    echo "or manual:"
     echo "  nixos-generate-config --root /mnt --show-hardware-config \\"
     echo "    > /mnt/<repo>/hosts/<hostname>/hardware-configuration.nix"
     echo "  cd /mnt/<repo> && git add hosts/<hostname>/hardware-configuration.nix"
     echo "  nixos-install --root /mnt --flake .#<hostname>"
 }
 
+# ── --install mode: regen hwconfig, git add, verify, install ─────
+# Walk up from cwd looking for a flake.nix. Print the directory or
+# error out. We can't use `nix flake metadata` here because the user
+# may have edited but not committed: --refresh + working tree
+# shenanigans get involved. A plain ancestor walk is more predictable.
+find_flake_root() {
+    local d
+    d=$(pwd)
+    while [[ "$d" != "/" ]]; do
+        if [[ -f "$d/flake.nix" ]]; then
+            echo "$d"
+            return 0
+        fi
+        d=$(dirname "$d")
+    done
+    return 1
+}
+
+do_install() {
+    # 1. /mnt sanity. Need at least / and /boot mounted.
+    if ! mountpoint -q /mnt; then
+        echo "error: /mnt is not a mountpoint." >&2
+        echo "       run: sudo $0 <disk>   first." >&2
+        exit 3
+    fi
+    if ! mountpoint -q /mnt/boot; then
+        echo "error: /mnt/boot is not a mountpoint." >&2
+        echo "       run: sudo $0 <disk>   first to mount the ESP." >&2
+        exit 3
+    fi
+    # The nixos-install bootloader install lands its entries on
+    # whatever /mnt/boot is. If that's not a vfat ESP, we'd be
+    # writing entries onto btrfs root and the firmware will never
+    # find them. Verify.
+    local boot_fs
+    boot_fs=$(findmnt -no FSTYPE /mnt/boot 2>/dev/null || true)
+    if [[ "$boot_fs" != "vfat" ]]; then
+        echo "error: /mnt/boot fstype is '$boot_fs', expected vfat." >&2
+        echo "       systemd-boot would install entries to the wrong place." >&2
+        exit 3
+    fi
+
+    # 2. Locate flake root.
+    local flake_root
+    if ! flake_root=$(find_flake_root); then
+        echo "error: no flake.nix found in cwd or any ancestor." >&2
+        echo "       cd into your flake checkout and re-run." >&2
+        exit 3
+    fi
+    echo ">> flake root: $flake_root"
+
+    # 3. Verify the host bridge file exists. This is also a sanity
+    # check on the hostname argument.
+    local host_dir="$flake_root/hosts/$HOSTNAME"
+    local hwcfg="$host_dir/hardware-configuration.nix"
+    local host_bridge="$flake_root/flake-modules/hosts/$HOSTNAME.nix"
+    if [[ ! -d "$host_dir" ]]; then
+        echo "error: $host_dir does not exist" >&2
+        echo "       (expected per-host directory for hardware-config + assets)" >&2
+        exit 3
+    fi
+    if [[ ! -f "$host_bridge" ]]; then
+        echo "error: $host_bridge does not exist" >&2
+        echo "       (expected host bridge module)" >&2
+        exit 3
+    fi
+
+    # 4. Regenerate hardware-config. Save the old one so we can show
+    # a diff and roll back if the user aborts at the confirm prompt.
+    local hwcfg_backup="${hwcfg}.before-install"
+    if [[ -f "$hwcfg" ]]; then
+        cp "$hwcfg" "$hwcfg_backup"
+    fi
+    echo ">> regenerating $hwcfg via nixos-generate-config --root /mnt …"
+    nixos-generate-config --root /mnt --show-hardware-config > "$hwcfg"
+
+    # 5. Show the diff. If unchanged, that's also fine (no-op).
+    echo
+    echo ">> diff against previously-committed hardware-config:"
+    if [[ -f "$hwcfg_backup" ]]; then
+        diff -u "$hwcfg_backup" "$hwcfg" || true
+    else
+        echo "  (no prior file existed; full content is new)"
+    fi
+    echo
+
+    # 6. git add. The flake build only sees git-tracked files, even
+    # for in-tree paths — this is the AGENTS.md hard rule that bites
+    # everyone exactly once.
+    echo ">> git add $hwcfg"
+    git -C "$flake_root" add "hosts/$HOSTNAME/hardware-configuration.nix"
+    echo
+    echo ">> git status (the file MUST appear here as staged):"
+    git -C "$flake_root" status --short -- "hosts/$HOSTNAME/hardware-configuration.nix"
+    echo
+
+    # 7. Sanity: ask Nix what root device it will install. --refresh
+    # busts the flake source-copy cache. Compare to blkid's view of
+    # /mnt — they MUST match or the new system won't find its root.
+    echo ">> resolving fileSystems.\"/\".device via nix eval --refresh …"
+    local nix_root_dev mnt_uuid mnt_dev nix_root_uuid
+    nix_root_dev=$(nix eval --refresh --impure --raw \
+        "$flake_root#nixosConfigurations.$HOSTNAME.config.fileSystems.\"/\".device")
+    mnt_dev=$(findmnt -no SOURCE /mnt)
+    mnt_uuid=$(blkid -s UUID -o value "$mnt_dev")
+    # Strip the "/dev/disk/by-uuid/" prefix if present, so we can
+    # compare bare UUIDs.
+    nix_root_uuid="${nix_root_dev#/dev/disk/by-uuid/}"
+
+    echo "  nix says root device: $nix_root_dev"
+    echo "  /mnt is backed by:    $mnt_dev (UUID $mnt_uuid)"
+    if [[ "$nix_root_uuid" != "$mnt_uuid" ]]; then
+        echo
+        echo "error: UUID mismatch between Nix's view and the actual /mnt." >&2
+        echo "       Nix would install a system that boots looking for" >&2
+        echo "       UUID $nix_root_uuid, but /mnt is $mnt_uuid." >&2
+        echo "       The regenerated hardware-config didn't reach Nix." >&2
+        echo "       Common causes:" >&2
+        echo "         - git add silently failed (re-run, check git status)." >&2
+        echo "         - flake source cache served stale content (we used" >&2
+        echo "           --refresh to bust it; if you still see this, try" >&2
+        echo "           rm -rf /root/.cache/nix and retry)." >&2
+        exit 4
+    fi
+    echo "  ✓ UUIDs match."
+    echo
+
+    # 8. Confirm and run.
+    echo "About to: nixos-install --root /mnt --flake $flake_root#$HOSTNAME"
+    read -r -p "Type YES (uppercase) to proceed, anything else to abort: " confirm
+    if [[ "$confirm" != "YES" ]]; then
+        echo "aborted."
+        exit 1
+    fi
+
+    echo
+    echo ">> running nixos-install …"
+    nixos-install --root /mnt --flake "$flake_root#$HOSTNAME"
+}
+
 # ── dispatch ──────────────────────────────────────────────────────
-if (( PARTITION_MODE )); then
-    do_partition
-else
-    do_mount
-fi
+case "$MODE" in
+    mount)     do_mount ;;
+    partition) do_partition ;;
+    install)   do_install ;;
+esac
