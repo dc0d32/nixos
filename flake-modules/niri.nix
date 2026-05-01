@@ -94,8 +94,49 @@
     systemd.user.services.niri-flake-polkit.enable = false;
   };
 
-  flake.modules.homeManager.niri = { inputs, pkgs, ... }: {
+  flake.modules.homeManager.niri = { inputs, lib, pkgs, ... }: {
     imports = [ inputs.niri.homeModules.niri ];
+
+    # ── Wayland session env propagation ─────────────────────────
+    # niri does not natively push WAYLAND_DISPLAY / XDG_CURRENT_DESKTOP
+    # into the user systemd manager or D-Bus activation environment.
+    # Without this, every user systemd unit that needs a Wayland
+    # connection (awww-daemon, easyeffects, anything graphical-
+    # session.target-bound) starts before the env is set, fails to
+    # connect to the compositor, and crashes — typically with
+    # "WAYLAND_DISPLAY is not set" or socket-not-found errors.
+    #
+    # The canonical fix (per niri-flake README, sway/hyprland conventions)
+    # is to run dbus-update-activation-environment with --systemd at
+    # session start; this single call:
+    #   1. registers the listed env vars with the user D-Bus daemon so
+    #      D-Bus-activated services see them, and
+    #   2. propagates them into `systemctl --user` via systemd's own
+    #      env-import mechanism.
+    # graphical-session.target then has the right env when its wanted
+    # services start.
+    #
+    # Variables propagated: WAYLAND_DISPLAY (the obvious one),
+    # XDG_CURRENT_DESKTOP (used by xdg-portal backend selection,
+    # gtk theming, and the per-compositor branches in many apps).
+    #
+    # mkBefore so this env-propagation runs FIRST, before all the
+    # other spawn-at-startup entries (bitwarden, polkit-agent,
+    # easyeffects, quickshell) — those depend on the env having
+    # been pushed.
+    #
+    # Retire when: niri grows native systemd-import behaviour at
+    # session start (tracked in niri upstream; not present as of 25.08).
+    programs.niri.settings.spawn-at-startup = lib.mkBefore [
+      {
+        command = [
+          "${pkgs.dbus}/bin/dbus-update-activation-environment"
+          "--systemd"
+          "WAYLAND_DISPLAY"
+          "XDG_CURRENT_DESKTOP"
+        ];
+      }
+    ];
 
     programs.niri.settings = {
       input.keyboard = {
