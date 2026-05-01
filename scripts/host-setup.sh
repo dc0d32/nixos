@@ -246,6 +246,22 @@ NIX_EXTRA_OPTS=(
     --extra-experimental-features flakes
 )
 
+# Substituters to make available during install. The installed system
+# wires niri.cachix.org via niri-flake's NixOS module, but the live
+# installer ISO doesn't have it — so without these flags niri (and
+# all of its Rust crate deps) get fetched from crates.io and built
+# from source, which on a slow network or a 4-core T480 fails or
+# takes hours. Passing extra-substituters as a CLI option appends
+# to the live env's defaults; cache.nixos.org stays in play.
+#
+# The public key here MUST match niri-flake's published key. If
+# niri ever rotates it, update both this list and any other place
+# that references it (search the repo for `Wv0OmO7P`).
+NIX_SUBSTITUTER_OPTS=(
+    --option extra-substituters "https://niri.cachix.org"
+    --option extra-trusted-public-keys "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
+)
+
 # ── helper: show what we're about to touch ────────────────────────
 show_disk() {
     echo
@@ -654,7 +670,7 @@ do_install() {
     # a clear diagnostic instead of `set -e` killing us silently via
     # the $(...) substitution. Stderr passes through to the user.
     set +e
-    nix_root_dev=$(nix "${NIX_EXTRA_OPTS[@]}" eval --refresh --impure --raw \
+    nix_root_dev=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --raw \
         "$flake_root#nixosConfigurations.$HOSTNAME.config.fileSystems.\"/\".device")
     nix_eval_rc=$?
     set -e
@@ -728,9 +744,16 @@ do_install() {
     # nixos-install passes --option <key> <value> through to its
     # internal nix invocations. extra-experimental-features takes a
     # space-separated list. Without this, nixos-install fails the
-    # same way nix eval did on a stock installer ISO.
+    # same way nix eval did on a stock installer ISO. Substituter
+    # options similarly extend the live env's defaults — they make
+    # niri.cachix.org reachable so niri's Rust crates don't get
+    # source-fetched + built (the failure mode that crashed earlier
+    # t480 install attempts when crates.io was unreachable).
     nixos-install --root /mnt --flake "$flake_root#$HOSTNAME" \
-        --option extra-experimental-features "nix-command flakes"
+        --option extra-experimental-features "nix-command flakes" \
+        --option extra-substituters "https://niri.cachix.org" \
+        --option extra-trusted-public-keys \
+            "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
 
     # On success, drop the backup. We leave the working-tree change
     # in place — it represents the actual hardware UUIDs of this
