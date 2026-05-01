@@ -5,17 +5,17 @@ layout as `pb-x1`. Adapted from the live layout on this machine
 (2026-05-01); update if the substrate diverges.
 
 > **Tip:** the manual partition + mount + install sequence in this
-> document is also encoded as `scripts/host-setup.sh`. From the live
-> USB, the full install reduces to:
+> document is also encoded as `scripts/host-setup.sh`. Modes are
+> selected by an explicit flag (mode flags are mutually exclusive):
 >
 > ```sh
-> sudo scripts/host-setup.sh /dev/nvme0n1 --partition  # destructive: wipe + format only (no mount)
-> sudo scripts/host-setup.sh /dev/nvme0n1              # then mount the new layout under /mnt
-> # or, if disk is already partitioned:
-> sudo scripts/host-setup.sh /dev/nvme0n1              # mount-only, idempotent
+> sudo scripts/host-setup.sh /dev/nvme0n1 --partition   # DESTRUCTIVE: wipe + format only (no mount)
+> sudo scripts/host-setup.sh /dev/nvme0n1 --mount       # mount existing layout under /mnt (idempotent)
+> sudo scripts/host-setup.sh /dev/nvme0n1               # same as --mount (default when disk is given)
+> sudo scripts/host-setup.sh --unmount                  # release /mnt tree cleanly
 >
 > # then, in the cloned flake repo:
-> sudo scripts/host-setup.sh --install pb-t480         # gen hwconfig + git add + verify + nixos-install
+> sudo scripts/host-setup.sh --install pb-t480          # gen hwconfig + git add + verify + nixos-install
 > ```
 >
 > The `--install` mode regenerates `hosts/<hostname>/hardware-configuration.nix`,
@@ -25,6 +25,10 @@ layout as `pb-x1`. Adapted from the live layout on this machine
 > `nixos-install`. It refuses to proceed if `/mnt/boot` isn't a vfat
 > mountpoint — the failure mode that left earlier installs booting
 > into a kernel waiting for the all-zeros sentinel UUID.
+>
+> Aborting at the `--install` confirm prompt cleanly reverts the
+> staged hwconfig and removes the temporary backup file, so the repo
+> ends bit-identical to its pre-invocation state.
 >
 > Use the script during install troubleshooting; use the manual steps
 > below if you want to learn what each command does or you've diverged
