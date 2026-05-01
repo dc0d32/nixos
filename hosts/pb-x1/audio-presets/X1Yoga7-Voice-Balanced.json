@@ -312,7 +312,7 @@
         "limiter#0": {
             "bypass": false,
             "input-gain": 0.0,
-            "output-gain": 0.0,
+            "output-gain": 3.0,
             "mode": "Herm Thin",
             "oversampling": "None",
             "dithering": "None",
@@ -327,7 +327,7 @@
             "sidechain-preamp": 0.0
         },
         "autogain#0": {
-            "bypass": false,
+            "bypass": true,
             "input-gain": 0.0,
             "output-gain": 0.0,
             "maximum-history": 20,
