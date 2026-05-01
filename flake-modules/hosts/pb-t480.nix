@@ -192,10 +192,9 @@ in
 
       # Battery / hibernate config (declared as a NixOS module option
       # by flake-modules/battery.nix). T480 has BAT0 (external
-      # swappable, primary) and BAT1 (internal). battery.nix only
-      # writes charge thresholds to BAT0 today; BAT1 silently charges
-      # to 100%. Splitting per-battery thresholds is a future
-      # enhancement.
+      # swappable, primary) and BAT1 (internal). Both get the same
+      # charge thresholds — capping BAT1 at 80% costs nothing and
+      # extends its lifespan alongside BAT0.
       #
       # The resumeDevice placeholder below trips the runtime warning
       # service `battery-resume-offset` in battery.nix on first boot
@@ -204,6 +203,7 @@ in
       # real UUID from:
       #   blkid -s UUID -o value $(findmnt -no SOURCE /)
       battery = {
+        batteries = [ "BAT0" "BAT1" ];
         chargeStopThreshold = 80;
         chargeStartThreshold = 75;
         criticalPercent = 10;

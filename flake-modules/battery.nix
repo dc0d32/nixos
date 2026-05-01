@@ -92,6 +92,23 @@
             nvme renumbering.
           '';
         };
+        batteries = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ "BAT0" ];
+          example = [ "BAT0" "BAT1" ];
+          description = ''
+            Names of `/sys/class/power_supply/<name>` entries that
+            should receive charge-threshold writes. Single-battery
+            ThinkPads (e.g. X1 Yoga) keep the default
+            `[ "BAT0" ]`. Dual-battery ThinkPads (e.g. T480 with
+            external swappable BAT0 + internal BAT1) set
+            `[ "BAT0" "BAT1" ]`. The same thresholds
+            (chargeStartThreshold / chargeStopThreshold) are
+            applied to every entry. tmpfiles `w+` ignores ENOENT,
+            so listing a battery the host doesn't have silently
+            no-ops, but be explicit so the intent is documented.
+          '';
+        };
       };
 
       config = {
@@ -111,13 +128,14 @@
         # (so non-Lenovo hardware without these files just no-ops).
         #
         # Multi-battery hosts (e.g. T480 with BAT0 external + BAT1
-        # internal): only BAT0 gets capped today. BAT1 silently
-        # charges to 100%. Splitting per-battery thresholds is a
-        # future enhancement.
-        systemd.tmpfiles.rules = [
-          "w+ /sys/class/power_supply/BAT0/charge_control_start_threshold - - - - ${toString cfg.chargeStartThreshold}"
-          "w+ /sys/class/power_supply/BAT0/charge_control_end_threshold   - - - - ${toString cfg.chargeStopThreshold}"
-        ];
+        # internal) declare every battery name in `battery.batteries`;
+        # the same thresholds get applied to each.
+        systemd.tmpfiles.rules = lib.concatMap
+          (bat: [
+            "w+ /sys/class/power_supply/${bat}/charge_control_start_threshold - - - - ${toString cfg.chargeStartThreshold}"
+            "w+ /sys/class/power_supply/${bat}/charge_control_end_threshold   - - - - ${toString cfg.chargeStopThreshold}"
+          ])
+          cfg.batteries;
 
         # ── Hibernate prerequisites ──────────────────────────────────
         # Btrfs swapfile rules:
