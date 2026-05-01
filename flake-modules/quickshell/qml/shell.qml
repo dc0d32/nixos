@@ -7,12 +7,19 @@ import "osd"
 import "media"
 import "notifications"
 import "lock"
+import "launcher"
+import "clipboard"
+import "screenshot"
 
 Scope {
   VolumeOsd { }
+  BrightnessOsd { }
   MediaOsd { }
   NotificationCenter { id: notifCenter }
   LockScreen { id: lockScreen }
+  AppLauncher { }
+  ClipboardHistory { }
+  ScreenshotPicker { }
 
   Variants {
     model: Quickshell.screens

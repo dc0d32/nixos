@@ -10,7 +10,11 @@
 # homeManager class:
 #   - imports inputs.niri.homeModules.niri
 #   - the user-side niri config (the kdl file, keybinds, layout)
-#   - fuzzel app launcher
+#
+# App launcher, clipboard history, and screenshot picker were native fuzzel /
+# cliphist+fuzzel / grim+slurp+satty bash one-liners; they are now native
+# Quickshell overlays driven by IPC (`quickshell ipc call <target> toggle`).
+# See flake-modules/quickshell/qml/{launcher,clipboard,screenshot}/.
 #
 # Pattern A: hosts opt in by importing this module. Headless / WSL
 # hosts simply don't import it, so inputs.niri's modules are never
@@ -39,7 +43,6 @@
       grim
       slurp
       mako
-      fuzzel
       xdg-utils
     ];
 
@@ -94,13 +97,6 @@
   flake.modules.homeManager.niri = { inputs, pkgs, ... }: {
     imports = [ inputs.niri.homeModules.niri ];
 
-    programs.fuzzel.enable = true;
-    programs.fuzzel.settings = {
-      main = {
-        "dpi-aware" = "no";
-      };
-    };
-
     programs.niri.settings = {
       input.keyboard = {
         xkb.layout = "us";
@@ -137,7 +133,12 @@
 
         "Mod+T".action.spawn = "alacritty";
         "Mod+E".action.spawn = [ "alacritty" "-e" "yazi" ];
-        "Super+Space".action.spawn = "fuzzel";
+        # App launcher — quickshell native overlay (replaces fuzzel).
+        "Super+Space".action.spawn = [
+          "bash"
+          "-c"
+          "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call launcher toggle"
+        ];
 
         "Super+Alt+L".action.spawn = [ "bash" "-c" "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call lock lock" ];
 
@@ -319,33 +320,21 @@
 
         "Mod+W".action.toggle-column-tabbed-display = { };
 
-        # Screenshots — grim captures, slurp selects, satty annotates.
-        # Print       = region select → satty annotation
-        # Ctrl+Print  = full screen → satty annotation
-        # Alt+Print   = focused window (niri native)
-        # Shift+Print = region select → clipboard (no annotation)
+        # Screenshots — quickshell overlay drives grim/slurp/satty.
+        # Print       = picker (region/screen/region-clipboard) → satty annotation
+        # Alt+Print   = focused window (niri native, needs compositor cooperation)
         "Print".action.spawn = [
           "bash"
           "-c"
-          "grim -g \"$(slurp)\" - | satty --filename - --copy-command 'wl-copy'"
-        ];
-        "Ctrl+Print".action.spawn = [
-          "bash"
-          "-c"
-          "grim - | satty --filename - --copy-command 'wl-copy'"
+          "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call screenshot toggle"
         ];
         "Alt+Print".action.screenshot-window = { };
-        "Shift+Print".action.spawn = [
-          "bash"
-          "-c"
-          "grim -g \"$(slurp)\" - | wl-copy"
-        ];
 
-        # Clipboard history — cliphist stores history, fuzzel picks from it
+        # Clipboard history — quickshell native overlay (replaces fuzzel dmenu).
         "Mod+Shift+C".action.spawn = [
           "bash"
           "-c"
-          "cliphist list | fuzzel --dmenu | cliphist decode | wl-copy"
+          "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call clipboard toggle"
         ];
 
         # Screen recording — toggle wf-recorder for full screen capture

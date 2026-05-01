@@ -110,6 +110,7 @@ PanelWindow {
         PowerProfile { id: powerProfileChip }
         Brightness { id: brightnessChip }
         Clock      { id: clockChip }
+        PowerChip  { id: powerChip }
         NotificationChip { id: notifChip; server: bar.notificationServer }
       }
     }
@@ -134,6 +135,7 @@ PanelWindow {
   readonly property real powerProfileCX: chipCX(powerProfileChip)
   readonly property real brightnessCX:   chipCX(brightnessChip)
   readonly property real clockCX:        chipCX(clockChip)
+  readonly property real powerCX:        chipCX(powerChip)
   readonly property real weatherCX:      chipCX(weatherChip)
   readonly property real mediaCX:        chipCX(mediaChip)
 
@@ -165,6 +167,10 @@ PanelWindow {
     text: Qt.formatDateTime(new Date(), "dddd, MMMM d yyyy")
   }
   BarTooltip {
+    chipCenterX: bar.powerCX; shown: powerChip.tooltipShown
+    text: "Power menu"
+  }
+  BarTooltip {
     chipCenterX: bar.weatherCX; shown: weatherChip.tooltipShown
     text: WeatherModel.location !== ""
         ? WeatherModel.location + ": " + WeatherModel.conditionText + ", " + WeatherModel.temp
@@ -183,6 +189,7 @@ PanelWindow {
   WeatherFlyout    { chipCenterX: bar.weatherCX;    chipWidth: weatherChip.width }
   BrightnessFlyout { chipCenterX: bar.brightnessCX; chipWidth: brightnessChip.width }
   PowerProfileFlyout { chipCenterX: bar.powerProfileCX; chipWidth: powerProfileChip.width }
+  PowerMenuFlyout    { chipCenterX: bar.powerCX;        chipWidth: powerChip.width }
   ClockFlyout      { chipCenterX: bar.clockCX;      chipWidth: clockChip.width }
   MediaFlyout      { chipCenterX: bar.mediaCX;      chipWidth: mediaChip.width }
 }

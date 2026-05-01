@@ -22,6 +22,7 @@ Battery 1.0 bar/Battery.qml
 Brightness 1.0 bar/Brightness.qml
 Clock 1.0 bar/Clock.qml
 PowerProfile 1.0 bar/PowerProfile.qml
+PowerChip 1.0 bar/PowerChip.qml
 ProfileButton 1.0 bar/ProfileButton.qml
 Separator 1.0 bar/Separator.qml
 BarTooltip 1.0 bar/BarTooltip.qml
@@ -34,10 +35,15 @@ BrightnessFlyout 1.0 bar/flyouts/BrightnessFlyout.qml
 ClockFlyout 1.0 bar/flyouts/ClockFlyout.qml
 MediaFlyout 1.0 bar/flyouts/MediaFlyout.qml
 PowerProfileFlyout 1.0 bar/flyouts/PowerProfileFlyout.qml
+PowerMenuFlyout 1.0 bar/flyouts/PowerMenuFlyout.qml
 NotificationFlyout 1.0 bar/flyouts/NotificationFlyout.qml
 
 VolumeOsd 1.0 osd/VolumeOsd.qml
+BrightnessOsd 1.0 osd/BrightnessOsd.qml
 MediaOsd 1.0 media/MediaOsd.qml
 NotificationCenter 1.0 notifications/NotificationCenter.qml
 LockScreen 1.0 lock/LockScreen.qml
 LockContext 1.0 lock/LockContext.qml
+AppLauncher 1.0 launcher/AppLauncher.qml
+ClipboardHistory 1.0 clipboard/ClipboardHistory.qml
+ScreenshotPicker 1.0 screenshot/ScreenshotPicker.qml
