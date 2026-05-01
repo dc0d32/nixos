@@ -4,7 +4,8 @@
 # Three modes, picked by flag:
 #
 #   (default)      mount existing partitions under /mnt. Idempotent.
-#   --partition    DESTRUCTIVE: wipe + GPT + ESP + btrfs + subvols + mount.
+#   --partition    DESTRUCTIVE: wipe + GPT + ESP + btrfs + subvols.
+#                  Leaves nothing mounted; run the default mode after.
 #   --install <h>  generate hardware-config, git add it, sanity-check
 #                  via nix eval, then run nixos-install --root /mnt
 #                  --flake .#<h>. Assumes /mnt is already mounted (run
@@ -274,9 +275,12 @@ About to:
   4. mkfs.fat -F 32 -n BOOT $P1
   5. mkfs.btrfs $P2
   6. Create subvolumes: root, home, nix
-  7. Mount everything under /mnt as if for nixos-install.
 
 Anything currently on $DISK will be lost beyond recovery.
+
+After --partition completes, nothing is mounted. Run:
+  sudo $0 $DISK            # mount the new layout under /mnt
+  sudo $0 --install <h>    # then generate hwconfig + install
 
 EOF
 
@@ -328,9 +332,14 @@ EOF
     umount "$tmp"
     rmdir "$tmp"
 
-    # Fall through to mount-only logic to actually mount everything
-    # in the canonical order.
-    do_mount
+    # Done. Deliberately do NOT mount anything here — keep modes
+    # tightly scoped (partition does setup only; mount is a separate
+    # step). The user runs `host-setup.sh <disk>` next to mount.
+    echo
+    echo ">> partition + format + subvols complete on $DISK."
+    echo "next steps:"
+    echo "  sudo $0 $DISK              # mount the new layout under /mnt"
+    echo "  sudo $0 --install <host>   # then generate hwconfig + install"
 }
 
 # ── default mode: mount existing partitions under /mnt ────────────

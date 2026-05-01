@@ -9,7 +9,8 @@ layout as `pb-x1`. Adapted from the live layout on this machine
 > USB, the full install reduces to:
 >
 > ```sh
-> sudo scripts/host-setup.sh /dev/nvme0n1 --partition  # destructive: wipe + format + mount
+> sudo scripts/host-setup.sh /dev/nvme0n1 --partition  # destructive: wipe + format only (no mount)
+> sudo scripts/host-setup.sh /dev/nvme0n1              # then mount the new layout under /mnt
 > # or, if disk is already partitioned:
 > sudo scripts/host-setup.sh /dev/nvme0n1              # mount-only, idempotent
 >
