@@ -112,6 +112,36 @@
       };
 
       config = {
+        # ── Placeholder protection ──────────────────────────────────
+        # The all-zeros sentinel UUID indicates a host bridge that
+        # was never updated with real hardware UUIDs. Refusing to
+        # build with it prevents the failure mode where the system
+        # installs cleanly, boots, then hangs ~90s in initrd waiting
+        # for a non-existent resume device. Mirrors the same gate
+        # that `hosts/<name>/hardware-configuration.nix` uses.
+        # NIXOS_ALLOW_PLACEHOLDER=1 is the smoke-build escape hatch.
+        assertions = [{
+          assertion = cfg.resumeDevice
+            != "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000"
+            || builtins.getEnv "NIXOS_ALLOW_PLACEHOLDER" == "1";
+          message = ''
+            battery.resumeDevice is the all-zeros PLACEHOLDER UUID.
+            Booting this configuration will hang in initrd waiting
+            for a non-existent device. Update the resumeDevice line
+            in your host bridge (e.g. flake-modules/hosts/<name>.nix)
+            to point at the real btrfs partition's UUID:
+
+              blkid -s UUID -o value $(findmnt --nofsroot -no SOURCE /)
+
+              battery.resumeDevice =
+                "/dev/disk/by-uuid/<that-uuid>";
+
+            scripts/host-setup.sh --install does this automatically
+            during a fresh install. To smoke-build the placeholder
+            from a dev machine, set NIXOS_ALLOW_PLACEHOLDER=1.
+          '';
+        }];
+
         # ── Charge thresholds via sysfs ──────────────────────────────
         # The Lenovo X1 Yoga (and most ThinkPads on a recent kernel)
         # exposes:

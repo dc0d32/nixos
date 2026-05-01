@@ -19,12 +19,16 @@ layout as `pb-x1`. Adapted from the live layout on this machine
 > ```
 >
 > The `--install` mode regenerates `hosts/<hostname>/hardware-configuration.nix`,
-> `git add`s it (the AGENTS.md gotcha that bites everyone exactly once),
-> verifies via `nix eval --refresh` that the resolved root device UUID
-> matches what's actually mounted at `/mnt`, and only then runs
-> `nixos-install`. It refuses to proceed if `/mnt/boot` isn't a vfat
-> mountpoint — the failure mode that left earlier installs booting
-> into a kernel waiting for the all-zeros sentinel UUID.
+> patches `flake-modules/hosts/<hostname>.nix`'s `resumeDevice = "..."`
+> line (if present) to use the real btrfs UUID, `git add`s both
+> (the AGENTS.md gotcha that bites everyone exactly once), verifies
+> via `nix eval --refresh` that the resolved root device UUID and
+> resumeDevice both match what's actually mounted at `/mnt`, and
+> only then runs `nixos-install`. It refuses to proceed if
+> `/mnt/boot` isn't a vfat mountpoint, or if the resumeDevice still
+> resolves to the all-zeros placeholder — both failure modes left
+> earlier installs hanging in initrd waiting for non-existent
+> devices.
 >
 > Aborting at the `--install` confirm prompt cleanly reverts the
 > staged hwconfig and removes the temporary backup file, so the repo
