@@ -1,6 +1,24 @@
 # Default devShell for hacking on this flake itself.
 #
-# Provides nix tooling, git, and pre-commit hooks (via cachix/git-hooks.nix).
+# Provides nix tooling, git, pre-commit hooks (via cachix/git-hooks.nix), and
+# rebuild ergonomics (nh + nvd + nom).
+#
+# Tooling exposed in $PATH:
+#   - nh                  : friendly wrapper around nixos-rebuild / home-manager
+#                           switch / nix-collect-garbage. Shows a closure diff
+#                           via nvd by default. NH_FLAKE is set in shellHook
+#                           via `git rev-parse --show-toplevel` so `nh os
+#                           switch` and `nh home switch <user>@<host>` work
+#                           without a positional flakeref from anywhere inside
+#                           the repo.
+#   - nvd                 : closure-diff tool. Useful standalone for diffing two
+#                           store paths or two generations.
+#   - nix-output-monitor  : structured rebuild progress; pipe nix builds through
+#                           it as `nix build … |& nom` for human-readable output
+#                           (nh already calls nom internally for switches).
+#   - nixpkgs-fmt         : invoked by `nix fmt` and the pre-commit hook.
+#   - gitleaks            : invoked by the pre-commit hook (see below).
+#   - nix, git            : substrate.
 #
 # Hooks installed:
 #   - gitleaks      : scans staged content for secrets (API keys, age private
@@ -21,7 +39,8 @@
 #
 # Retire when: gitleaks/pre-commit is no longer wanted (e.g. repo goes private
 # AND all secrets are managed via a hardware token), or this is replaced by a
-# native git server-side hook.
+# native git server-side hook. The nh/nvd/nom additions can be dropped
+# independently if a different rebuild driver replaces them.
 { inputs, ... }: {
   perSystem = { pkgs, system, ... }:
     let
@@ -55,11 +74,26 @@
           nixpkgs-fmt
           git
           gitleaks
+          # Rebuild ergonomics. nh shells out to nixos-rebuild / home-manager
+          # and pipes their output through nom; nvd diffs the resulting
+          # closure against the previous generation. Available standalone too.
+          nh
+          nvd
+          nix-output-monitor
         ];
 
-        # `inherit (pre-commit-check) shellHook` would also work, but being
-        # explicit makes the wiring visible.
-        shellHook = pre-commit-check.shellHook;
+        # Run the pre-commit installer first, then resolve NH_FLAKE at shell-
+        # init time. NH_FLAKE has to be the workspace root, NOT the store
+        # path of this module — `toString ../..` would resolve relative to
+        # the store copy of dev-shell.nix and give /nix/store. Resolving at
+        # runtime via `git rev-parse` keeps it correct regardless of which
+        # subdirectory the user opened the dev-shell from. Falls back to
+        # PWD if not in a git checkout (rare; covers the case of running
+        # the dev-shell over a tarball/zip of the flake).
+        shellHook = ''
+          ${pre-commit-check.shellHook}
+          export NH_FLAKE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        '';
       };
 
       # Expose the check so `nix flake check` runs gitleaks too — catches
