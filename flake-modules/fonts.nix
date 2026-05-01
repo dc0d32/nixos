@@ -1,10 +1,13 @@
 # Fonts — system font packages + fontconfig defaultFonts (NixOS) and
-# user-level fontconfig rendering policy (home-manager).
+# user-level fontconfig rendering policy (home-manager). Also sets
+# the console (kernel framebuffer + TTY + Ly) font, which has to be
+# a PSF bitmap (RecMono can't render in the kernel console).
 #
 # Cross-class footprint:
 #   - flake.modules.nixos.fonts — installs Noto / Inter / JetBrains
 #     Mono / Recursive / nerd-fonts variants and sets defaultFonts
-#     per family (mono → RecMonoCasual, sans → Inter, etc.).
+#     per family (mono → RecMonoCasual, sans → Inter, etc.). Also
+#     sets console.font to Cozette (bitmap NF-patched).
 #   - flake.modules.homeManager.fonts — turns on fontconfig in HM and
 #     drops a 10-rendering.conf with slight hinting + RGB-off.
 #
@@ -46,6 +49,26 @@
         serif = [ "Noto Serif" ];
         emoji = [ "Noto Color Emoji" ];
       };
+    };
+
+    # Console font — shown in the kernel boot log, the text-mode TTYs
+    # (Ctrl+Alt+F1…F6), and inherited by Ly (TUI display manager).
+    # The kernel framebuffer console only renders PSF bitmap fonts,
+    # not TTF/OTF, so RecMono Nerd Font (used everywhere else in
+    # the GUI) cannot be used here. Cozette is the closest spiritual
+    # match: a bitmap font with Nerd Font glyph patches, so the
+    # NF-only icons that appear in journalctl / Ly status lines
+    # actually render. cozette12x26 is the HiDPI variant
+    # (12px wide × 26px tall); cozette6x13 is the legacy size.
+    # The PSF lives at <pkgs.cozette>/share/consolefonts/cozette12x26.psfu;
+    # console.font takes the bare name (no extension), and setfont
+    # searches console.packages' share/consolefonts/ at activation.
+    console = {
+      packages = [ pkgs.cozette ];
+      font = "cozette12x26";
+      # earlySetup runs the font load in the initrd so the boot log
+      # (not just post-stage-2 messages) renders in Cozette too.
+      earlySetup = true;
     };
   };
 
