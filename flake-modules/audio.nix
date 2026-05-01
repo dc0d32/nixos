@@ -6,24 +6,37 @@
 #     a WirePlumber rule that caps output volume at 100% to prevent
 #     digital clipping via the volume slider/keybinds.
 #   - flake.modules.homeManager.audio — EasyEffects + plugin libs,
-#     deploys per-host preset JSON, IRS impulse responses, an autoload
-#     rule that applies the chosen preset when the configured sink
-#     appears, and a user systemd service that runs EasyEffects with
-#     --hide-window so the audio DSP keeps running across window-close,
-#     suspend/resume, and Wayland reconnect events. Open the GUI on
-#     demand by running `easyeffects` (no flags); closing the window
-#     leaves the daemon alive because it's the GApplication primary,
-#     and the launched UI is just a remote that exits when dismissed.
+#     deploys per-host preset JSON, IRS impulse responses, and a list
+#     of per-sink autoload rules so that each sink (built-in speakers,
+#     bluetooth headphones, …) gets exactly the preset configured for
+#     it — and nothing else. A user systemd service runs EasyEffects
+#     with --hide-window so the audio DSP keeps running across
+#     window-close, suspend/resume, and Wayland reconnect events. Open
+#     the GUI on demand by running `easyeffects` (no flags); closing
+#     the window leaves the daemon alive because it's the GApplication
+#     primary, and the launched UI is just a remote that exits when
+#     dismissed.
+#
+# Per-sink scoping:
+#   EasyEffects 8.x has no global "process all outputs" toggle. Per-sink
+#   selection is done entirely via autoload rules in
+#   ~/.config/easyeffects/autoload/output/. A rule
+#   "<device>:<profile>.json" tells EE: "when this PipeWire sink
+#   appears, load this preset on it." Sinks with no rule are left
+#   flat/passthrough. We therefore deliberately do NOT write a global
+#   `lastLoadedOutputPreset` into easyeffectsrc — that key would make
+#   the configured preset apply to whatever sink happens to be default
+#   on startup (e.g. bluetooth headphones), defeating per-sink scope.
 #
 # Pattern A: hosts opt in by importing this module on either class.
 # WSL / headless / desktops without speakers simply don't import the
 # HM side.
 #
-# Top-level options absorb the per-host data — preset name, the on-disk
-# preset directory, the IRS directory, and the autoload-target sink.
-# The preset and IRS dirs are paths into the host's own directory (e.g.
-# hosts/pb-x1/audio-presets/) so they ship with the host they
-# describe.
+# Top-level options absorb the per-host data — the on-disk preset
+# directory, the IRS directory, and a list of autoload rules
+# (one entry per sink → preset binding). The preset and IRS dirs are
+# paths into the host's own directory (e.g. hosts/pb-x1/audio-presets/)
+# so they ship with the host they describe.
 #
 # Retire when: you switch off EasyEffects entirely (e.g. moving DSP
 # into native PipeWire filter graphs), or upstream EasyEffects starts
@@ -31,20 +44,40 @@
 { lib, config, ... }:
 let
   cfg = config.audio;
+
+  autoloadType = lib.types.submodule {
+    options = {
+      device = lib.mkOption {
+        type = lib.types.str;
+        example = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
+        description = ''
+          PipeWire sink node-name to autoload the preset on. Get with:
+          wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
+        '';
+      };
+      profile = lib.mkOption {
+        type = lib.types.str;
+        example = "Speaker";
+        description = "ALSA card profile (used in the autoload rule filename).";
+      };
+      description = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Human-readable device description embedded in the autoload rule.";
+      };
+      preset = lib.mkOption {
+        type = lib.types.str;
+        example = "X1Yoga7-Dynamic-Detailed";
+        description = ''
+          EasyEffects preset name (without .json) to apply when this
+          sink appears. Must match a file in `presetsDir`.
+        '';
+      };
+    };
+  };
 in
 {
   options.audio = {
-    preset = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "X1Yoga7-Dynamic-Detailed";
-      description = ''
-        EasyEffects preset name (without .json) to load on startup
-        and to wire into the autoload rule. Null disables both
-        startup-load and autoload, leaving EasyEffects in
-        flat/no-preset state.
-      '';
-    };
     presetsDir = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -65,25 +98,32 @@ in
         references the convolver stage by kernel-name.
       '';
     };
-    autoloadDevice = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
-      description = ''
-        PipeWire sink node-name to autoload the preset on. Get with:
-        wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
+    autoloads = lib.mkOption {
+      type = lib.types.listOf autoloadType;
+      default = [ ];
+      example = lib.literalExpression ''
+        [
+          {
+            device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
+            profile = "Speaker";
+            description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
+            preset = "X1Yoga7-Dynamic-Detailed";
+          }
+          {
+            device = "bluez_output.AA_BB_CC_DD_EE_FF.1";
+            profile = "headset-head-unit";
+            description = "Sony WH-1000XM4";
+            preset = "WH1000XM4-Flat";
+          }
+        ]
       '';
-    };
-    autoloadDeviceProfile = lib.mkOption {
-      type = lib.types.str;
-      default = "";
-      example = "Speaker";
-      description = "ALSA card profile (used in the autoload rule filename).";
-    };
-    autoloadDeviceDescription = lib.mkOption {
-      type = lib.types.str;
-      default = "";
-      description = "Human-readable device description embedded in the autoload rule.";
+      description = ''
+        List of per-sink autoload rules. Each entry binds a single
+        PipeWire sink (by node-name) to a single preset; sinks with
+        no entry are left flat/passthrough. There is intentionally no
+        global default — see the per-sink scoping note in the file
+        header.
+      '';
     };
   };
 
@@ -207,33 +247,25 @@ in
               force = true;
             })
           (builtins.readDir cfg.presetsDir)))
-
-      # Autoload rule: filename format is "<device>:<profile>.json" —
-      # exactly what EasyEffects writes when you set it up via the
-      # UI.
-      (lib.optionalAttrs (cfg.autoloadDevice != null && cfg.preset != null) {
-        "easyeffects/autoload/output/${cfg.autoloadDevice}:${cfg.autoloadDeviceProfile}.json" = {
-          force = true;
-          text = builtins.toJSON {
-            device = cfg.autoloadDevice;
-            device-description = cfg.autoloadDeviceDescription;
-            device-profile = cfg.autoloadDeviceProfile;
-            preset-name = cfg.preset;
-          };
-        };
-      })
     ];
 
-    # Write EasyEffects' GSettings-backed INI so the correct preset
-    # is shown on startup.
-    xdg.configFile = lib.optionalAttrs (cfg.preset != null) {
-      "easyeffects/db/easyeffectsrc" = {
-        force = true;
-        text = ''
-          [Presets]
-          lastLoadedOutputPreset=${cfg.preset}
-        '';
-      };
-    };
+    # Per-sink autoload rules. Filename format is
+    # "<device>:<profile>.json" — exactly what EasyEffects writes when
+    # you set up an autoload via the UI. One rule per sink keeps each
+    # sink's preset isolated from the others; sinks without a rule
+    # stay flat.
+    xdg.configFile = lib.listToAttrs (map
+      (rule: lib.nameValuePair
+        "easyeffects/autoload/output/${rule.device}:${rule.profile}.json"
+        {
+          force = true;
+          text = builtins.toJSON {
+            device = rule.device;
+            device-description = rule.description;
+            device-profile = rule.profile;
+            preset-name = rule.preset;
+          };
+        })
+      cfg.autoloads);
   };
 }

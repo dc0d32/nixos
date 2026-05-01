@@ -57,14 +57,23 @@ in
   # their own resumeDevice / thresholds without singleton conflicts.
 
   audio = {
-    preset = "X1Yoga7-Dynamic-Detailed";
     presetsDir = ../../hosts/pb-x1/audio-presets;
     irsDir = ../../hosts/pb-x1/audio-irs;
-    # Autoload: apply preset automatically when this output device appears.
-    # Get the device name with: wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
-    autoloadDevice = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
-    autoloadDeviceProfile = "Speaker";
-    autoloadDeviceDescription = "Alder Lake PCH-P High Definition Audio Controller Speaker";
+    # Per-sink autoload rules. Each entry binds a single PipeWire sink
+    # (by node-name) to a single EasyEffects preset; sinks without an
+    # entry are left flat/passthrough. Get a sink's node-name with:
+    #   wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
+    # Add a second entry here when you author a preset for bluetooth
+    # headphones (device = "bluez_output.<MAC>.1", profile is the
+    # PipeWire profile name shown by `wpctl status`).
+    autoloads = [
+      {
+        device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
+        profile = "Speaker";
+        description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
+        preset = "X1Yoga7-Dynamic-Detailed";
+      }
+    ];
   };
 
   wallpaper = {
