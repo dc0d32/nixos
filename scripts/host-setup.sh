@@ -203,6 +203,16 @@ case "$MODE" in
         ;;
 esac
 
+# Live USB / installer environments ship Nix without nix-command +
+# flakes enabled by default. Our flake-modules/nix-settings.nix turns
+# them on, but only on the *installed* system — not in the installer.
+# Pass them as command-line options on every nix invocation so the
+# script works regardless of /etc/nix/nix.conf in the live env.
+NIX_EXTRA_OPTS=(
+    --extra-experimental-features nix-command
+    --extra-experimental-features flakes
+)
+
 # ── helper: show what we're about to touch ────────────────────────
 show_disk() {
     echo
@@ -500,7 +510,7 @@ do_install() {
     # /mnt — they MUST match or the new system won't find its root.
     echo ">> resolving fileSystems.\"/\".device via nix eval --refresh …"
     local nix_root_dev mnt_uuid mnt_dev nix_root_uuid
-    nix_root_dev=$(nix eval --refresh --impure --raw \
+    nix_root_dev=$(nix "${NIX_EXTRA_OPTS[@]}" eval --refresh --impure --raw \
         "$flake_root#nixosConfigurations.$HOSTNAME.config.fileSystems.\"/\".device")
     mnt_dev=$(findmnt -no SOURCE /mnt)
     mnt_uuid=$(blkid -s UUID -o value "$mnt_dev")
@@ -536,7 +546,12 @@ do_install() {
 
     echo
     echo ">> running nixos-install …"
-    nixos-install --root /mnt --flake "$flake_root#$HOSTNAME"
+    # nixos-install passes --option <key> <value> through to its
+    # internal nix invocations. extra-experimental-features takes a
+    # space-separated list. Without this, nixos-install fails the
+    # same way nix eval did on a stock installer ISO.
+    nixos-install --root /mnt --flake "$flake_root#$HOSTNAME" \
+        --option extra-experimental-features "nix-command flakes"
 }
 
 # ── dispatch ──────────────────────────────────────────────────────
