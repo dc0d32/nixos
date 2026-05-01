@@ -23,7 +23,7 @@
 # The parent (`p`) keeps importing `chrome` and is unaffected.
 #
 # The actual policy content lives in the host's own asset directory
-# (e.g. hosts/family-laptop/chromium-policy.json), so the policy
+# (e.g. hosts/pb-t480/chromium-policy.json), so the policy
 # JSON is treated as host-specific data, not module logic. Different
 # hosts could ship different policy files by setting
 # `chromium-managed.policyFile` differently.
@@ -42,7 +42,7 @@ in
     policyFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
-      example = lib.literalExpression "../../hosts/family-laptop/chromium-policy.json";
+      example = lib.literalExpression "../../hosts/pb-t480/chromium-policy.json";
       description = ''
         Path to the JSON file that will be installed at
         `/etc/chromium/policies/managed/family-safety.json`. Required

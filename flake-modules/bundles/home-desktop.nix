@@ -4,7 +4,7 @@
 # compositor (niri), bar/lockscreen (quickshell), browser (chrome),
 # password manager (bitwarden), editor with GUI (vscode), terminal
 # (alacritty), and friends. Currently consumed by my account on
-# pb-x1 and family-laptop.
+# pb-x1 and pb-t480.
 #
 # = dev ++ [
 #     alacritty bitwarden chrome desktop-extras fonts freecad

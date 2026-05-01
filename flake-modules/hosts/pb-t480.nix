@@ -1,4 +1,7 @@
-# family-laptop — shared family laptop with parental-control accounts.
+# pb-t480 — shared family laptop with parental-control accounts.
+#
+# Hardware: Lenovo ThinkPad T480 (8th-gen Coffee Lake, x86_64).
+# Naming follows the pb-x1 scheme: "pb" (initials) + "t480" (model).
 #
 # Three NixOS users:
 #   - p : admin (wheel), full HM mirror of pb-x1
@@ -9,7 +12,7 @@
 # things look familiar across users. They get chrome, alacritty, zsh
 # but no vscode / freecad / bitwarden / ai-cli / build-deps. Web
 # filtering and DNS logging are NOT installed (deferred per session
-# notes 2026-04-30-family-laptop-host.md).
+# notes 2026-04-30-family-laptop-host.md, written before the rename).
 #
 # Time-of-day / screen-time controls are wired via flake-modules/
 # timekpr.nix using nixpkgs' `timekpr` package (= upstream timekpr-
@@ -21,21 +24,18 @@
 # session opened/closed events). The wrapper `family-activity` (defined
 # below) is a convenience for p to grep the journal for m/s sessions.
 #
-# Naming: `family-laptop` is intentionally generic because the actual
-# hardware model isn't decided yet. Rename to `<initials>-<model>` (per
-# the pb-x1 scheme) once the box is chosen and built out.
-#
 # To rebuild on the actual hardware:
-#   sudo nixos-rebuild switch --flake .#family-laptop
-#   home-manager switch --flake .#'p@family-laptop'    # for p
-#   home-manager switch --flake .#'m@family-laptop'    # for m
-#   home-manager switch --flake .#'s@family-laptop'    # for s
+#   sudo nixos-rebuild switch --flake .#pb-t480
+#   home-manager switch --flake .#'p@pb-t480'    # for p
+#   home-manager switch --flake .#'m@pb-t480'    # for m
+#   home-manager switch --flake .#'s@pb-t480'    # for s
 #
-# Retire when: split into separate per-kid hosts, or replaced by a
-# proper multi-seat configuration.
+# Retire when: this host is decommissioned or replaced by a successor
+#   (e.g. pb-t14 / a different ThinkPad gen), OR split into separate
+#   per-kid hosts, OR replaced by a proper multi-seat configuration.
 { lib, config, ... }:
 let
-  hostName = "family-laptop";
+  hostName = "pb-t480";
   primaryUser = "p";
   kidUsers = [ "m" "s" ];
   system = "x86_64-linux";
@@ -102,9 +102,9 @@ in
 
   # Chromium managed-policy file applied to /etc/chromium/policies/
   # managed/ on this host. See flake-modules/chromium-managed.nix
-  # for why this exists and hosts/family-laptop/chromium-policy.md
+  # for why this exists and hosts/pb-t480/chromium-policy.md
   # for what each policy does.
-  chromium-managed.policyFile = ../../hosts/family-laptop/chromium-policy.json;
+  chromium-managed.policyFile = ../../hosts/pb-t480/chromium-policy.json;
 
   # Auto-lock / DPMS / suspend timings (seconds).
   idle = {
@@ -136,11 +136,11 @@ in
     # so pure `nix flake check` keeps passing on the dev box. To
     # smoke-build anyway:
     #   NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
-    #     .#nixosConfigurations.family-laptop.config.system.build.toplevel
+    #     .#nixosConfigurations.pb-t480.config.system.build.toplevel
     placeholder = true;
     module = {
       imports = [
-        ../../hosts/family-laptop/hardware-configuration.nix
+        ../../hosts/pb-t480/hardware-configuration.nix
 
         # Feature modules. NOT importing:
         #   - audio (X1-Yoga-specific presets; no presets for this host yet)

@@ -1,6 +1,6 @@
 # Shared `pkgs` factory for host bridges.
 #
-# Every host bridge (pb-x1, family-laptop, wsl, ah-1) needs an
+# Every host bridge (pb-x1, pb-t480, wsl, ah-1) needs an
 # `import inputs.nixpkgs { … }` instance with this repo's overlays and
 # config (allowUnfree for chrome/vscode/etc., allowAliases = false to
 # silence transitive deprecation warnings on pinned nixpkgs).

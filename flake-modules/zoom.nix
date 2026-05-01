@@ -5,7 +5,7 @@
 #   experience is poor (no virtual-background, breakout rooms flaky,
 #   audio device routing limited). Packaging the native client as a
 #   tiny dendritic HM module lets any host opt in by importing
-#   `config.flake.modules.homeManager.zoom` — currently the family-laptop
+#   `config.flake.modules.homeManager.zoom` — currently the pb-t480
 #   kid accounts (m, s) — without dragging it into pb-x1's closure.
 #
 # Why HM (not NixOS):

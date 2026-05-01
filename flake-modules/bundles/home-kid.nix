@@ -1,6 +1,6 @@
 # Home-manager bundle: kid.
 #
-# Restricted desktop session for the family-laptop kid accounts (m, s).
+# Restricted desktop session for the pb-t480 kid accounts (m, s).
 # NOT a subset of the adult `desktop` bundle: kids get
 # `chromium-managed` (Family-Link-policy-locked) instead of `chrome`,
 # `zoom` for school meetings, and no dev/admin tooling
@@ -15,7 +15,7 @@
 #   - zoom                                 school meetings
 #
 # Retire when: the kids age out and their accounts get merged with
-#   the adult desktop bundle, OR the family-laptop host is
+#   the adult desktop bundle, OR the pb-t480 host is
 #   decommissioned, OR Linux grows per-user policy enforcement so
 #   chromium-managed can disappear.
 { config, ... }:

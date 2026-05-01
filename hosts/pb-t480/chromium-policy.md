@@ -1,4 +1,4 @@
-# family-laptop — chromium managed-policy rationale
+# pb-t480 — chromium managed-policy rationale
 
 This file documents why each policy in `chromium-policy.json` is set
 the way it is. JSON has no comment syntax, so the rationale lives

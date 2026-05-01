@@ -6,7 +6,7 @@
 #   normal operation. Packaging openssh as a tiny dendritic module
 #   means any future server-class host opts in by importing
 #   `config.flake.modules.nixos.openssh`, and desktop hosts (pb-x1,
-#   family-laptop) stay free of an SSH listener they never use.
+#   pb-t480) stay free of an SSH listener they never use.
 #
 # Why defaults rather than an opinionated hardening preset:
 #   The host bridge (flake-modules/hosts/ah-1.nix) explicitly chose
