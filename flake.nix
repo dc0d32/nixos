@@ -36,6 +36,14 @@
       url = "github:dc0d32/nixos-aarch64-wsl";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # sops-nix — declarative secret decryption at activation time, both
+    # NixOS-scope (/run/secrets) and home-manager-scope
+    # (~/.config/sops-nix/secrets). Wired from flake-modules/secrets.nix.
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:

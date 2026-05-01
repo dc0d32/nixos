@@ -1,0 +1,40 @@
+# sops-nix recipient rules.
+#
+# Each entry under creation_rules tells sops which age public keys to encrypt
+# new files with, based on the file path. When you `sops secrets/common.yaml`,
+# sops looks up the matching rule and encrypts to all listed recipients.
+#
+# Replace the REPLACEME placeholders with your real age public keys. Get them
+# from `age-keygen -y < ~/.config/sops/age/keys.txt` (prints just the public
+# key) or by reading the line starting with "# public key:" in the keys.txt
+# file itself.
+#
+# To re-encrypt existing files after changing recipients (e.g. adding a second
+# host's machine key):
+#   sops updatekeys secrets/common.yaml
+#
+# See flake-modules/secrets.nix for the full bootstrap flow.
+
+keys:
+  # Personal key — the user's age key, used by HM secrets on every host.
+  - &personal age1REPLACEME_PERSONAL_AGE_PUBLIC_KEY_HERE_xxxxxxxxxxxxxxxxxxxxxxxxxx
+  # Per-host machine keys — for NixOS-scope secrets that must be readable at
+  # boot before users exist. One per machine that has NixOS-scope secrets.
+  - &family_laptop age1REPLACEME_FAMILY_LAPTOP_MACHINE_KEY_xxxxxxxxxxxxxxxxxxxxxxxx
+
+creation_rules:
+  # Cross-host HM secrets — encrypted to the personal key only.
+  # (The user's HM activation runs as them, so they always have access.)
+  - path_regex: secrets/common\.yaml$
+    key_groups:
+      - age:
+          - *personal
+
+  # Per-host NixOS secrets — encrypted to BOTH the personal key (so the user
+  # can decrypt to edit) AND the matching machine key (so sops-nix can decrypt
+  # at boot). Add new rules as you add hosts.
+  - path_regex: secrets/family-laptop\.yaml$
+    key_groups:
+      - age:
+          - *personal
+          - *family_laptop
