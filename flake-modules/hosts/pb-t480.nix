@@ -179,20 +179,49 @@ in
   chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
   # ── Per-kid screen-time policies (timekpr) ───────────────────────
-  # m: weekday 06:00-21:00 window, 4h/day budget.
-  # s: weekday 07:00-22:00 window, 6h/day budget (older kid).
+  # Both kids share the same policy:
+  #   - Window mon-thu + sun: 06:00-22:00. Sunday too because Monday
+  #     is school — the curfew is "no use after 22:00 on the night
+  #     BEFORE a school day."
+  #   - Window fri + sat:     06:00-23:00. Looser cutoff because the
+  #     next morning isn't school.
+  #   - Budget mon-fri:       240 min (4h). All five are school days.
+  #   - Budget sat + sun:     360 min (6h).
+  #
+  # Note Friday is a school day (4h budget) but Friday night curfew
+  # is the looser 23:00 because Saturday isn't school. The two axes
+  # are independent — that's the whole point of the *ByDay form.
+  #
   # p is unrestricted (not listed in timekpr.users) but IS in the
-  # `timekpr` group below so they can drive timekpra/timekprc.
-  timekpr.users = {
-    m = {
-      allowedHours = "06:00-21:00";
-      dailyBudgetMinutes = 240;
+  # `timekpr` group below so they can drive timekpra/timekprc to
+  # grant ad-hoc time or change limits at runtime.
+  timekpr.users =
+    let
+      kidPolicy = {
+        allowedHoursByDay = {
+          mon = "06:00-22:00";
+          tue = "06:00-22:00";
+          wed = "06:00-22:00";
+          thu = "06:00-22:00";
+          fri = "06:00-23:00";
+          sat = "06:00-23:00";
+          sun = "06:00-22:00";
+        };
+        dailyBudgetMinutesByDay = {
+          mon = 240;
+          tue = 240;
+          wed = 240;
+          thu = 240;
+          fri = 240;
+          sat = 360;
+          sun = 360;
+        };
+      };
+    in
+    {
+      m = kidPolicy;
+      s = kidPolicy;
     };
-    s = {
-      allowedHours = "07:00-22:00";
-      dailyBudgetMinutes = 360;
-    };
-  };
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
