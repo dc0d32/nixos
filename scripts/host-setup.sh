@@ -15,7 +15,12 @@
 #                  resumeDevice UUID (if it has one), git add both,
 #                  sanity-check via nix eval, then nixos-install
 #                  --root /mnt --flake .#<h>. Assumes /mnt is
-#                  already mounted.
+#                  already mounted. Then (if the host uses
+#                  hibernate) provisions /swap/swapfile, captures
+#                  the real `resume_offset`, patches it into the
+#                  host bridge's boot.kernelParams, and re-runs
+#                  nixos-install so the bootloader cmdline picks it
+#                  up — no first-boot reboot loop required.
 #   --install-hm   Trigger the home-manager-bootstrap-*.service
 #                  units. Auto-detects context: if /mnt has an
 #                  installed system at /mnt/etc/systemd/system, runs
@@ -897,6 +902,190 @@ do_install() {
         --option extra-trusted-public-keys \
             "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
 
+    # 9. Swapfile provisioning + resume_offset capture.
+    # Skipped automatically for hosts that don't use hibernate (i.e.
+    # don't import battery.nix and therefore don't have a
+    # `resume_offset=` in boot.kernelParams). Hosts that do use
+    # hibernate get their swapfile created here and their host
+    # bridge patched with the real resume_offset, then nixos-install
+    # is re-invoked to bake the new cmdline into the bootloader
+    # entries — eliminating the "first boot has wrong cmdline,
+    # journal-grep, edit, rebuild, reboot" round trip.
+    provision_swap_and_offset
+
+    # 10. Cleanup + post-install message.
+    do_install_post
+}
+
+# Helper called from do_install only. Decoupled because it has its
+# own diagnostics and abort path. Exits via abort_revert on hard
+# failure; returns normally (no error) when the host doesn't use
+# hibernate (no resume_offset in kernelParams).
+provision_swap_and_offset() {
+    echo
+    echo ">> checking if host uses hibernate (boot.kernelParams resume_offset)…"
+
+    # Read kernelParams as a JSON list, look for any entry starting
+    # with `resume_offset=`. If absent, this host doesn't hibernate;
+    # silently skip swap provisioning.
+    local kparams_json has_resume_offset cur_resume_offset swap_size_mib
+    set +e
+    kparams_json=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --impure --json \
+        "$flake_root#nixosConfigurations.$HOSTNAME.config.boot.kernelParams")
+    local rc=$?
+    set -e
+    if (( rc != 0 )); then
+        echo "warn: could not read boot.kernelParams (exit $rc); skipping swap provisioning." >&2
+        return 0
+    fi
+
+    # Match any entry of the form `resume_offset=<digits>`. We use a
+    # tiny inline jq via nix run to keep this dependency-free on the
+    # installer ISO; if jq isn't around, fall back to grep on the
+    # JSON text (good enough for our well-formed string list).
+    has_resume_offset=$(printf '%s' "$kparams_json" \
+        | grep -oE '"resume_offset=[0-9]+"' | head -1 || true)
+    if [[ -z "$has_resume_offset" ]]; then
+        echo "  host has no resume_offset in kernelParams — not a hibernate host."
+        echo "  skipping swapfile provisioning."
+        return 0
+    fi
+    cur_resume_offset=$(printf '%s' "$has_resume_offset" \
+        | sed -E 's/^"resume_offset=([0-9]+)"$/\1/')
+    echo "  host uses hibernate; current kernelParams resume_offset=$cur_resume_offset"
+
+    # Read swap size from the host config so we don't hardcode 32.
+    set +e
+    swap_size_mib=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --impure --raw \
+        --apply 'devs: toString ((builtins.head devs).size)' \
+        "$flake_root#nixosConfigurations.$HOSTNAME.config.swapDevices")
+    rc=$?
+    set -e
+    if (( rc != 0 )) || [[ -z "$swap_size_mib" ]]; then
+        echo "error: could not read swapDevices[0].size from $HOSTNAME config." >&2
+        echo "       (size is in MiB; expected an integer)" >&2
+        abort_revert
+    fi
+    echo "  swap size from config: ${swap_size_mib} MiB"
+
+    # 1. Create /mnt/swap dir and the swapfile if missing. We
+    # mirror NixOS's mkswap-swap-swapfile.service btrfs path
+    # exactly (`btrfs filesystem mkswapfile --size NM --uuid clear`)
+    # so first-boot's mkswap service finds the file already at the
+    # right size and is a no-op. Idempotent: skip if file exists at
+    # the right size.
+    local swap_path=/mnt/swap/swapfile
+    mkdir -p /mnt/swap
+
+    local need_create=1
+    if [[ -f "$swap_path" ]]; then
+        local cur_size_mib
+        cur_size_mib=$(( $(stat -c %s "$swap_path") / 1024 / 1024 ))
+        if (( cur_size_mib == swap_size_mib )); then
+            echo "  /swap/swapfile already exists at ${cur_size_mib} MiB (matches config) — reusing."
+            need_create=0
+        else
+            echo "  /swap/swapfile exists at ${cur_size_mib} MiB but config wants ${swap_size_mib} MiB — recreating."
+            rm -f "$swap_path"
+        fi
+    fi
+
+    if (( need_create )); then
+        echo ">> creating /swap/swapfile (${swap_size_mib} MiB) via btrfs filesystem mkswapfile …"
+        # `--uuid clear` matches NixOS's invocation; without it the
+        # file gets a random UUID that mismatches the kernel's
+        # expectation in some kernel versions. The size flag accepts
+        # M / MiB / G / GiB suffixes; we pass MiB explicitly.
+        btrfs filesystem mkswapfile --size "${swap_size_mib}M" --uuid clear "$swap_path"
+    fi
+
+    # 2. Capture resume_offset.
+    local offset
+    set +e
+    offset=$(btrfs inspect-internal map-swapfile -r "$swap_path")
+    rc=$?
+    set -e
+    if (( rc != 0 )) || [[ -z "$offset" ]]; then
+        echo "error: btrfs inspect-internal map-swapfile failed for $swap_path." >&2
+        abort_revert
+    fi
+    echo "  resume_offset captured: $offset"
+
+    # 3. If the host bridge already has the right offset, we're
+    # done — no patch needed, no rebuild needed.
+    if [[ "$cur_resume_offset" == "$offset" ]]; then
+        echo "  ✓ host bridge already has correct resume_offset=$offset; no patch needed."
+        return 0
+    fi
+
+    echo ">> patching resume_offset in $host_bridge: $cur_resume_offset → $offset"
+    # If we haven't already backed up the host bridge (because no
+    # resumeDevice patch happened earlier — unusual, but possible if
+    # someone runs this on a host that has resume_offset but no
+    # resumeDevice, which would be a misconfigured battery.nix
+    # consumer), back it up now so the abort path can roll back.
+    if (( ! had_resume_line )); then
+        cp "$host_bridge" "$hostbridge_backup"
+        had_resume_line=1
+    fi
+
+    # The replacement is anchored on `resume_offset=` inside the
+    # kernelParams list. Matches `"resume_offset=N"` (with quotes)
+    # since that's how Nix string literals appear in source. We use
+    # | as the sed delimiter to avoid colliding with the value.
+    sed -i -E \
+        "s|\"resume_offset=[0-9]+\"|\"resume_offset=${offset}\"|" \
+        "$host_bridge"
+
+    if ! grep -qF "\"resume_offset=${offset}\"" "$host_bridge"; then
+        echo "error: sed replacement of resume_offset in $host_bridge did not stick." >&2
+        echo "       check the file's kernelParams line format matches:" >&2
+        echo "         boot.kernelParams = [ \"resume_offset=N\" ];" >&2
+        cp "$hostbridge_backup" "$host_bridge"
+        abort_revert
+    fi
+
+    # 4. Stage the patched host bridge (it's already backed up;
+    # the existing abort_revert handles rollback). git add is fine
+    # to call again even if it was added earlier for resumeDevice.
+    echo ">> git add $host_bridge"
+    git -C "$flake_root" add "flake-modules/hosts/$HOSTNAME.nix"
+
+    # 5. Verify Nix sees the new offset.
+    echo ">> verifying boot.kernelParams via nix eval --refresh …"
+    local kparams_after rc2
+    set +e
+    kparams_after=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --json \
+        "$flake_root#nixosConfigurations.$HOSTNAME.config.boot.kernelParams")
+    rc2=$?
+    set -e
+    if (( rc2 != 0 )); then
+        echo "error: nix eval (post-patch) failed (exit $rc2)." >&2
+        abort_revert
+    fi
+    if ! printf '%s' "$kparams_after" | grep -qE "\"resume_offset=${offset}\""; then
+        echo
+        echo "error: boot.kernelParams still doesn't contain resume_offset=$offset." >&2
+        echo "       resolved kernelParams: $kparams_after" >&2
+        abort_revert
+    fi
+    echo "  ✓ Nix sees resume_offset=$offset"
+
+    # 6. Re-run nixos-install to bake the new cmdline into the
+    # bootloader entries. Cheap because the store is already
+    # populated; only the new system closure (with the patched
+    # cmdline) and the bootloader entries get rebuilt + written.
+    echo
+    echo ">> re-running nixos-install to update bootloader cmdline …"
+    nixos-install --root /mnt --flake "$flake_root#$HOSTNAME" --no-root-passwd \
+        --option extra-experimental-features "nix-command flakes" \
+        --option extra-substituters "https://niri.cachix.org" \
+        --option extra-trusted-public-keys \
+            "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
+    echo "  ✓ bootloader updated; first boot will resume correctly from hibernate."
+}
+
+do_install_post() {
     # On success, drop the backup. We leave the working-tree change
     # in place — it represents the actual hardware UUIDs of this
     # machine and should be committed + pushed once the new system
@@ -934,16 +1123,23 @@ Next steps (in order):
 
   4. After first boot:
 
-       - Watch journalctl -u battery-resume-offset for the
-         resume_offset=NNN value; copy it into the host bridge.
-       - Update boot.resumeDevice in flake-modules/hosts/$HOSTNAME.nix
-         from the placeholder UUID to the real one (printed above).
-       - git add + commit + push the regenerated hwconfig.
+       - The hwconfig + resumeDevice + resume_offset are already in
+         the working tree (auto-staged by --install). Verify the
+         system boots and works, then:
+           git status                                  # review
+           git diff --cached                           # review staged
+           git commit -m "<host>: real hardware config"
+           git push
        - If you skipped --install-hm in step 2, check the bootstrap
          units now:
            systemctl status 'home-manager-bootstrap-*.service'
          Re-trigger them if any failed (e.g. WiFi wasn't up yet):
            sudo $0 --install-hm
+       - Hibernate-resume is already wired correctly. Test by
+         triggering a manual hibernate ('systemctl hibernate') and
+         confirming wake restores the session. If resume fails,
+         re-run sudo $0 --install <hostname> to re-capture the
+         offset (rare; only needed if the swapfile got recreated).
 
 EOF
 }
