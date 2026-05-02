@@ -266,6 +266,7 @@ in
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.boot
+        config.flake.modules.nixos.file-manager
         config.flake.modules.nixos.login-ly
         # Fingerprint (Synaptics) + face auth (howdy via IR camera)
         # + PAM stack reordering. The IR camera path is autodetected

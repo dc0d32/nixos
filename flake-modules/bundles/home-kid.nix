@@ -28,6 +28,11 @@
 #                                          NixOS module drops the
 #                                          managed-policy JSON
 #   - desktop-extras, fonts                desktop niceties
+#   - file-manager                         Thunar + gvfs + thunar-volman;
+#                                          mounts USB drives, browses
+#                                          MTP phones, extracts zips.
+#                                          Pairs with the NixOS half
+#                                          on pb-t480 (gvfs + udisks2).
 #   - freecad                              CAD with FusionLike preset
 #                                          pack + addons (Assembly4,
 #                                          Fasteners, SheetMetal,
@@ -57,6 +62,7 @@
     chrome
     chrome-managed
     desktop-extras
+    file-manager
     fonts
     freecad
     hardware-hacking

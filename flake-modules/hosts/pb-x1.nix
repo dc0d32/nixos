@@ -92,6 +92,7 @@ in
         config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.boot
+        config.flake.modules.nixos.file-manager
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
         # Auto-bootstraps p's home-manager profile on first boot of
