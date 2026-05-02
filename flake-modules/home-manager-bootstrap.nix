@@ -20,6 +20,23 @@
 # are no-ops; users keep using the canonical `home-manager switch`
 # CLI for routine updates.
 #
+# Network gating: `Wants=network-online.target` +
+# `After=network-online.target` so the unit waits for actual
+# connectivity (provided by NetworkManager-wait-online.service or
+# systemd-networkd-wait-online.service, depending on the host) before
+# running. Some HM activation steps (e.g. fetching things via gh,
+# nix-index updates if enabled) need network; without this gate the
+# unit would race the network stack on first boot and fail
+# permanently because of the `ConditionPathExists` guard. If
+# wait-online still times out (e.g. WiFi never authenticated on a
+# laptop where no human logged in to enter credentials), the unit
+# fails this boot and re-tries on the next boot — the profile
+# symlink doesn't exist yet, so the condition still passes.
+#
+# On hosts without any wait-online provider (e.g. WSL), the
+# network-online.target is reached immediately and the dependency is
+# effectively a no-op.
+#
 # Naming convention required: the HM configuration MUST be named
 # `<unix-user>@<hostname>`. Hosts that follow this convention (every
 # host bridge in this repo does) get bootstrap for free by importing
@@ -71,7 +88,16 @@ in
           lib.nameValuePair "home-manager-bootstrap-${user}" {
             description = "Bootstrap home-manager profile for ${user}";
             wantedBy = [ "multi-user.target" ];
-            after = [ "network.target" "systemd-user-sessions.service" ];
+            # Wait for actual connectivity before activating: some HM
+            # modules' activation scripts hit the network. On hosts
+            # without any wait-online provider (e.g. WSL) this is a
+            # no-op since network-online.target is reached
+            # immediately.
+            wants = [ "network-online.target" ];
+            after = [
+              "network-online.target"
+              "systemd-user-sessions.service"
+            ];
             # Idempotency guard: HM creates this profile symlink as
             # the final step of `activate`. If it already exists, the
             # service is skipped on subsequent boots.
