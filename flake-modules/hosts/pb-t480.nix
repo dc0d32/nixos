@@ -240,7 +240,14 @@ in
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t480
 
         # Feature modules. NOT importing:
-        #   - hardware-hacking (kids don't need dialout/plugdev)
+        #   - hardware-hacking (NixOS half: udev rules + dialout/plugdev/uucp
+        #     group membership for `users.primary` = `p`. Kids' HM bundle
+        #     does pull in the user-side hardware-hacking module — KiCad,
+        #     esptool, picocom, lsusb — so they can do EDA and run the
+        #     CLIs, but USB device access is gated on group membership
+        #     they don't have. To let a kid actually flash a board on this
+        #     machine they'd need to log in as `p` (or `p` would need to
+        #     temporarily add them to dialout/plugdev).)
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
         config.flake.modules.nixos.networking
