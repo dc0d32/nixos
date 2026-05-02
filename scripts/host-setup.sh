@@ -16,6 +16,16 @@
 #                  sanity-check via nix eval, then nixos-install
 #                  --root /mnt --flake .#<h>. Assumes /mnt is
 #                  already mounted.
+#   --install-hm   Trigger the home-manager-bootstrap-*.service
+#                  units. Auto-detects context: if /mnt has an
+#                  installed system at /mnt/etc/systemd/system, runs
+#                  each user's HM activation directly via chroot
+#                  (no systemd needed; useful right after
+#                  nixos-install in the live USB before reboot). If
+#                  /mnt is not mounted, runs against the running
+#                  system via `systemctl start`. Idempotent in both
+#                  modes — already-bootstrapped users are skipped via
+#                  the units' ConditionPathExists guard.
 #
 # Why this exists:
 #   Re-entering a partially-installed system from the NixOS USB took
@@ -35,6 +45,7 @@
 #   sudo ./scripts/host-setup.sh --unmount                   # umount /mnt tree
 #   sudo ./scripts/host-setup.sh /dev/nvme0n1 --partition    # destructive
 #   sudo ./scripts/host-setup.sh --install pb-t480           # full install
+#   sudo ./scripts/host-setup.sh --install-hm                # bootstrap HM
 #   sudo ./scripts/host-setup.sh --help
 #
 # Layout assumed (matches docs/runbooks/new-host-partitioning.md):
@@ -78,7 +89,7 @@ set -Eeuo pipefail
 # ── arg parsing ───────────────────────────────────────────────────
 DISK=""
 HOSTNAME=""
-MODE=""        # one of: mount | unmount | partition | install
+MODE=""        # one of: mount | unmount | partition | install | install-hm
 SHOW_HELP=0
 
 usage() {
@@ -91,7 +102,7 @@ usage() {
 set_mode() {
     local new="$1"
     if [[ -n "$MODE" && "$MODE" != "$new" ]]; then
-        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install)" >&2
+        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install/--install-hm)" >&2
         exit 2
     fi
     MODE="$new"
@@ -123,6 +134,10 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             HOSTNAME="$1"
+            shift
+            ;;
+        --install-hm)
+            set_mode install-hm
             shift
             ;;
         --)
@@ -170,7 +185,7 @@ case "$MODE" in
             exit 2
         fi
         ;;
-    unmount|install)
+    unmount|install|install-hm)
         if [[ -n "$DISK" ]]; then
             echo "error: --$MODE does not take a disk argument" >&2
             exit 2
@@ -235,6 +250,12 @@ case "$MODE" in
         require_tool nixos-generate-config
         require_tool nixos-install
         require_tool diff
+        ;;
+    install-hm)
+        require_tool systemctl
+        # `nixos-enter` is only required if /mnt is in play; check
+        # there in do_install_hm rather than failing here for the
+        # running-system path.
         ;;
 esac
 
@@ -895,32 +916,234 @@ Next steps (in order):
        nixos-enter --root /mnt -c 'passwd m'    # if applicable
        nixos-enter --root /mnt -c 'passwd s'    # if applicable
 
-  2. Release /mnt and reboot:
+  2. (Optional, but recommended) Bootstrap home-manager profiles
+     before reboot. Runs each user's HM activation via nixos-enter
+     into /mnt — saves a reboot's worth of "did the units fire?"
+     uncertainty:
+
+       sudo $0 --install-hm
+
+     If skipped, the same units run on first boot via systemd
+     (gated on network-online.target; they self-retry on the next
+     boot if WiFi isn't up yet).
+
+  3. Release /mnt and reboot:
 
        sudo $0 --unmount
        reboot
 
-  3. After first boot:
+  4. After first boot:
 
        - Watch journalctl -u battery-resume-offset for the
          resume_offset=NNN value; copy it into the host bridge.
        - Update boot.resumeDevice in flake-modules/hosts/$HOSTNAME.nix
          from the placeholder UUID to the real one (printed above).
        - git add + commit + push the regenerated hwconfig.
-       - home-manager profiles auto-activate on first boot via
-         home-manager-bootstrap-<user>.service (oneshot, idempotent).
-         Check status with:
+       - If you skipped --install-hm in step 2, check the bootstrap
+         units now:
            systemctl status 'home-manager-bootstrap-*.service'
-         Re-run manually if needed:
-           home-manager switch --flake .#'<user>@$HOSTNAME'
+         Re-trigger them if any failed (e.g. WiFi wasn't up yet):
+           sudo $0 --install-hm
 
 EOF
 }
 
+# ── --install-hm mode: trigger home-manager-bootstrap-* services ──
+# Two contexts:
+#   1. /mnt is mounted AND has /mnt/etc/systemd/system populated
+#      (i.e. nixos-install just finished, we're still on the live
+#      USB before reboot): chroot in and run each unit's ExecStart
+#      directly. Bypasses systemd entirely — manually checks the
+#      ConditionPathExists guard since we can't ask systemd to do it.
+#   2. /mnt is empty / not a mountpoint (running on the booted
+#      installed system): use systemctl reset-failed + start, which
+#      respects the units' built-in ConditionPathExists, network
+#      ordering, environment, etc.
+#
+# Both modes are idempotent. Re-running after fixing whatever blocked
+# a previous attempt (no WiFi, etc.) just retries the not-yet-bootstrapped
+# users; already-bootstrapped users are no-ops.
+do_install_hm() {
+    local sysroot
+    if mountpoint -q /mnt && [[ -d /mnt/etc/systemd/system ]]; then
+        sysroot="/mnt"
+        echo ">> detected installed system at /mnt — using chroot path"
+    else
+        sysroot=""
+        echo ">> running against the booted system via systemctl"
+    fi
+
+    local unit_dir
+    if [[ -n "$sysroot" ]]; then
+        unit_dir="$sysroot/etc/systemd/system"
+    else
+        unit_dir="/etc/systemd/system"
+    fi
+
+    # Enumerate units. shopt nullglob so the loop is empty (not the
+    # literal pattern) when no units are present.
+    shopt -s nullglob
+    local units=( "$unit_dir"/home-manager-bootstrap-*.service )
+    shopt -u nullglob
+
+    if (( ${#units[@]} == 0 )); then
+        echo "error: no home-manager-bootstrap-*.service units found in $unit_dir" >&2
+        echo "       did the host bridge import config.flake.modules.nixos.home-manager-bootstrap?" >&2
+        echo "       (and was the system rebuilt with that change?)" >&2
+        exit 3
+    fi
+
+    echo ">> found ${#units[@]} bootstrap unit(s):"
+    local u
+    for u in "${units[@]}"; do
+        echo "   - $(basename "$u")"
+    done
+    echo
+
+    if [[ -n "$sysroot" ]]; then
+        require_tool nixos-enter
+        do_install_hm_chroot "$sysroot" "${units[@]}"
+    else
+        do_install_hm_running "${units[@]}"
+    fi
+}
+
+# Running-system path: hand off to systemd. It already knows how to
+# wait for network-online, run as the right user, set environment,
+# and respect ConditionPathExists.
+do_install_hm_running() {
+    local units=( "$@" )
+    local u name rc
+
+    # Clear failed state so units that previously failed (e.g. due to
+    # network race on first boot) can be re-tried.
+    for u in "${units[@]}"; do
+        name=$(basename "$u")
+        systemctl reset-failed "$name" 2>/dev/null || true
+    done
+
+    local any_failed=0
+    for u in "${units[@]}"; do
+        name=$(basename "$u")
+        echo ">> systemctl start $name"
+        # `start` blocks until oneshot units finish (success or fail).
+        # Tolerate failure here — we want to attempt every user even
+        # if one fails, then summarise.
+        set +e
+        systemctl start "$name"
+        rc=$?
+        set -e
+        if (( rc != 0 )); then
+            any_failed=1
+            echo "   ✗ start returned $rc"
+        else
+            echo "   ✓ ok"
+        fi
+    done
+
+    echo
+    echo ">> status summary:"
+    for u in "${units[@]}"; do
+        name=$(basename "$u")
+        # is-active returns "active", "failed", "inactive", etc.
+        # ConditionPathExists-skipped units show as "inactive" with
+        # SubState=condition; treat that as success.
+        local state substate
+        state=$(systemctl show -p ActiveState --value "$name" 2>/dev/null || echo "?")
+        substate=$(systemctl show -p SubState --value "$name" 2>/dev/null || echo "?")
+        case "$state/$substate" in
+            active/exited)            echo "   ✓ $name: ran successfully" ;;
+            inactive/dead)            echo "   ✓ $name: skipped (ConditionPathExists — already bootstrapped)" ;;
+            failed/*)
+                echo "   ✗ $name: FAILED"
+                echo "       inspect: journalctl -u $name -e --no-pager"
+                any_failed=1
+                ;;
+            *)
+                echo "   ? $name: $state/$substate"
+                ;;
+        esac
+    done
+
+    if (( any_failed )); then
+        echo
+        echo ">> at least one bootstrap failed. Common causes:"
+        echo "     - no network (this unit waits for network-online.target)."
+        echo "       Connect WiFi via the desktop, then re-run."
+        echo "     - existing non-symlink ~/.config/<thing>/<file> blocking HM."
+        echo "       Inspect: journalctl -u home-manager-bootstrap-<user>"
+        echo "       Fix: rm the offending file, re-run --install-hm."
+        exit 4
+    fi
+    echo
+    echo ">> all bootstrap units settled."
+}
+
+# Chroot path: parse each unit's ExecStart + User, run the activation
+# script via nixos-enter. nixos-enter mounts /proc, /sys, /dev, and a
+# few bind mounts inside /mnt before exec-ing into a chroot, which is
+# everything HM activation needs.
+do_install_hm_chroot() {
+    local sysroot="$1"; shift
+    local units=( "$@" )
+    local u name user activate any_failed=0
+
+    for u in "${units[@]}"; do
+        name=$(basename "$u")
+        # Parse "User=…" and "ExecStart=…" lines. systemd allows
+        # multiple ExecStart entries; we only emit one, so head -1 is
+        # safe. The unit file in $unit_dir may itself be a symlink
+        # into /nix/store; that's fine, grep follows it.
+        user=$(grep -E '^User=' "$u" | head -1 | sed 's/^User=//')
+        activate=$(grep -E '^ExecStart=' "$u" | head -1 | sed 's/^ExecStart=//')
+        if [[ -z "$user" || -z "$activate" ]]; then
+            echo "error: could not parse User=/ExecStart= from $u" >&2
+            any_failed=1
+            continue
+        fi
+
+        # Manual ConditionPathExists check: skip already-bootstrapped
+        # users so re-runs are no-ops, matching the systemd path.
+        local profile_link="$sysroot/home/${user}/.local/state/nix/profiles/home-manager"
+        if [[ -e "$profile_link" ]]; then
+            echo ">> $name: already bootstrapped (skipped)"
+            continue
+        fi
+
+        echo ">> $name: activating as $user via nixos-enter $sysroot"
+        # `runuser -l` gives us a proper login shell with HOME and
+        # XDG_* set from /etc/passwd. We then exec the activate
+        # script. Without -l, HOME is root's and HM writes its
+        # state into /root/.local — broken.
+        set +e
+        nixos-enter --root "$sysroot" -c \
+            "runuser -l '$user' -c '$activate'"
+        local rc=$?
+        set -e
+        if (( rc != 0 )); then
+            echo "   ✗ activate returned $rc"
+            any_failed=1
+        else
+            echo "   ✓ ok"
+        fi
+    done
+
+    if (( any_failed )); then
+        echo
+        echo ">> at least one bootstrap failed."
+        echo "   The installed system is otherwise fine — reboot and re-run"
+        echo "   sudo $0 --install-hm   on the booted system to retry."
+        exit 4
+    fi
+    echo
+    echo ">> all bootstrap units settled."
+}
+
 # ── dispatch ──────────────────────────────────────────────────────
 case "$MODE" in
-    mount)     do_mount ;;
-    unmount)   do_unmount ;;
-    partition) do_partition ;;
-    install)   do_install ;;
+    mount)       do_mount ;;
+    unmount)     do_unmount ;;
+    partition)   do_partition ;;
+    install)     do_install ;;
+    install-hm)  do_install_hm ;;
 esac
