@@ -165,10 +165,6 @@ in
         # Feature modules. NOT importing:
         #   - audio (X1-Yoga-specific presets; no T480 preset authored yet)
         #   - hardware-hacking (kids don't need dialout/plugdev)
-        #   - biometrics (X1-Yoga-specific: hardcodes Synaptics
-        #     Prometheus + howdy IR camera; T480 has fingerprint but
-        #     no IR camera. Needs splitting into fingerprint/face
-        #     submodules in a follow-up commit.)
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
         config.flake.modules.nixos.networking
@@ -180,6 +176,11 @@ in
         config.flake.modules.nixos.battery
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.login-ly
+        # Fingerprint (Synaptics) + face auth (howdy via IR camera)
+        # + PAM stack reordering. The IR camera path is autodetected
+        # at boot by howdy-camera-autodetect; the static fallback
+        # /dev/video2 only matters before that service runs.
+        config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chromium-managed
