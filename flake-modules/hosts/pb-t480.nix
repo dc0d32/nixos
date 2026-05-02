@@ -26,6 +26,10 @@
 #
 # To rebuild on the actual hardware:
 #   sudo nixos-rebuild switch --flake .#pb-t480
+#
+# HM activations run automatically on first boot via the
+# home-manager-bootstrap module (one oneshot service per user). For
+# subsequent updates, each user can run their own:
 #   home-manager switch --flake .#'p@pb-t480'    # for p
 #   home-manager switch --flake .#'m@pb-t480'    # for m
 #   home-manager switch --flake .#'s@pb-t480'    # for s
@@ -181,6 +185,12 @@ in
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chromium-managed
+        # Auto-bootstraps each user's home-manager profile on first
+        # boot via a oneshot systemd service per HM config matching
+        # `*@pb-t480`. Removes the post-install
+        # `home-manager switch --flake .#'<user>@pb-t480'` step for
+        # p, m, and s.
+        config.flake.modules.nixos.home-manager-bootstrap
         # Steam (system-wide programs.steam.enable). Game/store/chat
         # restrictions are configured per-Steam-account in Steam's
         # built-in Family View, not here. See flake-modules/steam.nix.

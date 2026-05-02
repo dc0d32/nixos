@@ -107,6 +107,12 @@ in
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
+        # Auto-bootstraps p's home-manager profile on first boot of
+        # any fresh install via a oneshot systemd service. No-op on
+        # already-bootstrapped systems (the unit's ConditionPathExists
+        # check skips it once ~/.local/state/nix/profiles/home-manager
+        # exists). Same module also handles multi-user hosts.
+        config.flake.modules.nixos.home-manager-bootstrap
       ];
 
       # Host identity + base packages + primary user.

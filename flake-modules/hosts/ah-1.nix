@@ -89,6 +89,9 @@ let
       config.flake.modules.nixos.networking
       config.flake.modules.nixos.openssh
       config.flake.modules.nixos.docker
+      # Auto-bootstraps the nas user's home-manager profile on first
+      # boot of a fresh install. No-op once activated.
+      config.flake.modules.nixos.home-manager-bootstrap
     ];
 
     nixpkgs.hostPlatform = lib.mkDefault system;

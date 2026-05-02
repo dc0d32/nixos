@@ -53,6 +53,10 @@ let
       config.flake.modules.nixos.system-utils
       config.flake.modules.nixos.users
       config.flake.modules.nixos.locale
+      # Auto-bootstraps p's home-manager profile on first boot. WSL
+      # systemd is somewhat constrained, but oneshot multi-user.target
+      # services run fine.
+      config.flake.modules.nixos.home-manager-bootstrap
     ];
 
     # WSL has no hardware-configuration.nix to set the platform for

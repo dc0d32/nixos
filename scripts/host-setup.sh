@@ -907,8 +907,12 @@ Next steps (in order):
        - Update boot.resumeDevice in flake-modules/hosts/$HOSTNAME.nix
          from the placeholder UUID to the real one (printed above).
        - git add + commit + push the regenerated hwconfig.
-       - home-manager switch --flake .#'<user>@$HOSTNAME' for each
-         user (nixos-install does NOT run home-manager activations).
+       - home-manager profiles auto-activate on first boot via
+         home-manager-bootstrap-<user>.service (oneshot, idempotent).
+         Check status with:
+           systemctl status 'home-manager-bootstrap-*.service'
+         Re-run manually if needed:
+           home-manager switch --flake .#'<user>@$HOSTNAME'
 
 EOF
 }
