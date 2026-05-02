@@ -55,6 +55,12 @@
 #                                          to grant kids the device
 #                                          groups.
 #   - idle, niri, quickshell, wallpaper    compositor stack
+#   - kid-launcher                         hides app-menu noise from
+#                                          transitive deps
+#                                          (qt6ct/easyeffects/satty/
+#                                          thunar-settings/etc.) so the
+#                                          launcher only shows things
+#                                          kids actually use
 #   - zoom                                 school meetings
 #
 # Retire when: the kids age out and their accounts get merged with
@@ -76,6 +82,7 @@
     freecad
     hardware-hacking
     idle
+    kid-launcher
     niri
     quickshell
     wallpaper
