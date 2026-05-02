@@ -40,6 +40,19 @@
 #                  list, replacing the `preset = "..."` field with
 #                  the EasyEffects preset name you want bound to
 #                  this sink. Read-only — no root, no /mnt needed.
+#   --hm-switch <user>
+#                  Re-run home-manager activation for <user> on the
+#                  CURRENTLY-BOOTED system. Use this when you've
+#                  edited a kid's HM config from p's account and
+#                  want to push the change without asking the kid
+#                  to log in and run home-manager themselves. Looks
+#                  up homeConfigurations.<user>@<thishost> in this
+#                  flake, builds the activation package, enables
+#                  `loginctl` linger on <user> so their systemd-user
+#                  bus exists even when not logged in, then runs the
+#                  activation as <user> with the right HOME / dbus /
+#                  runtime-dir env. Idempotent. Run once per user
+#                  (e.g. for m and s on pb-t480, invoke twice).
 #
 # Why this exists:
 #   Re-entering a partially-installed system from the NixOS USB took
@@ -61,6 +74,7 @@
 #   sudo ./scripts/host-setup.sh --install pb-t480           # full install
 #   sudo ./scripts/host-setup.sh --install-hm                # bootstrap HM
 #   ./scripts/host-setup.sh --audio-discover                 # print autoload
+#   sudo ./scripts/host-setup.sh --hm-switch m               # HM switch for m
 #   sudo ./scripts/host-setup.sh --help
 #
 # Layout assumed (matches docs/runbooks/new-host-partitioning.md):
@@ -104,7 +118,8 @@ set -Eeuo pipefail
 # ── arg parsing ───────────────────────────────────────────────────
 DISK=""
 HOSTNAME=""
-MODE=""        # one of: mount | unmount | partition | install | install-hm | audio-discover
+TARGET_USER=""
+MODE=""        # one of: mount | unmount | partition | install | install-hm | audio-discover | hm-switch
 SHOW_HELP=0
 
 usage() {
@@ -117,7 +132,7 @@ usage() {
 set_mode() {
     local new="$1"
     if [[ -n "$MODE" && "$MODE" != "$new" ]]; then
-        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install/--install-hm/--audio-discover)" >&2
+        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install/--install-hm/--audio-discover/--hm-switch)" >&2
         exit 2
     fi
     MODE="$new"
@@ -157,6 +172,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         --audio-discover)
             set_mode audio-discover
+            shift
+            ;;
+        --hm-switch)
+            set_mode hm-switch
+            shift
+            if [[ $# -eq 0 || "$1" =~ ^- ]]; then
+                echo "error: --hm-switch requires a username argument" >&2
+                exit 2
+            fi
+            TARGET_USER="$1"
             shift
             ;;
         --)
@@ -204,7 +229,7 @@ case "$MODE" in
             exit 2
         fi
         ;;
-    unmount|install|install-hm|audio-discover)
+    unmount|install|install-hm|audio-discover|hm-switch)
         if [[ -n "$DISK" ]]; then
             echo "error: --$MODE does not take a disk argument" >&2
             exit 2
@@ -275,6 +300,16 @@ case "$MODE" in
         # `nixos-enter` is only required if /mnt is in play; check
         # there in do_install_hm rather than failing here for the
         # running-system path.
+        ;;
+    hm-switch)
+        require_tool nix
+        require_tool git
+        require_tool loginctl
+        require_tool runuser
+        require_tool id
+        require_tool getent
+        require_tool hostname
+        require_tool systemctl
         ;;
 esac
 
@@ -1447,6 +1482,177 @@ do_audio_discover() {
 EOF
 }
 
+# ── --hm-switch mode: re-run home-manager activation for a user ───
+# Common case: p edits a kid's HM config in this flake from p's
+# account on the kid's machine, then wants the change applied to the
+# kid's profile without making the kid log in and run home-manager
+# themselves.
+#
+# Pipeline:
+#   1. Resolve flake root + this host's name (via `hostname`).
+#   2. Validate the target user exists, has a home dir, and that
+#      `homeConfigurations.<user>@<thishost>` exists in this flake.
+#   3. Refuse if TARGET_USER == invoker; that user should just run
+#      `home-manager switch --flake .#'<self>@<host>'` directly,
+#      which avoids the whole linger/sudo/dbus dance.
+#   4. `loginctl enable-linger <user>` — keeps `systemd --user` for
+#      <user> running across logout. Required because HM activation
+#      reloads the user's systemd-user units (easyeffects, idled,
+#      …); without a user-bus, those reloads fail. Idempotent.
+#   5. Build the activation package via the same nix-command flags
+#      we use for --install (so we work on installer ISOs that don't
+#      have flakes/nix-command in /etc/nix/nix.conf).
+#   6. Run the activation script as <user> via `runuser -l`, with
+#      XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS exported so
+#      systemd-user IPC works.
+#
+# Read-only on the flake source tree — no commits, no pushes, no
+# git mutations. The activation itself writes only to <user>'s home
+# and their HM profile generation in /nix/var/nix/profiles/per-user
+# /<user>/.
+do_hm_switch() {
+    # 1. Flake root + host name.
+    local flake_root
+    if ! flake_root=$(find_flake_root); then
+        echo "error: no flake.nix found in cwd or any ancestor of either" >&2
+        echo "       cwd or the script's own directory." >&2
+        echo "       cd into your flake checkout and re-run." >&2
+        exit 3
+    fi
+    echo ">> flake root: $flake_root"
+
+    local host_name
+    host_name=$(hostname)
+    if [[ -z "$host_name" ]]; then
+        echo "error: hostname returned empty" >&2
+        exit 3
+    fi
+    local hm_id="${TARGET_USER}@${host_name}"
+    echo ">> target HM config: $hm_id"
+
+    # 2. Validate target user.
+    if ! getent passwd "$TARGET_USER" >/dev/null; then
+        echo "error: user '$TARGET_USER' does not exist on this system." >&2
+        echo "       (try \`getent passwd | cut -d: -f1\` to list users)" >&2
+        exit 3
+    fi
+    local target_uid target_home
+    target_uid=$(id -u "$TARGET_USER")
+    target_home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+    if [[ -z "$target_home" || ! -d "$target_home" ]]; then
+        echo "error: home directory '$target_home' for user '$TARGET_USER' does not exist." >&2
+        exit 3
+    fi
+    echo ">> target user: $TARGET_USER (uid=$target_uid, home=$target_home)"
+
+    # 3. Refuse self-target — pointless extra layer of sudo/runuser
+    # and dbus juggling; the user should just call home-manager
+    # directly.
+    local invoker_user="${SUDO_USER:-${USER:-}}"
+    if [[ -z "$invoker_user" ]]; then
+        # Fallback: derive from real uid.
+        invoker_user=$(id -un "${SUDO_UID:-$(id -ru)}" 2>/dev/null || true)
+    fi
+    if [[ "$invoker_user" == "$TARGET_USER" ]]; then
+        echo "error: --hm-switch is for re-running HM as ANOTHER user." >&2
+        echo "       To switch your own HM, just run:" >&2
+        echo "         home-manager switch --flake $flake_root#'$hm_id'" >&2
+        exit 2
+    fi
+
+    # 4. Confirm the HM config exists in this flake before touching
+    # anything. Fast eval (no --refresh) — reading just the type is
+    # enough to surface a missing entry as an evaluation error.
+    echo ">> verifying homeConfigurations.\"$hm_id\" exists in flake …"
+    set +e
+    nix "${NIX_EXTRA_OPTS[@]}" eval --impure --raw \
+        "$flake_root#homeConfigurations.\"$hm_id\".activationPackage.outPath" \
+        >/dev/null 2>&1
+    local check_rc=$?
+    set -e
+    if (( check_rc != 0 )); then
+        echo "error: homeConfigurations.\"$hm_id\" not found in this flake." >&2
+        echo "       expected entry in flake.nix outputs.homeConfigurations" >&2
+        echo "       check available HM configs with:" >&2
+        echo "         nix flake show $flake_root --allow-import-from-derivation 2>/dev/null \\" >&2
+        echo "           | grep -A1 homeConfigurations" >&2
+        exit 3
+    fi
+
+    # 5. Enable linger so user-bus + systemd --user persist even
+    # without an active session. Idempotent: running on an already-
+    # lingering user returns 0 immediately.
+    echo ">> loginctl enable-linger $TARGET_USER"
+    loginctl enable-linger "$TARGET_USER"
+
+    # Wait for /run/user/<uid> to materialise. systemd-logind creates
+    # it asynchronously after enable-linger; a fresh enable-linger on
+    # a never-logged-in user takes ~100-500ms.
+    local runtime_dir="/run/user/${target_uid}"
+    local waited=0
+    while [[ ! -d "$runtime_dir" ]]; do
+        if (( waited >= 10 )); then
+            echo "error: $runtime_dir did not appear within 10s after enable-linger." >&2
+            echo "       check: systemctl status systemd-logind, journalctl -u systemd-logind" >&2
+            exit 3
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    echo ">> $runtime_dir is ready (waited ${waited}s)"
+
+    # 6. Build the activation package. We do this BEFORE switching
+    # to the target user so build output and any errors stream to
+    # the invoker's terminal in their normal locale, and so the
+    # build runs as root (which has the nix-daemon socket
+    # permissions and the substituter trust to fetch from any
+    # configured cache without surprises).
+    echo ">> nix build homeConfigurations.\"$hm_id\".activationPackage …"
+    local activate_pkg
+    set +e
+    activate_pkg=$(nix "${NIX_EXTRA_OPTS[@]}" build --no-link --print-out-paths \
+        "$flake_root#homeConfigurations.\"$hm_id\".activationPackage")
+    local build_rc=$?
+    set -e
+    if (( build_rc != 0 )) || [[ -z "$activate_pkg" ]]; then
+        echo "error: nix build failed (exit $build_rc)." >&2
+        echo "       see stderr above for details." >&2
+        exit 3
+    fi
+    if [[ ! -x "$activate_pkg/activate" ]]; then
+        echo "error: activation package $activate_pkg has no executable activate script." >&2
+        exit 3
+    fi
+    echo ">> built: $activate_pkg"
+
+    # 7. Run activation as the target user. `runuser -l` sets a
+    # proper login shell with HOME/USER/LOGNAME/XDG_* derived from
+    # /etc/passwd. We additionally export XDG_RUNTIME_DIR and
+    # DBUS_SESSION_BUS_ADDRESS so HM's `systemctl --user
+    # daemon-reload` and unit start/stop work correctly. Without
+    # these the activation prints "Failed to connect to bus" warnings
+    # and leaves user units stale.
+    echo
+    echo ">> running $activate_pkg/activate as $TARGET_USER …"
+    set +e
+    runuser -l "$TARGET_USER" -c \
+        "export XDG_RUNTIME_DIR='$runtime_dir' DBUS_SESSION_BUS_ADDRESS='unix:path=$runtime_dir/bus'; '$activate_pkg/activate'"
+    local activate_rc=$?
+    set -e
+    if (( activate_rc != 0 )); then
+        echo
+        echo "error: home-manager activation for $TARGET_USER failed (exit $activate_rc)." >&2
+        echo "       common causes:" >&2
+        echo "         - existing non-symlink ~/.config/<thing> blocking HM (rm + retry)." >&2
+        echo "         - per-user systemd-user not running (try logging $TARGET_USER" >&2
+        echo "           in once on a tty to bootstrap, then re-run)." >&2
+        exit 4
+    fi
+    echo
+    echo ">> ✓ home-manager activation for $TARGET_USER succeeded."
+    echo "    profile: $target_home/.local/state/nix/profiles/home-manager"
+}
+
 # ── dispatch ──────────────────────────────────────────────────────
 case "$MODE" in
     mount)       do_mount ;;
@@ -1455,4 +1661,5 @@ case "$MODE" in
     install)     do_install ;;
     install-hm)  do_install_hm ;;
     audio-discover) do_audio_discover ;;
+    hm-switch)   do_hm_switch ;;
 esac
