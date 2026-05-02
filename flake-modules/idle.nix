@@ -34,6 +34,19 @@
         power_saver_percent = ${toString cfg.powerSaverPercent}
         hysteresis = 5
       '';
+      # Absolute store paths for every command idled spawns. idled invokes
+      # commands via `sh -c "<cmd>"` which performs PATH lookup; under
+      # systemd-user with strict sandboxing, the executor's default PATH
+      # is just /nix/store/<systemd>/bin, so PATH lookups for quickshell /
+      # niri / systemctl all fail with ENOENT. Pinning absolute paths
+      # makes the commands hermetic — the unit's PATH could be empty and
+      # they'd still resolve. The unit also sets a sane PATH below as
+      # belt-and-suspenders, but these strings are the authoritative
+      # source of truth.
+      lockCmd = "${pkgs.quickshell}/bin/quickshell ipc call lock lock";
+      dpmsOffCmd = "${pkgs.niri}/bin/niri msg action power-off-monitors";
+      dpmsOnCmd = "${pkgs.niri}/bin/niri msg action power-on-monitors";
+      suspendCmd = "${pkgs.systemd}/bin/systemctl suspend";
       configToml = ''
         [general]
         tick_ms = 1000
@@ -42,24 +55,24 @@
         # the user sees the lockscreen, not a desktop flash. idled holds a
         # logind delay-inhibitor and releases it after the lock command has
         # had a moment to render.
-        lock_before_sleep = "quickshell ipc call lock lock"
+        lock_before_sleep = "${lockCmd}"
         lock_settle_ms = 300
 
         [[stages]]
         name = "lock"
         timeout = ${toString cfg.lockAfter}
-        command = "quickshell ipc call lock lock"
+        command = "${lockCmd}"
 
         [[stages]]
         name = "dpms"
         timeout = ${toString cfg.dpmsAfter}
-        command = "niri msg action power-off-monitors"
-        resume_command = "niri msg action power-on-monitors"
+        command = "${dpmsOffCmd}"
+        resume_command = "${dpmsOnCmd}"
 
         [[stages]]
         name = "suspend"
         timeout = ${toString cfg.suspendAfter}
-        command = "systemctl suspend"
+        command = "${suspendCmd}"
       '' + batteryToml;
     in
     {
@@ -131,7 +144,21 @@
             LockPersonality = true;
             RestrictRealtime = true;
             SystemCallArchitectures = "native";
-            Environment = "RUST_LOG=info";
+            # idled spawns commands via `sh -c`. systemd-user's default
+            # PATH for spawned children on NixOS is just /nix/store/<systemd>/bin,
+            # so unqualified PATH lookups (quickshell, niri, systemctl)
+            # all fail with ENOENT — observed in the wild as silent
+            # idle-stage failures (the lock command never fires, suspend
+            # never fires, machine stays awake all night). The configToml
+            # above already pins absolute store paths for every command,
+            # so this PATH is technically redundant — but kept as a
+            # belt-and-suspenders against future config edits or hand-
+            # invocation via `systemctl --user start idled.service` from
+            # an admin shell. Standard NixOS user-session bin dirs.
+            Environment = [
+              "RUST_LOG=info"
+              "PATH=/run/wrappers/bin:/etc/profiles/per-user/%u/bin:/run/current-system/sw/bin:${pkgs.systemd}/bin:${pkgs.coreutils}/bin"
+            ];
           };
 
           Install = {
@@ -160,17 +187,39 @@
           Unit = {
             Description = "PipeWire → ScreenSaver idle inhibitor bridge";
             # Order after idled so the ScreenSaver service is registered before
-            # we try to call it. Soft dependency — bridge will retry if idled
-            # isn't up yet, but ordering avoids spurious early errors.
-            After = [ "graphical-session.target" "idled.service" ];
+            # we try to call it, AND after easyeffects so the PipeWire node graph
+            # has the DSP filter chain in place. The bridge walks the graph at
+            # startup; if easyeffects' nodes are still appearing while the bridge
+            # is enumerating, the PipeWire client connection has been observed
+            # to die (silently, exit code 1) and Restart=on-failure then loops
+            # respawning until the graph stabilizes — costs nothing at steady
+            # state but spams the journal at every login. Ordering after
+            # easyeffects collapses that race in the common case.
+            #
+            # Note: After= is one-directional ordering only, not a hard
+            # requirement; if easyeffects isn't enabled on this host, the
+            # bridge still starts (just without the ordering hint).
+            After = [ "graphical-session.target" "idled.service" "easyeffects.service" ];
             PartOf = [ "graphical-session.target" ];
             Requires = [ "pipewire.service" ];
+            # Belt-and-suspenders for the race above: cap retries at 5 in 60s
+            # so a degenerate startup (e.g. easyeffects also failing, no audio
+            # graph ever stabilizing) can't burn forever. After the cap, the
+            # unit goes to "failed" and stays there, visible in the rebuild
+            # output's "degraded session" warning rather than silently looping
+            # at 12 restarts/minute.
+            StartLimitBurst = 5;
+            StartLimitIntervalSec = 60;
           };
 
           Service = {
             ExecStart = "${pkgs.wayland-pipewire-idle-inhibit}/bin/wayland-pipewire-idle-inhibit --idle-inhibitor d-bus --media-minimum-duration 5";
             Restart = "on-failure";
-            RestartSec = 5;
+            # Bumped from 5s to 10s: the failure mode is a startup race against
+            # the audio graph, so longer waits between attempts give the graph
+            # more time to settle before we retry. Combined with StartLimitBurst
+            # above this caps total recovery time at ~50s.
+            RestartSec = 10;
             MemoryMax = "64M";
             NoNewPrivileges = true;
             ProtectSystem = "strict";
