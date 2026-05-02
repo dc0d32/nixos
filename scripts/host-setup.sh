@@ -31,6 +31,15 @@
 #                  system via `systemctl start`. Idempotent in both
 #                  modes — already-bootstrapped users are skipped via
 #                  the units' ConditionPathExists guard.
+#   --audio-discover  Print a ready-to-paste `audio.autoloads`
+#                  entry for the host's currently-default PipeWire
+#                  sink. Run this on real hardware once after
+#                  installing a new host that imports
+#                  flake-modules/audio.nix; paste the printed entry
+#                  into the host bridge's `audio.autoloads = [ ... ]`
+#                  list, replacing the `preset = "..."` field with
+#                  the EasyEffects preset name you want bound to
+#                  this sink. Read-only — no root, no /mnt needed.
 #
 # Why this exists:
 #   Re-entering a partially-installed system from the NixOS USB took
@@ -51,6 +60,7 @@
 #   sudo ./scripts/host-setup.sh /dev/nvme0n1 --partition    # destructive
 #   sudo ./scripts/host-setup.sh --install pb-t480           # full install
 #   sudo ./scripts/host-setup.sh --install-hm                # bootstrap HM
+#   ./scripts/host-setup.sh --audio-discover                 # print autoload
 #   sudo ./scripts/host-setup.sh --help
 #
 # Layout assumed (matches docs/runbooks/new-host-partitioning.md):
@@ -94,7 +104,7 @@ set -Eeuo pipefail
 # ── arg parsing ───────────────────────────────────────────────────
 DISK=""
 HOSTNAME=""
-MODE=""        # one of: mount | unmount | partition | install | install-hm
+MODE=""        # one of: mount | unmount | partition | install | install-hm | audio-discover
 SHOW_HELP=0
 
 usage() {
@@ -107,7 +117,7 @@ usage() {
 set_mode() {
     local new="$1"
     if [[ -n "$MODE" && "$MODE" != "$new" ]]; then
-        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install/--install-hm)" >&2
+        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install/--install-hm/--audio-discover)" >&2
         exit 2
     fi
     MODE="$new"
@@ -143,6 +153,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --install-hm)
             set_mode install-hm
+            shift
+            ;;
+        --audio-discover)
+            set_mode audio-discover
             shift
             ;;
         --)
@@ -190,7 +204,7 @@ case "$MODE" in
             exit 2
         fi
         ;;
-    unmount|install|install-hm)
+    unmount|install|install-hm|audio-discover)
         if [[ -n "$DISK" ]]; then
             echo "error: --$MODE does not take a disk argument" >&2
             exit 2
@@ -1335,6 +1349,104 @@ do_install_hm_chroot() {
     echo ">> all bootstrap units settled."
 }
 
+# ── audio-discover ─────────────────────────────────────────────────
+# Print a `audio.autoloads` list entry for the host's currently-default
+# PipeWire sink. Use this once on real hardware after wiring a host's
+# `audio.presetsDir`, then paste the printed entry into the host
+# bridge's `audio.autoloads = [ ... ]` list with the desired preset
+# name.
+#
+# Reads:
+#   - wpctl inspect @DEFAULT_AUDIO_SINK@   for node.name + node.description
+#   - wpctl status                          for the active card profile name
+#
+# No root required; no /mnt; no flake build. Pure read-only probe of
+# the running PipeWire daemon.
+do_audio_discover() {
+    if ! command -v wpctl >/dev/null 2>&1; then
+        echo "error: wpctl not found in PATH." >&2
+        echo "       wpctl ships with wireplumber; this host should have"
+        echo "       it via flake-modules/audio.nix's NixOS-side import." >&2
+        exit 1
+    fi
+
+    # Probe the default sink. wpctl inspect emits indented "key = value"
+    # lines plus property "key = \"value\"" lines.
+    local inspect
+    if ! inspect=$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>&1); then
+        echo "error: \`wpctl inspect @DEFAULT_AUDIO_SINK@\` failed:" >&2
+        echo "$inspect" >&2
+        echo
+        echo "Is PipeWire running? Try: systemctl --user status pipewire wireplumber" >&2
+        exit 1
+    fi
+
+    # Parse the lines we care about. wpctl prints e.g.
+    #   * node.name = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+    #     node.description = "Built-in Audio Analog Stereo"
+    #     device.profile.name = "analog-stereo"   (sometimes; see fallback)
+    local node_name node_desc profile_name
+    node_name=$(printf '%s\n' "$inspect" \
+        | sed -n 's/^[* ]*node\.name = "\(.*\)"$/\1/p' \
+        | head -n1)
+    node_desc=$(printf '%s\n' "$inspect" \
+        | sed -n 's/^[* ]*node\.description = "\(.*\)"$/\1/p' \
+        | head -n1)
+    # Some nodes don't carry a card profile property directly; fall back
+    # to api.alsa.pcm.stream or device.profile.name. The autoload-rule
+    # filename uses whatever string EE picked when creating the rule, so
+    # the safest bet is the ALSA card profile name from the parent
+    # device. Get it via the parent device id if present.
+    profile_name=$(printf '%s\n' "$inspect" \
+        | sed -n 's/^[* ]*device\.profile\.name = "\(.*\)"$/\1/p' \
+        | head -n1)
+
+    if [[ -z "$node_name" ]]; then
+        echo "error: could not parse node.name from wpctl inspect output." >&2
+        echo "Raw output for debugging:" >&2
+        echo "$inspect" >&2
+        exit 1
+    fi
+
+    # Fallback for profile_name: derive from the node.name suffix. For
+    # PipeWire HDA sinks the name has the form
+    #   alsa_output.<bus>.<profile>
+    # where <profile> is e.g. "analog-stereo", "hdmi-stereo". For the
+    # SOF-driven X1 Yoga path it's "platform-skl_hda_dsp_generic.HiFi__Speaker__sink"
+    # and the user-facing profile is the part after "HiFi__" (e.g.
+    # "Speaker"). We give a reasonable guess and prompt the user to
+    # double-check.
+    if [[ -z "$profile_name" ]]; then
+        if [[ "$node_name" == *.HiFi__*__sink ]]; then
+            # SOF-style: extract between "HiFi__" and "__sink"
+            profile_name="${node_name##*.HiFi__}"
+            profile_name="${profile_name%__sink}"
+        else
+            # Plain HDA: take the suffix after the last dot.
+            profile_name="${node_name##*.}"
+        fi
+    fi
+
+    # If description is empty, leave it as a placeholder.
+    if [[ -z "$node_desc" ]]; then
+        node_desc="(unknown — set me to match \`wpctl status\`)"
+    fi
+
+    cat <<EOF
+# Paste this into the host bridge's \`audio.autoloads = [ ... ]\`
+# (e.g. flake-modules/hosts/<this-host>.nix), replacing the
+# preset = "..." value with the EasyEffects preset name you want
+# bound to this sink (one of the .json files under
+# hosts/<this-host>/audio-presets/, without the .json extension).
+{
+  device = "$node_name";
+  profile = "$profile_name";
+  description = "$node_desc";
+  preset = "T480-Music";  # ← change to your preset name
+}
+EOF
+}
+
 # ── dispatch ──────────────────────────────────────────────────────
 case "$MODE" in
     mount)       do_mount ;;
@@ -1342,4 +1454,5 @@ case "$MODE" in
     partition)   do_partition ;;
     install)     do_install ;;
     install-hm)  do_install_hm ;;
+    audio-discover) do_audio_discover ;;
 esac

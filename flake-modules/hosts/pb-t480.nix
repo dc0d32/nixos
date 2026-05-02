@@ -51,6 +51,35 @@ let
   # Built via the shared factory in ../mk-pkgs.nix.
   hmPkgs = config.flake.lib.mkPkgs system;
 
+  # Shared per-host EasyEffects config — same for p, m, and s on this
+  # host, so we factor it out of the three HM modules. Hand-tuned
+  # presets for the T480's stock Realtek ALC257 + 2W down-firing
+  # speakers. T480 is NOT a Dolby DAX3 licensed model, so unlike
+  # pb-x1 there's no Lenovo driver to extract IRs from — the
+  # corrections here are pure parametric EQ + safety limiter, no
+  # convolver/IRS. See hosts/pb-t480/audio-presets/README.md for the
+  # design notes.
+  #
+  # autoloads = [] until the actual T480 PipeWire sink node-name is
+  # captured on real hardware. Run on the T480 itself, from a
+  # checkout of this flake:
+  #   ./scripts/host-setup.sh --audio-discover
+  # which prints a ready-to-paste autoload entry like:
+  #   {
+  #     device = "alsa_output.pci-0000_00_1f.3.analog-stereo";
+  #     profile = "analog-stereo";
+  #     description = "...";
+  #     preset = "T480-Music";
+  #   }
+  # Until then EasyEffects runs in passthrough; users can apply
+  # T480-Music or T480-Voice by hand from the EE GUI to audition.
+  audioCfg = {
+    presetsDir = ../../hosts/pb-t480/audio-presets;
+    # No IRS files — the presets don't reference convolver#0.
+    # irsDir = ../../hosts/pb-t480/audio-irs;  # if/when measured
+    autoloads = [ ];
+  };
+
   # Convenience wrapper for p to view kid-account login activity.
   # Reads from the systemd journal (which p can read via wheel
   # membership), filters logind session events for the kid users, and
@@ -88,6 +117,9 @@ let
       suspendAfter = 900;
     };
 
+    # EasyEffects per-host data — shared with p on this host.
+    audio = audioCfg;
+
     home.sessionVariables = {
       EDITOR = "nvim";
       VISUAL = "nvim";
@@ -119,6 +151,13 @@ in
 
   # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
   # below, NOT here — see the same note in pb-x1.nix.
+
+  # NOTE: `audio.*` is set inside each HM module block below, NOT
+  # here. audio.nix declares its options as HM module options
+  # (per-HM-config) so multi-laptop hosts can each carry their own
+  # presetsDir / irsDir / autoloads without singleton conflicts.
+  # The shared per-host audio config is factored into the `audioCfg`
+  # binding in the `let` block above.
 
   wallpaper = {
     intervalMinutes = 30;
@@ -249,10 +288,19 @@ in
       #   - p   : admin (wheel + networkmanager). Also in `timekpr`
       #           so they can drive `timekpra` to grant ad-hoc time
       #           or adjust per-kid policies at runtime.
-      #   - m,s : kid (no wheel, no networkmanager). They get
-      #           video/audio so the desktop session works, and
+      #   - m,s : kid (no wheel, no sudo). They get
+      #           video/audio so the desktop session works,
       #           `input` so quickshell's lockscreen / idled function
-      #           for them too (idled reads /dev/input/event*).
+      #           for them too (idled reads /dev/input/event*), and
+      #           `networkmanager` so they can connect to any wifi
+      #           AP themselves without an admin around — important
+      #           because the laptop travels (school, friends'
+      #           houses) and waiting for p to type a password
+      #           breaks the "kids can self-serve on this machine"
+      #           contract. NetworkManager group membership grants
+      #           connect/disconnect/add-AP for kids; only system-
+      #           wide config (e.g. dispatcher scripts, global
+      #           settings) still needs wheel.
       #
       # Initial passwords are throwaway literals (`changeme`); rotate them
       # with `passwd` on first login.
@@ -270,7 +318,7 @@ in
         // lib.genAttrs kidUsers (kid: {
           isNormalUser = true;
           description = kid;
-          extraGroups = [ "video" "audio" "input" ];
+          extraGroups = [ "video" "audio" "input" "networkmanager" ];
           shell = hmPkgs.zsh;
           initialPassword = "changeme";
         });
@@ -312,6 +360,9 @@ in
             suspendAfter = 900;
             powerSaverPercent = 40;
           };
+
+          # EasyEffects per-host data — shared with kids on this host.
+          audio = audioCfg;
 
           home.sessionVariables = {
             EDITOR = "nvim";

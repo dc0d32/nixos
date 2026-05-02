@@ -56,25 +56,11 @@ in
   # options (per-NixOS-config) so multi-laptop hosts can each carry
   # their own resumeDevice / thresholds without singleton conflicts.
 
-  audio = {
-    presetsDir = ../../hosts/pb-x1/audio-presets;
-    irsDir = ../../hosts/pb-x1/audio-irs;
-    # Per-sink autoload rules. Each entry binds a single PipeWire sink
-    # (by node-name) to a single EasyEffects preset; sinks without an
-    # entry are left flat/passthrough. Get a sink's node-name with:
-    #   wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
-    # Add a second entry here when you author a preset for bluetooth
-    # headphones (device = "bluez_output.<MAC>.1", profile is the
-    # PipeWire profile name shown by `wpctl status`).
-    autoloads = [
-      {
-        device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
-        profile = "Speaker";
-        description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
-        preset = "X1Yoga7-Dynamic-Detailed";
-      }
-    ];
-  };
+  # NOTE: `audio.*` is set inside `configurations.homeManager."${user}@${hostName}".module`
+  # below, NOT here. audio.nix declares its options as HM module
+  # options (per-HM-config) so multi-laptop hosts can each carry
+  # their own presetsDir / irsDir / autoloads without singleton
+  # conflicts.
 
   wallpaper = {
     intervalMinutes = 30;
@@ -195,6 +181,31 @@ in
         dpmsAfter = 420;
         suspendAfter = 900;
         powerSaverPercent = 40;
+      };
+
+      # EasyEffects per-host data: preset directory, IRS directory,
+      # and the per-sink autoload rules. Declared here (per-HM-config)
+      # rather than at the flake-parts level so multi-laptop hosts
+      # don't conflict on these values. See flake-modules/audio.nix.
+      #
+      # autoloads: each entry binds a single PipeWire sink (by
+      # node-name) to a single EasyEffects preset; sinks without an
+      # entry are left flat/passthrough. Get a sink's node-name with:
+      #   wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
+      # Add a second entry here when you author a preset for bluetooth
+      # headphones (device = "bluez_output.<MAC>.1", profile is the
+      # PipeWire profile name shown by `wpctl status`).
+      audio = {
+        presetsDir = ../../hosts/pb-x1/audio-presets;
+        irsDir = ../../hosts/pb-x1/audio-irs;
+        autoloads = [
+          {
+            device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
+            profile = "Speaker";
+            description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
+            preset = "X1Yoga7-Dynamic-Detailed";
+          }
+        ];
       };
 
       # Per-user session vars. Editor pinned to nvim because
