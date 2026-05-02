@@ -77,7 +77,7 @@ let
 
   # NixOS module shared by every ah-N. Headless server-class --
   # NOT importing: gpu, power, battery, audio, biometrics, login-ly,
-  # niri, fonts, hardware-hacking, chromium-managed, steam, timekpr.
+  # niri, fonts, hardware-hacking, chrome-managed, steam, timekpr.
   mkNixosModule = { name, system }: { lib, pkgs, ... }: {
     imports = [
       ../../hosts/${name}/hardware-configuration.nix

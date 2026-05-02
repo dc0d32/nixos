@@ -9,10 +9,12 @@
 #   - s : kid (no wheel), restricted HM (no dev tooling)
 #
 # Kids' graphical session is the same niri/quickshell stack as p so
-# things look familiar across users. They get chrome, alacritty, zsh
-# but no vscode / freecad / bitwarden / ai-cli / build-deps. Web
-# filtering and DNS logging are NOT installed (deferred per session
-# notes 2026-04-30-family-laptop-host.md, written before the rename).
+# things look familiar across users. They get google-chrome (with
+# Family-Link-locking managed policies — see chrome-managed.nix),
+# alacritty, zsh but no vscode / freecad / bitwarden / ai-cli /
+# build-deps. Web filtering and DNS logging are NOT installed
+# (deferred per session notes 2026-04-30-family-laptop-host.md,
+# written before the rename).
 #
 # Time-of-day / screen-time controls are wired via flake-modules/
 # timekpr.nix using nixpkgs' `timekpr` package (= upstream timekpr-
@@ -67,9 +69,10 @@ let
   '';
 
   # Per-kid home-manager module. Uses the `kid` bundle: minimal CLI,
-  # chromium-managed (Family-Link-policy-locked) instead of chrome,
-  # zoom for school, full compositor stack, no dev tooling, no admin
-  # apps. `username` parameterises the home.* fields below.
+  # google-chrome with Family-Link-locking managed policies (see
+  # flake-modules/chrome-managed.nix), zoom for school, full
+  # compositor stack, no dev tooling, no admin apps. `username`
+  # parameterises the home.* fields below.
   mkKidHmModule = username: {
     imports = config.flake.lib.bundles.homeManager.kid;
 
@@ -124,11 +127,17 @@ in
   # NOTE: `idle.*` is set inside each HM module block below, NOT
   # here — see the same note in pb-x1.nix.
 
-  # Chromium managed-policy file applied to /etc/chromium/policies/
-  # managed/ on this host. See flake-modules/chromium-managed.nix
-  # for why this exists and hosts/pb-t480/chromium-policy.md
-  # for what each policy does.
-  chromium-managed.policyFile = ../../hosts/pb-t480/chromium-policy.json;
+  # Chrome managed-policy file applied to
+  # /etc/opt/chrome/policies/managed/ on this host. See
+  # flake-modules/chrome-managed.nix for why this exists and
+  # hosts/pb-t480/chrome-policy.md for what each policy does.
+  # NOTE: on Linux there is no per-user Chrome policy mechanism;
+  # the policy applies to every user on this host who launches
+  # google-chrome, including p. p has accepted that trade-off
+  # because Family Link supervision (the whole point of the policy)
+  # only works on signed-in Chrome with Google's API keys, which
+  # the open-source Chromium build lacks.
+  chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
   # ── Per-kid screen-time policies (timekpr) ───────────────────────
   # m: weekday 06:00-21:00 window, 4h/day budget.
@@ -183,7 +192,7 @@ in
         config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.niri
         config.flake.modules.nixos.timekpr
-        config.flake.modules.nixos.chromium-managed
+        config.flake.modules.nixos.chrome-managed
         # Auto-bootstraps each user's home-manager profile on first
         # boot via a oneshot systemd service per HM config matching
         # `*@pb-t480`. Removes the post-install

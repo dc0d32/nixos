@@ -1,14 +1,23 @@
-# pb-t480 — chromium managed-policy rationale
+# pb-t480 — Google Chrome managed-policy rationale
 
-This file documents why each policy in `chromium-policy.json` is set
+This file documents why each policy in `chrome-policy.json` is set
 the way it is. JSON has no comment syntax, so the rationale lives
 here. Edit both files together.
 
-The file is dropped at `/etc/chromium/policies/managed/` by
-`flake-modules/chromium-managed.nix` (NixOS class). Chromium reads
-it at startup and refuses to let the user override any field in it.
+The file is dropped at `/etc/opt/chrome/policies/managed/` by
+`flake-modules/chrome-managed.nix` (NixOS class). Chrome reads it
+at startup and refuses to let the user override any field in it.
 The "Managed by your organization" badge appears next to the avatar
 once any mandatory policy is present.
+
+**Scope on Linux**: Chrome reads system-wide policy from
+`/etc/opt/chrome/policies/managed/*.json`; there is no per-user
+policy mechanism. Every user on this host who launches Chrome
+(including the admin account `p`) sees these policies. The trade-
+off is accepted because the alternative — Chromium with no Google
+API keys — can't complete the `BrowserSignin` handshake (it 404s
+on accounts.google.com), and Family Link supervision requires a
+working signed-in Chrome.
 
 This is **defense-in-depth on top of Family Link**. Family Link
 (via the kid's signed-in Google account) is the primary safety net
@@ -129,11 +138,10 @@ at <https://bitwarden.com/help/managed-policies/>.
 
 ## Verifying on the live system
 
-Visit `chrome://policy` (yes, the URL is `chrome://`, not
-`chromium://`, even on Chromium). Each policy from the JSON should
-appear under "Chrome Policies" with status "OK" and source
-"Platform". Bad JSON or unknown policy keys show up as warnings
-here — useful debugging signal.
+Visit `chrome://policy`. Each policy from the JSON should appear
+under "Chrome Policies" with status "OK" and source "Platform".
+Bad JSON or unknown policy keys show up as warnings here — useful
+debugging signal.
 
 Visit `chrome://extensions` to confirm both force-installed
 extensions are present, enabled, and uninstall buttons are greyed
@@ -150,12 +158,12 @@ under Settings \u2192 Server URL.
 
 The full enumerable list lives at
 <https://chromeenterprise.google/policies/>. Filter by "Linux"
-support before adding. Add the policy key to `chromium-policy.json`
+support before adding. Add the policy key to `chrome-policy.json`
 and a `### <Key>` section to this file with the rationale.
 
 ## Retire when
 
 Replaced by per-user policies (Linux gains them; not on the
 upstream roadmap as of 2026), or kids age out of needing
-supervision and the chromium-managed module is removed from this
+supervision and the chrome-managed module is removed from this
 host.
