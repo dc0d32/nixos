@@ -5,13 +5,15 @@
 # desktop bundles compose on top.
 #
 # Members:
-#   - btop      system monitor
-#   - direnv    per-project env
-#   - gh        GitHub CLI
-#   - git       version control + identity
-#   - neovim    editor
-#   - tmux      terminal multiplexer
-#   - zsh       login shell
+#   - btop          system monitor
+#   - direnv        per-project env
+#   - gh            GitHub CLI
+#   - git           version control + identity
+#   - neovim        editor
+#   - nix-settings  user-profile GC policy (mirrors NixOS-side
+#                   nix-settings; see flake-modules/nix-settings-hm.nix)
+#   - tmux          terminal multiplexer
+#   - zsh           login shell
 #
 # Adding a new universally-needed HM module: add it here and it
 # propagates to every account in the flake.
@@ -32,6 +34,7 @@
     gh
     git
     neovim
+    nix-settings
     tmux
     zsh
   ];
