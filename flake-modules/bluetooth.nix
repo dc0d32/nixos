@@ -191,6 +191,22 @@
         };
         Install.WantedBy = [ "graphical-session.target" ];
       };
+
+      # Suppress the duplicate xdg-autostart copy. The blueman package
+      # ships /etc/xdg/autostart/blueman.desktop, which systemd's
+      # xdg-autostart-generator wraps into a transient
+      # `app-blueman@autostart.service`. With our explicit unit above,
+      # both fire at login and race; the autostart copy tends to start
+      # before the GTK icon theme is registered and crashes with
+      # `Gtk.IconTheme.get_default() is None` in setup_icon_path().
+      # Hide the .desktop so the generator skips it and our explicit
+      # unit is the sole owner of the applet's lifecycle.
+      xdg.configFile."autostart/blueman.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=Blueman Applet
+        Hidden=true
+      '';
     };
   };
 }
