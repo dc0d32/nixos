@@ -148,13 +148,11 @@ in
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
-    # Marked placeholder until the real hardware-configuration.nix is
-    # generated on the actual laptop. The auto-check skips placeholders
-    # so pure `nix flake check` keeps passing on the dev box. To
-    # smoke-build anyway:
-    #   NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
-    #     .#nixosConfigurations.pb-t480.config.system.build.toplevel
-    placeholder = true;
+    # placeholder = false: real hardware-configuration.nix has been
+    # generated and committed (see hosts/pb-t480/hardware-configuration.nix).
+    # `nix flake check` and `nixos-rebuild` no longer need
+    # NIXOS_ALLOW_PLACEHOLDER=1 for this host.
+    placeholder = false;
     module = {
       imports = [
         ../../hosts/pb-t480/hardware-configuration.nix
@@ -207,12 +205,12 @@ in
       # charge thresholds — capping BAT1 at 80% costs nothing and
       # extends its lifespan alongside BAT0.
       #
-      # The resumeDevice placeholder below trips the runtime warning
-      # service `battery-resume-offset` in battery.nix on first boot
-      # until updated. The service prints the exact `boot.kernelParams`
-      # line to add once the real swapfile is provisioned. Capture the
-      # real UUID from:
-      #   blkid -s UUID -o value $(findmnt -no SOURCE /)
+      # resumeDevice is the btrfs root UUID (the swapfile lives on
+      # the root subvol's parent fs). After first hibernate cycle on
+      # real hardware, capture `resume_offset=NNN` from
+      #   journalctl -u battery-resume-offset
+      # and add it to boot.kernelParams below (currently the
+      # placeholder `resume_offset=0` value).
       battery = {
         batteries = [ "BAT0" "BAT1" ];
         chargeStopThreshold = 80;
@@ -221,8 +219,7 @@ in
         criticalAction = "Hibernate";
         powerSaverPercent = 40;
         swapSizeGiB = 32;
-        # CHANGEME after first install on real hardware.
-        resumeDevice = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
+        resumeDevice = "/dev/disk/by-uuid/26b43411-b5dc-406f-a737-9205fbd21732";
       };
 
       # Bootloader: standard UEFI boot. Override if the real hardware
