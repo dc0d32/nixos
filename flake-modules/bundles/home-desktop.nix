@@ -12,7 +12,7 @@
 #
 # = dev ++ [
 #     alacritty audio bitwarden bluetooth chrome desktop-extras
-#     firefox fonts freecad hardware-hacking idle niri
+#     firefox fonts freecad hardware-hacking idle kicad niri
 #     polkit-agent quickshell vscode wallpaper
 #   ]
 #
@@ -38,6 +38,7 @@
       freecad
       hardware-hacking
       idle
+      kicad
       niri
       polkit-agent
       quickshell
