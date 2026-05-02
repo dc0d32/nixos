@@ -4,13 +4,16 @@
 # compositor (niri), bar/lockscreen (quickshell), browsers (firefox
 # as primary daily driver, chrome as fallback / for sites that
 # need a chromium engine), password manager (bitwarden), editor
-# with GUI (vscode), terminal (alacritty), and friends. Currently
-# consumed by my account on pb-x1 and pb-t480.
+# with GUI (vscode), terminal (alacritty), audio DSP daemon
+# (easyeffects via the audio module — preset/IRS deployment is
+# host-controlled by setting `audio.presetsDir`/`irsDir`/`autoloads`
+# on the host bridge), and friends. Currently consumed by my
+# account on pb-x1 and pb-t480.
 #
 # = dev ++ [
-#     alacritty bitwarden bluetooth chrome desktop-extras firefox
-#     fonts freecad hardware-hacking idle niri polkit-agent
-#     quickshell vscode wallpaper
+#     alacritty audio bitwarden bluetooth chrome desktop-extras
+#     firefox fonts freecad hardware-hacking idle niri
+#     polkit-agent quickshell vscode wallpaper
 #   ]
 #
 # Adding a new module that should appear on every adult desktop:
@@ -25,6 +28,7 @@
     config.flake.lib.bundles.homeManager.dev
     ++ (with config.flake.modules.homeManager; [
       alacritty
+      audio
       bitwarden
       bluetooth
       chrome

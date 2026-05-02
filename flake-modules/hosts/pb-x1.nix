@@ -180,11 +180,7 @@ in
   configurations.homeManager."${user}@${hostName}" = {
     pkgs = hmPkgs;
     module = {
-      imports = config.flake.lib.bundles.homeManager.desktop ++ [
-        # Host-specific delta on top of the desktop bundle:
-        # the X1-Yoga-7 has audio presets only valid on this hardware.
-        config.flake.modules.homeManager.audio
-      ];
+      imports = config.flake.lib.bundles.homeManager.desktop;
 
       # HM manages itself.
       programs.home-manager.enable = true;

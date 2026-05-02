@@ -10,6 +10,10 @@
 #
 # Members (parallel to base+desktop, intentionally):
 #   - alacritty, btop, neovim, zsh         minimal CLI surface
+#   - audio                                easyeffects daemon (passthrough
+#                                          unless host sets presets/IRS;
+#                                          ensures kids get the same
+#                                          PipeWire stack handling as p)
 #   - bluetooth                            blueman applet for tray pairing
 #   - chrome                               browser binary (google-chrome)
 #   - chrome-managed                       no-op HM stub; the matching
@@ -27,6 +31,7 @@
 {
   flake.lib.bundles.homeManager.kid = with config.flake.modules.homeManager; [
     alacritty
+    audio
     bluetooth
     btop
     chrome

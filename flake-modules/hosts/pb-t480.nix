@@ -172,7 +172,6 @@ in
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t480
 
         # Feature modules. NOT importing:
-        #   - audio (X1-Yoga-specific presets; no T480 preset authored yet)
         #   - hardware-hacking (kids don't need dialout/plugdev)
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
@@ -183,6 +182,13 @@ in
         config.flake.modules.nixos.fonts
         config.flake.modules.nixos.locale
         config.flake.modules.nixos.battery
+        # Audio: PipeWire/ALSA/Pulse/RTKit + WirePlumber 100% volume
+        # cap. No host-specific EasyEffects presets/IRS/autoloads
+        # set yet for the T480 — the HM-side daemon launches in
+        # passthrough mode (no preset loaded). Author T480 presets
+        # later and wire them via `audio.presetsDir` /
+        # `audio.autoloads` here.
+        config.flake.modules.nixos.audio
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.login-ly
         # Fingerprint (Synaptics) + face auth (howdy via IR camera)
