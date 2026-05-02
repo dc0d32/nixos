@@ -9,12 +9,21 @@
 # vscode).
 #
 # Kids DO get freecad and the user-side hardware-hacking tools
-# (KiCad, esptool, picocom, etc.) so they can do CAD/EDA on their
-# own accounts. The hardware-hacking NixOS module is intentionally
-# NOT imported on pb-t480 — kids are not in dialout/plugdev/uucp,
-# so they can run lsusb and design boards but cannot flash hardware
-# without an adult logging in. See flake-modules/hosts/pb-t480.nix
-# for the host-level wiring decision.
+# (esptool, picocom, dfu-util, flashrom) so they can flash RP2040 /
+# ESP boards from their own accounts. The hardware-hacking NixOS
+# module IS imported on pb-t480 with `extraUsers = [ "m" "s" ]` so
+# the kids end up in dialout/plugdev/uucp and can actually talk to
+# the devices without sudo. KiCad is intentionally NOT in the kid
+# bundle — see flake-modules/kicad.nix; kids haven't asked for EDA
+# yet and a ~1 GB closure isn't worth carrying speculatively.
+#
+# polkit-agent is intentionally NOT included. Kids are not in
+# `wheel` and have no business authenticating polkit prompts;
+# udisks2's default rule already permits active-session removable-
+# media mounts without a password (so USB sticks via Thunar still
+# work), and the rare polkit-gated action (blueman adapter
+# settings, NetworkManager system settings) is supposed to fail —
+# they should ask p.
 #
 # Members (parallel to base+desktop, intentionally):
 #   - alacritty, btop, vim, zsh            minimal CLI surface
@@ -37,15 +46,15 @@
 #                                          pack + addons (Assembly4,
 #                                          Fasteners, SheetMetal,
 #                                          Defeaturing)
-#   - hardware-hacking                     KiCad + serial/USB/flashing
-#                                          CLIs. Useful tools to flash
-#                                          devices won't actually work
-#                                          on a kid account because the
-#                                          NixOS half of the module
-#                                          (udev + dialout/plugdev) is
-#                                          gated on `users.primary` and
-#                                          pb-t480 sets that to `p`.
-#   - idle, niri, polkit-agent, quickshell, wallpaper   compositor stack
+#   - hardware-hacking                     serial/USB/flashing CLIs
+#                                          (esptool, picocom, dfu-util,
+#                                          flashrom, usbutils, screen).
+#                                          Functional on pb-t480 because
+#                                          that host's NixOS module sets
+#                                          hardware-hacking.extraUsers
+#                                          to grant kids the device
+#                                          groups.
+#   - idle, niri, quickshell, wallpaper    compositor stack
 #   - zoom                                 school meetings
 #
 # Retire when: the kids age out and their accounts get merged with
@@ -68,7 +77,6 @@
     hardware-hacking
     idle
     niri
-    polkit-agent
     quickshell
     wallpaper
     zoom
