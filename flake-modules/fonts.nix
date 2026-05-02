@@ -58,14 +58,18 @@
     # the GUI) cannot be used here. Cozette is the closest spiritual
     # match: a bitmap font with Nerd Font glyph patches, so the
     # NF-only icons that appear in journalctl / Ly status lines
-    # actually render. cozette12x26 is the HiDPI variant
-    # (12px wide × 26px tall); cozette6x13 is the legacy size.
-    # The PSF lives at <pkgs.cozette>/share/consolefonts/cozette12x26.psfu;
+    # actually render. cozette6x13 is the legacy size; cozette12x26
+    # is the HiDPI 2× variant. Paired with
+    # boot.loader.systemd-boot.consoleMode = "max" (set in the host
+    # bridges), the kernel framebuffer runs at native panel res, so
+    # the small bitmap stays sharp instead of being blown up by a
+    # low-res EFI mode.
+    # The PSF lives at <pkgs.cozette>/share/consolefonts/cozette6x13.psfu;
     # console.font takes the bare name (no extension), and setfont
     # searches console.packages' share/consolefonts/ at activation.
     console = {
       packages = [ pkgs.cozette ];
-      font = "cozette12x26";
+      font = "cozette6x13";
       # earlySetup runs the font load in the initrd so the boot log
       # (not just post-stage-2 messages) renders in Cozette too.
       earlySetup = true;
