@@ -258,6 +258,7 @@ in
         # `audio.autoloads` here.
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.bluetooth
+        config.flake.modules.nixos.boot
         config.flake.modules.nixos.login-ly
         # Fingerprint (Synaptics) + face auth (howdy via IR camera)
         # + PAM stack reordering. The IR camera path is autodetected
@@ -306,10 +307,10 @@ in
         resumeDevice = "/dev/disk/by-uuid/26b43411-b5dc-406f-a737-9205fbd21732";
       };
 
-      # Bootloader: standard UEFI boot. Override if the real hardware
-      # is BIOS/legacy.
-      boot.loader.systemd-boot.enable = lib.mkDefault true;
-      boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+      # Bootloader policy lives in flake-modules/boot.nix (imported
+      # above as config.flake.modules.nixos.boot). Override individual
+      # systemd-boot settings here with mkForce if the real hardware
+      # turns out to be BIOS/legacy and needs grub instead.
       boot.kernelPackages = hmPkgs.linuxPackages_latest;
 
       # All three accounts in one assignment (a single module-attrset

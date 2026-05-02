@@ -91,6 +91,7 @@ in
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.bluetooth
+        config.flake.modules.nixos.boot
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
         # Auto-bootstraps p's home-manager profile on first boot of
@@ -134,9 +135,10 @@ in
         resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
       };
 
-      # Bootloader: standard UEFI boot.
-      boot.loader.systemd-boot.enable = lib.mkDefault true;
-      boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+      # Bootloader policy lives in flake-modules/boot.nix (imported
+      # above as config.flake.modules.nixos.boot). Override individual
+      # systemd-boot settings here with mkForce if this host needs to
+      # diverge.
       boot.kernelPackages = hmPkgs.linuxPackages_latest;
 
       # Primary user.

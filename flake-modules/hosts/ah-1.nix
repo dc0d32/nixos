@@ -89,6 +89,7 @@ let
       config.flake.modules.nixos.networking
       config.flake.modules.nixos.openssh
       config.flake.modules.nixos.docker
+      config.flake.modules.nixos.boot
       # Auto-bootstraps the nas user's home-manager profile on first
       # boot of a fresh install. No-op once activated.
       config.flake.modules.nixos.home-manager-bootstrap
@@ -99,12 +100,10 @@ let
     users.primary = user;
     console.keyMap = "us";
 
-    # UEFI by default (modern hypervisors ship OVMF). If the VM is
-    # provisioned with legacy BIOS, override boot.loader.grub here in
-    # the regenerated hardware-configuration.nix or in a per-host
-    # tweak below.
-    boot.loader.systemd-boot.enable = lib.mkDefault true;
-    boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+    # Bootloader policy lives in flake-modules/boot.nix (imported as
+    # config.flake.modules.nixos.boot above). If the VM is provisioned
+    # with legacy BIOS instead of OVMF, override boot.loader here or in
+    # the regenerated hardware-configuration.nix.
 
     # Service-account user. Throwaway initial password; rotate on
     # first login.
