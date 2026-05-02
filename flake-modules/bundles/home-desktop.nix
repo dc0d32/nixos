@@ -1,15 +1,16 @@
 # Home-manager bundle: desktop.
 #
 # Full desktop session for an adult/admin user: dev bundle plus
-# compositor (niri), bar/lockscreen (quickshell), browser (chrome),
-# password manager (bitwarden), editor with GUI (vscode), terminal
-# (alacritty), and friends. Currently consumed by my account on
-# pb-x1 and pb-t480.
+# compositor (niri), bar/lockscreen (quickshell), browsers (firefox
+# as primary daily driver, chrome as fallback / for sites that
+# need a chromium engine), password manager (bitwarden), editor
+# with GUI (vscode), terminal (alacritty), and friends. Currently
+# consumed by my account on pb-x1 and pb-t480.
 #
 # = dev ++ [
-#     alacritty bitwarden bluetooth chrome desktop-extras fonts
-#     freecad hardware-hacking idle niri polkit-agent quickshell
-#     vscode wallpaper
+#     alacritty bitwarden bluetooth chrome desktop-extras firefox
+#     fonts freecad hardware-hacking idle niri polkit-agent
+#     quickshell vscode wallpaper
 #   ]
 #
 # Adding a new module that should appear on every adult desktop:
@@ -28,6 +29,7 @@
       bluetooth
       chrome
       desktop-extras
+      firefox
       fonts
       freecad
       hardware-hacking
