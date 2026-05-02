@@ -89,8 +89,8 @@ let
     programs.home-manager.enable = true;
 
     home.sessionVariables = {
-      EDITOR = "nvim";
-      VISUAL = "nvim";
+      EDITOR = "vim";
+      VISUAL = "vim";
     };
 
     home.username = user;

@@ -121,8 +121,8 @@ let
     audio = audioCfg;
 
     home.sessionVariables = {
-      EDITOR = "nvim";
-      VISUAL = "nvim";
+      EDITOR = "vim";
+      VISUAL = "vim";
     };
 
     home.username = username;
@@ -402,8 +402,8 @@ in
           audio = audioCfg;
 
           home.sessionVariables = {
-            EDITOR = "nvim";
-            VISUAL = "nvim";
+            EDITOR = "vim";
+            VISUAL = "vim";
           };
 
           home.username = primaryUser;

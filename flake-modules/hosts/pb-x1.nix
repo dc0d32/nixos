@@ -210,12 +210,14 @@ in
         ];
       };
 
-      # Per-user session vars. Editor pinned to nvim because
-      # flake-modules/neovim.nix sets defaultEditor=true but some shells
+      # Per-user session vars. Editor pinned to vim because
+      # flake-modules/vim.nix sets defaultEditor=true but some shells
       # / terminals don't pick that up via update-alternatives.
+      # (neovim was the previous setting; it moved out of home-base
+      # on 2026-05-02 — see flake-modules/vim.nix header.)
       home.sessionVariables = {
-        EDITOR = "nvim";
-        VISUAL = "nvim";
+        EDITOR = "vim";
+        VISUAL = "vim";
       };
 
       home.username = user;

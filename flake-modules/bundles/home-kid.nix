@@ -17,7 +17,7 @@
 # for the host-level wiring decision.
 #
 # Members (parallel to base+desktop, intentionally):
-#   - alacritty, btop, neovim, zsh         minimal CLI surface
+#   - alacritty, btop, vim, zsh            minimal CLI surface
 #   - audio                                easyeffects daemon (passthrough
 #                                          unless host sets presets/IRS;
 #                                          ensures kids get the same
@@ -61,7 +61,6 @@
     freecad
     hardware-hacking
     idle
-    neovim
     niri
     polkit-agent
     quickshell

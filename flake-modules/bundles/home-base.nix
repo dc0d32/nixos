@@ -9,10 +9,11 @@
 #   - direnv        per-project env
 #   - gh            GitHub CLI
 #   - git           version control + identity
-#   - neovim        editor
 #   - nix-settings  user-profile GC policy (mirrors NixOS-side
 #                   nix-settings; see flake-modules/nix-settings-hm.nix)
 #   - tmux          terminal multiplexer
+#   - vim           base editor (replaced neovim 2026-05-02; the neovim
+#                   module is dormant on disk for one-line revert)
 #   - zsh           login shell
 #
 # Adding a new universally-needed HM module: add it here and it
@@ -33,9 +34,9 @@
     direnv
     gh
     git
-    neovim
     nix-settings
     tmux
+    vim
     zsh
   ];
 }
