@@ -239,15 +239,7 @@ in
         # thinkpad_acpi, microcode, sane TLP-vs-PPD defaults, etc.
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t480
 
-        # Feature modules. NOT importing:
-        #   - hardware-hacking (NixOS half: udev rules + dialout/plugdev/uucp
-        #     group membership for `users.primary` = `p`. Kids' HM bundle
-        #     does pull in the user-side hardware-hacking module — KiCad,
-        #     esptool, picocom, lsusb — so they can do EDA and run the
-        #     CLIs, but USB device access is gated on group membership
-        #     they don't have. To let a kid actually flash a board on this
-        #     machine they'd need to log in as `p` (or `p` would need to
-        #     temporarily add them to dialout/plugdev).)
+        # Feature modules.
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
         config.flake.modules.nixos.networking
@@ -267,6 +259,13 @@ in
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.boot
         config.flake.modules.nixos.file-manager
+        # hardware-hacking (NixOS half) — udev rules for USB-serial /
+        # JTAG / DFU / RP2040 / ESP32, and dialout/plugdev/uucp group
+        # membership for users.primary AND every entry in
+        # hardware-hacking.extraUsers (set below for the kids' robotics
+        # work). Imported here only on this host because pb-x1 has its
+        # own primary-only setup and ah-1 is headless.
+        config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.login-ly
         # Fingerprint (Synaptics) + face auth (howdy via IR camera)
         # + PAM stack reordering. The IR camera path is autodetected
@@ -291,6 +290,14 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
       console.keyMap = "us";
+
+      # Grant the kid accounts USB-device access (dialout/plugdev/uucp)
+      # for robotics work — RP2040 UF2 flashing, ESP32 esptool runs,
+      # picocom over USB-serial, etc. See flake-modules/hardware-
+      # hacking.nix for why this is a NixOS-class option (per-host)
+      # rather than a flake-parts top-level option (would leak to pb-x1
+      # and try to add phantom m/s users there).
+      hardware-hacking.extraUsers = kidUsers;
 
       # Battery / hibernate config (declared as a NixOS module option
       # by flake-modules/battery.nix). T480 has BAT0 (external

@@ -5,9 +5,10 @@
 # Cross-class footprint:
 #   - flake.modules.nixos.hardware-hacking — udev rules, dialout/plugdev
 #     group membership for `config.users.primary`, plus any users named
-#     in `hardware-hacking.extraUsers` (used on pb-t480 to grant the
-#     kid accounts USB device access for robotics work). Retire
-#     individual rules when upstream nixpkgs udev packages cover them.
+#     in the per-host NixOS option `hardware-hacking.extraUsers` (used
+#     on pb-t480 to grant the kid accounts USB device access for
+#     robotics work). Retire individual rules when upstream nixpkgs
+#     udev packages cover them.
 #   - flake.modules.homeManager.hardware-hacking — user-space CLI tools
 #     only (usbutils, picocom, screen, esptool, dfu-util, flashrom).
 #     KiCad lives in its own module flake-modules/kicad.nix since
@@ -15,8 +16,15 @@
 #
 # Pattern A enable: a host enables this feature by importing both
 # contributed modules from its host file. There is no top-level
-# `enable` flag; the only host-tunable option is `extraUsers` (see
-# below).
+# `enable` flag.
+#
+# Why `extraUsers` is a NixOS option (not a flake-parts top-level
+# option): flake-parts top-level options are SHARED across every host
+# in the flake. Setting `hardware-hacking.extraUsers = [ "m" "s" ]` on
+# pb-t480 would leak into pb-x1's eval and try to add phantom `m`/`s`
+# accounts there. Declaring the option inside the NixOS module makes
+# it per-host: pb-t480 sets it inside its NixOS config body, pb-x1
+# leaves it at its `[ ]` default, no cross-contamination.
 #
 # Reads `config.users.primary` from the inner NixOS config (declared by
 # flake-modules/users.nix). The previous version read the flake-parts
@@ -25,41 +33,32 @@
 # Retire when: USB/serial/JTAG/firmware-flashing work is no longer done
 #   from any host in the repo (e.g. all hardware hacking moves to a
 #   dedicated bench machine outside this flake).
-{ config, lib, ... }:
 {
-  # Per-host knob: extra usernames (besides users.primary) that should
-  # land in dialout/plugdev/uucp. Used on pb-t480 so the kid accounts
-  # can flash RP2040 / ESP boards without an adult logging in. Default
-  # empty so single-user hosts (pb-x1, ah-1) get the existing behavior.
-  options.hardware-hacking.extraUsers = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    default = [ ];
-    example = [ "m" "s" ];
-    description = ''
-      Additional system usernames (besides `users.primary`) that should
-      be added to the dialout/plugdev/uucp groups so they can access
-      USB-serial / DFU / programmer devices without sudo. Imported by
-      flake.modules.nixos.hardware-hacking.
-    '';
-  };
+  flake.modules.nixos.hardware-hacking = { config, lib, ... }: {
+    options.hardware-hacking.extraUsers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "m" "s" ];
+      description = ''
+        Additional system usernames (besides `users.primary`) that
+        should be added to the dialout/plugdev/uucp groups so they can
+        access USB-serial / DFU / programmer devices without sudo.
+        Each name must correspond to a user defined elsewhere in this
+        host's NixOS config (typically the host bridge).
+      '';
+    };
 
-  # Read the option from the OUTER flake-parts config (AGENTS.md: "let-bind
-  # cfg from the outer flake-parts config"). The inner NixOS module below
-  # shadows `config` with the per-system NixOS config, so we capture
-  # `cfg` here at outer scope.
-  config.flake.modules.nixos.hardware-hacking =
-    let
-      cfg = config.hardware-hacking;
-    in
-    { config, lib, ... }: {
+    config = {
       # Add the primary user + any extras to groups needed for
       # serial/USB device access. genAttrs builds users.users.<name>
       # for every name in (primary :: extras) without duplication.
       # `extraGroups` accumulates with anything else the per-user
-      # config sets elsewhere (e.g. wheel for `p`), it doesn't replace.
+      # config sets elsewhere (e.g. wheel for `p`); it does not replace.
       users.users =
         let
-          targets = lib.unique ([ config.users.primary ] ++ cfg.extraUsers);
+          targets = lib.unique (
+            [ config.users.primary ] ++ config.hardware-hacking.extraUsers
+          );
           groups = [ "dialout" "plugdev" "uucp" ];
         in
         lib.genAttrs targets (_: { extraGroups = groups; });
@@ -87,8 +86,9 @@
         SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0666", GROUP="plugdev"
       '';
     };
+  };
 
-  config.flake.modules.homeManager.hardware-hacking = { pkgs, ... }: {
+  flake.modules.homeManager.hardware-hacking = { pkgs, ... }: {
     home.packages = with pkgs; [
       # USB / serial
       usbutils # lsusb
