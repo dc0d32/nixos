@@ -28,6 +28,19 @@
     services.displayManager.ly = {
       enable = true;
       settings = {
+        # xinitrc = "null" tells ly to hide its built-in X11 "xinitrc"
+        # picker entry (ly parses the literal string `null` as
+        # "hidden", per its res/config.ini comment). Without this,
+        # the session picker reads
+        #   [shell, xinitrc, niri]
+        # and lands on index 0 = the hardcoded "shell" pseudo-entry
+        # on every boot (ly's own `save = true` is non-functional on
+        # NixOS because it writes to /etc which is RO). Suppressing
+        # xinitrc collapses the picker to [shell, niri], so a single
+        # Down arrow selects the only real desktop. The "shell" entry
+        # itself is hardcoded into ly and cannot be removed without
+        # patching upstream.
+        xinitrc = "null";
         animation = "matrix";
         clock = "%F  %T";
         clear_password = true;
