@@ -37,6 +37,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -357,9 +358,48 @@ fn spawn_command(cmd: &str, label: &str) {
             .arg(&cmd)
             .spawn()
         {
-            Ok(c) => c,
+            Ok(c) => {
+                // Successful spawn — clear the consecutive-ENOENT counter so a
+                // single transient ENOENT (e.g. early-boot race against
+                // /run/current-system/sw/bin) doesn't accumulate toward the
+                // fail-fast threshold below.
+                ENOENT_STREAK.store(0, Ordering::Relaxed);
+                c
+            }
             Err(e) => {
                 error!(action = %label, command = %cmd, error = %e, "failed to spawn");
+                // Fail loudly on persistent ENOENT. Background:
+                //   - idled spawns every stage command via `sh -c "<cmd>"`.
+                //   - PATH inside the systemd-user unit is whatever the
+                //     unit's Environment= line provides; on NixOS the
+                //     executor default is just systemd's own bin dir.
+                //   - If the unit Environment is missing /run/current-system/sw/bin
+                //     (regression), `sh` cannot find quickshell / niri / systemctl
+                //     and every stage fires a silent ENOENT. The daemon keeps
+                //     running, the laptop never suspends, and nothing in
+                //     `nixos-rebuild switch` complains.
+                // Threshold is intentionally >1: a one-shot race during early
+                // graphical-session startup is plausible. Three consecutive
+                // ENOENTs across distinct stage firings is unambiguously a
+                // config error — exit non-zero so systemd marks the unit
+                // failed and the next `nixos-rebuild switch` surfaces it.
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    let n = ENOENT_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
+                    if n >= ENOENT_FAIL_THRESHOLD {
+                        error!(
+                            consecutive = n,
+                            threshold = ENOENT_FAIL_THRESHOLD,
+                            "exiting: {} consecutive spawn ENOENTs — PATH or store paths likely broken in unit Environment",
+                            n
+                        );
+                        // Give the tracing layer a moment to flush before exit.
+                        std::process::exit(1);
+                    }
+                } else {
+                    // Non-ENOENT errors (EAGAIN, EMFILE, etc.) are unrelated
+                    // to PATH; reset the streak so we don't conflate them.
+                    ENOENT_STREAK.store(0, Ordering::Relaxed);
+                }
                 return;
             }
         };
@@ -370,6 +410,10 @@ fn spawn_command(cmd: &str, label: &str) {
         }
     });
 }
+
+// Consecutive ENOENT spawns. See spawn_command for rationale.
+static ENOENT_STREAK: AtomicUsize = AtomicUsize::new(0);
+const ENOENT_FAIL_THRESHOLD: usize = 3;
 
 fn default_config_path() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
