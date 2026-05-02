@@ -169,7 +169,11 @@
         "Mod+Shift+Slash".action.show-hotkey-overlay = { };
 
         "Mod+T".action.spawn = "alacritty";
-        "Mod+E".action.spawn = [ "alacritty" "-e" "yazi" ];
+        # GUI file manager — Thunar. yazi is still installed via
+        # desktop-extras and remains usable from any terminal; this
+        # keybind just prefers the GUI for casual file browsing
+        # (USB-stick mounting via gvfs+udisks2, drag-and-drop, etc.).
+        "Mod+E".action.spawn = "thunar";
         # App launcher — quickshell native overlay (replaces fuzzel).
         "Super+Space".action.spawn = [
           "bash"
