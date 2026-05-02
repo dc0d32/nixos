@@ -128,50 +128,45 @@ There is no scaffolder. To add a host:
   are set inside `configurations.nixos.<name>.module`, NOT at the
   flake-parts level.
 
-## One-time hardware setup (pb-x1 only)
+## One-time hardware setup (hosts importing `biometrics`)
 
 These steps are required once after the first `nixos-rebuild switch`
-on the laptop. Other hosts (WSL, headless servers) don't need any of
-this.
+on any laptop importing `flake-modules/biometrics.nix` (currently
+pb-x1 and pb-t480). Other hosts (WSL, headless servers) don't need
+any of this.
 
-### Fingerprint reader
+### Quick path: `biometrics-enroll`
 
-Enroll your fingerprints (repeat for each finger you want):
+The interactive helper walks you through both fingerprint and face
+enrollment. Run from a Wayland terminal (not a TTY) so the IR
+emitter calibration preview can open:
 
 ```sh
+biometrics-enroll          # all of it: fingerprints, then face
+biometrics-enroll fingerprint
+biometrics-enroll face
+biometrics-enroll verify   # test both after enrollment
+```
+
+The script invokes `sudo` internally only for the steps that need
+it (IR emitter calibration, howdy).
+
+### Manual path
+
+If you want to drive it yourself instead of via `biometrics-enroll`:
+
+```sh
+# Fingerprints — repeat for each finger you want.
 fprintd-enroll
 # or enroll a specific finger:
 fprintd-enroll -f right-index-finger "$USER"
-```
-
-Verify enrollment:
-
-```sh
 fprintd-verify
-```
 
-### IR face authentication (howdy)
-
-The IR emitter needs a one-time calibration. Run this from a Wayland
-terminal (not a TTY) so the preview window can open:
-
-```sh
+# IR face: one-time calibration, then enroll a model.
+# Must run from a Wayland session (not a TTY) so the preview opens.
 sudo -E linux-enable-ir-emitter configure
-```
-
-Follow the prompts — it shows a live IR camera preview and asks whether
-the emitter is flashing. Select the correct emitter mode when it works.
-
-Then enroll your face:
-
-```sh
-sudo howdy add
-```
-
-Verify face auth works:
-
-```sh
-sudo howdy test
+sudo howdy -U "$USER" add
+sudo howdy -U "$USER" test
 ```
 
 After both are set up, the auth order at login/lock/sudo is:
