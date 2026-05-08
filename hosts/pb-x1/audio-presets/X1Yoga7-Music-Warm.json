@@ -584,7 +584,7 @@
         "limiter#0": {
             "bypass": false,
             "input-gain": 0.0,
-            "output-gain": 3.0,
+            "output-gain": 0.0,
             "mode": "Herm Thin",
             "oversampling": "None",
             "dithering": "None",
