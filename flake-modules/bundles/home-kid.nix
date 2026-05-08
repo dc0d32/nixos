@@ -26,7 +26,11 @@
 # they should ask p.
 #
 # Members (parallel to base+desktop, intentionally):
-#   - alacritty, btop, vim, zsh            minimal CLI surface
+#   - alacritty, btop, fish, vim, zsh      minimal CLI surface
+#                                          (fish is the login shell;
+#                                          zsh stays installed as a
+#                                          fallback / for tooling that
+#                                          invokes it directly)
 #   - audio                                easyeffects daemon (passthrough
 #                                          unless host sets presets/IRS;
 #                                          ensures kids get the same
@@ -78,6 +82,7 @@
     chrome-managed
     desktop-extras
     file-manager
+    fish
     fonts
     freecad
     hardware-hacking

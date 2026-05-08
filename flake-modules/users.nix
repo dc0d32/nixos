@@ -1,6 +1,13 @@
-# Cross-host user defaults: enable zsh system-wide, pick it as the
-# default user shell, and declare the per-NixOS-config `users.primary`
-# option for other feature modules to reference.
+# Cross-host user defaults: enable fish + zsh system-wide, pick fish
+# as the default user shell, and declare the per-NixOS-config
+# `users.primary` option for other feature modules to reference.
+#
+# Both shells are enabled system-wide so they show up in /etc/shells
+# (precondition for `users.users.<u>.shell = pkgs.<shell>` to work as
+# a login shell). Switching from fish to zsh on a given host is a
+# one-line edit (`shell = pkgs.zsh;` in that host's users.users
+# block); the zsh HM module is still in the home-base bundle and the
+# zsh dotfiles are still generated.
 #
 # `users.primary` is a NixOS option (per-host), not a flake-parts
 # option (per-flake). Each host bridge sets it inside its
@@ -12,7 +19,7 @@
 # repo happened to use the same user.
 #
 # Pattern A: hosts opt in by importing this module. Currently every
-# host does, because `users.defaultUserShell = pkgs.zsh` is a
+# host does, because `users.defaultUserShell = pkgs.fish` is a
 # precondition for the rest of the modules to compose cleanly.
 #
 # Retire when: NixOS gains a first-class per-host "primary user"
@@ -37,13 +44,14 @@
     };
 
     config = {
+      programs.fish.enable = lib.mkDefault true;
       programs.zsh.enable = lib.mkDefault true;
       # Plain value (priority 100) so we beat nixpkgs' bash module,
       # which sets users.defaultUserShell = mkDefault pkgs.bashInteractive
       # (priority 1000). Two mkDefaults would collide; a plain value
       # wins cleanly. Hosts that want a different default shell can
       # still override with lib.mkForce.
-      users.defaultUserShell = pkgs.zsh;
+      users.defaultUserShell = pkgs.fish;
     };
   };
 }

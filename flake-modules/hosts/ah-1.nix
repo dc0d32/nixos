@@ -33,7 +33,7 @@
 #   No GUI (niri/quickshell/wallpaper/idle/desktop-extras), no
 #   GUI-only HM (alacritty, chrome, vscode, freecad), no audio,
 #   no battery, no biometrics, no hardware-hacking groups. The HM
-#   bundle mirrors the wsl.nix headless set (zsh, tmux, vim, btop,
+#   bundle mirrors the wsl.nix headless set (fish, zsh, tmux, vim, btop,
 #   git, direnv, gh, ai-cli, build-deps) so SSHing into any homelab
 #   VM feels like SSHing into WSL: same shell, same prompt, same
 #   muscle memory.
@@ -114,7 +114,7 @@ let
       # sudo, `docker` is added by flake-modules/docker.nix off
       # `users.primary`.
       extraGroups = [ "wheel" "networkmanager" ];
-      shell = pkgs.zsh;
+      shell = pkgs.fish;
       initialPassword = "changeme";
     };
 

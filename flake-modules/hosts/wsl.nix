@@ -66,7 +66,7 @@ let
     users.primary = user;
 
     # Skip explicit users.users.${user}: the WSL fork creates the
-    # default user itself. Shell is forced to zsh by
+    # default user itself. Shell is forced to fish by
     # flake-modules/wsl.nix.
 
     # Tiny system package set; rest lives in home-manager.
