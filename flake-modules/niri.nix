@@ -30,6 +30,32 @@
 
     programs.niri.enable = true;
 
+    # niri-flake's NixOS module defaults `programs.niri.package` to
+    # `pkgs.niri-stable`, where `niri-stable` is a manually-bumped
+    # input pin in niri-flake — not a moving branch. As of 2026-05
+    # that pin is still on niri v25.08 (Aug 2025), even though
+    # upstream has shipped v25.11 and v26.04 (blur, Alt-Tab, true
+    # maximize, fullscreen animations, …). niri-flake's
+    # `niri-unstable` input, by contrast, follows niri's main and is
+    # refreshed daily by mergify, so it currently provides v26.04+.
+    #
+    # Switching to niri-unstable here means we get fresh niri
+    # releases on the same cadence as niri-flake's nightly bumps,
+    # without waiting for the maintainer to manually advance the
+    # niri-stable pin. Cachix coverage (niri.cachix.org) is the same
+    # for both packages.
+    #
+    # We pull the package directly from niri-flake's outputs (rather
+    # than `pkgs.niri-unstable`) because niri-flake exposes its
+    # niri-{stable,unstable} via a `niri` overlay that the NixOS
+    # module does not auto-apply to system pkgs.
+    #
+    # Retire when: niri-flake's niri-stable pin catches up to (or
+    # surpasses) the niri-unstable revision we'd otherwise want, and
+    # we no longer care about being on the bleeding edge.
+    programs.niri.package =
+      inputs.niri.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable;
+
     # Useful companions
     environment.systemPackages = with pkgs; [
       wl-clipboard
