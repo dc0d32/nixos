@@ -11,7 +11,7 @@
 # Kids' graphical session is the same niri/quickshell stack as p so
 # things look familiar across users. They get google-chrome (with
 # Family-Link-locking managed policies — see chrome-managed.nix),
-# alacritty, fish, zsh but no vscode / freecad / bitwarden / ai-cli /
+# alacritty, zsh, fish but no vscode / freecad / bitwarden / ai-cli /
 # build-deps. Web filtering and DNS logging are NOT installed
 # (deferred per session notes 2026-04-30-family-laptop-host.md,
 # written before the rename).
@@ -355,7 +355,7 @@ in
             isNormalUser = true;
             description = primaryUser;
             extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" "timekpr" ];
-            shell = hmPkgs.fish;
+            shell = hmPkgs.zsh;
             # Throwaway initial password; change with `passwd` on first login.
             initialPassword = "changeme";
           };
@@ -364,7 +364,7 @@ in
           isNormalUser = true;
           description = kid;
           extraGroups = [ "video" "audio" "input" "networkmanager" ];
-          shell = hmPkgs.fish;
+          shell = hmPkgs.zsh;
           initialPassword = "changeme";
         });
 

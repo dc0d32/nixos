@@ -149,7 +149,7 @@ in
         # `input` group: required by idled to read /dev/input/event*
         # directly. See flake-modules/idle.nix and packages/idled/.
         extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
-        shell = hmPkgs.fish;
+        shell = hmPkgs.zsh;
       };
 
       # Extra system packages specific to this host. Most packages live

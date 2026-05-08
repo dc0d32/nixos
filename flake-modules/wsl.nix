@@ -81,13 +81,13 @@
         hardware.graphics.enable = lib.mkForce false;
         services.xserver.videoDrivers = lib.mkForce [ ];
 
-        # Make the wsl user's shell fish so defaults line up with the
+        # Make the wsl user's shell zsh so defaults line up with the
         # rest of the flake. Force both the per-user shell AND the
         # system default — the upstream WSL fork sets
         # users.defaultUserShell to bash at mkDefault priority, which
-        # would otherwise collide with our users module setting fish.
-        users.users.${user}.shell = lib.mkForce pkgs.fish;
-        users.defaultUserShell = lib.mkForce pkgs.fish;
+        # would otherwise collide with our users module setting zsh.
+        users.users.${user}.shell = lib.mkForce pkgs.zsh;
+        users.defaultUserShell = lib.mkForce pkgs.zsh;
       };
   };
 }

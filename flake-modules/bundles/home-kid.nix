@@ -27,10 +27,11 @@
 #
 # Members (parallel to base+desktop, intentionally):
 #   - alacritty, btop, fish, vim, zsh      minimal CLI surface
-#                                          (fish is the login shell;
-#                                          zsh stays installed as a
-#                                          fallback / for tooling that
-#                                          invokes it directly)
+#                                          (zsh is the login shell;
+#                                          fish is installed as an
+#                                          alternative — flip a single
+#                                          host with `shell = pkgs.fish;`
+#                                          in the host bridge)
 #   - audio                                easyeffects daemon (passthrough
 #                                          unless host sets presets/IRS;
 #                                          ensures kids get the same

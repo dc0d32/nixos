@@ -1,4 +1,4 @@
-# fish — interactive login shell.
+# fish — alternative interactive shell.
 #
 # homeManager-class only. The system-wide enable
 # (`programs.fish.enable = true`, which adds fish to /etc/shells and
@@ -18,17 +18,17 @@
 #     so fish hosts have feature parity with zsh hosts.
 #
 # Pattern A: every account in this flake imports this via the
-# home-base / home-kid bundles. To make fish the actual login shell
-# on a given host, set
+# home-base / home-kid bundles, so fish is INSTALLED and configured
+# on every host even though zsh is the default login shell. To make
+# fish the actual login shell on a given host, set
 #   users.users.<u>.shell = pkgs.fish;
-# in that host's NixOS module (already done across all hosts as of
-# the cutover commit; new hosts inherit users.defaultUserShell from
-# flake-modules/users.nix which is set to pkgs.fish).
+# in that host's NixOS module. (A flake-wide flip to fish was tried
+# in 2026-05 and reverted; this module survived the revert so the
+# switch stays a one-liner.)
 #
 # Coexistence with zsh: by design, this module does NOT disable zsh,
-# and the base bundle keeps shipping zsh. zsh stays in PATH for any
-# tooling that invokes it explicitly. Switching back to zsh is a
-# one-line per-host edit (`shell = pkgs.zsh;`).
+# and the base bundle keeps shipping zsh as the default. Both shells
+# stay in PATH for any tooling that invokes either explicitly.
 #
 # Retire when: the user picks one shell project-wide and deletes
 #   the loser's HM module + bundle entry, OR fish disappears from
