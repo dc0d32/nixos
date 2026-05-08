@@ -50,14 +50,41 @@
         zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#)*=0=01;31'
         zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
 
+        # _flake_host: pick the host portion of a flake target.
+        #
+        # On bare-metal NixOS, `hostname` matches a real
+        # `nixosConfigurations.<name>` entry, so we just use it.
+        #
+        # On WSL, `hostname` is the random Windows machine name and
+        # has nothing to do with our flake. All WSL instances share
+        # one of two configs split only by CPU arch
+        # (see flake-modules/hosts/wsl.nix):
+        #   x86_64-linux  → `wsl`
+        #   aarch64-linux → `wsl-arm`
+        # so we override the hostname when /proc/sys/kernel/osrelease
+        # advertises WSL (this string is set by the WSL2 kernel and
+        # is the canonical detection signal — `$WSL_DISTRO_NAME`
+        # works too but isn't always inherited by sudo / systemd).
+        _flake_host() {
+          if [[ -r /proc/sys/kernel/osrelease ]] && \
+             grep -qiE 'microsoft|wsl' /proc/sys/kernel/osrelease; then
+            case "$(uname -m)" in
+              aarch64) echo wsl-arm ;;
+              *)       echo wsl ;;
+            esac
+          else
+            hostname
+          fi
+        }
+
         nr() {
-          local host="$(hostname)"
+          local host="$(_flake_host)"
           sudo nixos-rebuild switch --flake ~/nixos#"$host"
           nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
         }
 
         hm() {
-          local host="$(hostname)"
+          local host="$(_flake_host)"
           nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
         }
       '';
