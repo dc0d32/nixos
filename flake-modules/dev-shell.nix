@@ -21,14 +21,25 @@
 #   - nix, git            : substrate.
 #
 # Hooks installed:
-#   - gitleaks      : scans staged content for secrets (API keys, age private
-#                     keys, AWS creds, etc). REPO IS PUBLIC — a leaked token
-#                     gets scraped within minutes of pushing, so this is the
-#                     last line of defense against an accidental paste of an
-#                     API key, password, or other credential into a tracked
-#                     file. Stays useful even though the repo currently has
-#                     no secrets framework wired (see AGENTS.md).
-#   - nixpkgs-fmt   : keeps `.nix` formatting consistent with `nix fmt`.
+#   - gitleaks            : scans staged content for secrets (API keys, age
+#                           private keys, AWS creds, etc). REPO IS PUBLIC
+#                           — a leaked token gets scraped within minutes
+#                           of pushing, so this is the last line of
+#                           defense against an accidental paste of an API
+#                           key, password, or other credential into a
+#                           tracked file. Stays useful even though the
+#                           repo currently has no secrets framework
+#                           wired (see AGENTS.md).
+#   - nixpkgs-fmt         : keeps `.nix` formatting consistent with `nix fmt`.
+#   - check-bash-shebang  : rejects scripts whose shebang hardcodes a path
+#                           to bash (`#!/bin/bash`, `#!/usr/bin/bash`,
+#                           etc.). Default NixOS doesn't ship those paths
+#                           — only `/bin/sh` and `/usr/bin/env` are
+#                           guaranteed. WSL ships `/bin/bash` for compat,
+#                           which lets the bug hide if the script is
+#                           authored on WSL and shipped to bare-metal
+#                           NixOS. Use `#!/usr/bin/env bash` instead.
+#                           See AGENTS.md > "Shell script shebangs".
 #
 # To activate the hooks, enter the devShell once (`nix develop` or, if you use
 # direnv, `direnv allow`). The shellHook installs `.git/hooks/pre-commit`
@@ -46,6 +57,59 @@
 { inputs, ... }: {
   perSystem = { pkgs, system, ... }:
     let
+      # Bash-shebang lint: reject scripts that hardcode a path to bash
+      # (`#!/bin/bash`, `#!/usr/bin/bash`, `#!/usr/local/bin/bash`).
+      # NixOS does not ship `/bin/bash` on a default install — only
+      # `/bin/sh` and `/usr/bin/env` are guaranteed — so any
+      # hardcoded-bash shebang fails with `bad interpreter: No such
+      # file or directory` on a fresh bare-metal NixOS system. The
+      # WSL fork happens to populate `/bin/bash` for compat, which
+      # makes this footgun easy to miss when authoring a script on
+      # WSL and shipping it to pb-x1/pb-t480.
+      #
+      # Allowed shebangs: `#!/usr/bin/env bash`, `#!/bin/sh`,
+      # `#!/usr/bin/env python3`, etc. — anything not matching the
+      # hardcoded-bash regex passes silently.
+      #
+      # The hook is implemented as a `pkgs.writeShellApplication` so
+      # its own shebang is a Nix-store path (i.e. it doesn't itself
+      # depend on `/bin/bash` — that would be self-defeating).
+      check-bash-shebang = pkgs.writeShellApplication {
+        name = "check-bash-shebang";
+        runtimeInputs = with pkgs; [ coreutils gnugrep ];
+        text = ''
+          # Pre-commit passes the list of staged filenames as args.
+          # For each file: peek at the first line, and if it matches
+          # a hardcoded bash interpreter path, record an offender.
+          status=0
+          for f in "$@"; do
+            # Skip directories, symlinks-to-nowhere, and binaries.
+            [[ -f "$f" && -r "$f" ]] || continue
+            # Read just the first line; bail fast on non-script files.
+            first="$(head -n1 -- "$f" 2>/dev/null || true)"
+            case "$first" in
+              "#!"/bin/bash*|"#!"/usr/bin/bash*|"#!"/usr/local/bin/bash*)
+                echo "✘ $f: $first" >&2
+                status=1
+                ;;
+            esac
+          done
+          if [[ $status -ne 0 ]]; then
+            cat >&2 <<'EOF'
+
+          Hardcoded bash shebang found. NixOS does not ship /bin/bash on a
+          default install (only /bin/sh and /usr/bin/env). Use the portable
+          form instead:
+
+              #!/usr/bin/env bash
+
+          See AGENTS.md > "Shell script shebangs".
+          EOF
+          fi
+          exit $status
+        '';
+      };
+
       pre-commit-check = inputs.git-hooks.lib.${system}.run {
         src = ../.;
         hooks = {
@@ -66,6 +130,20 @@
             pass_filenames = false;
           };
           nixpkgs-fmt.enable = true;
+
+          # See `check-bash-shebang` above. Receives staged filenames
+          # as args (pass_filenames = true, the default). The hook
+          # filters internally: anything whose first line isn't a
+          # `#!/{bin,usr/bin,usr/local/bin}/bash` shebang is a silent
+          # no-op, so adding new .nix / .md / .qml / etc. files
+          # doesn't trigger it.
+          check-bash-shebang = {
+            enable = true;
+            name = "no hardcoded /bin/bash shebangs";
+            entry = "${check-bash-shebang}/bin/check-bash-shebang";
+            language = "system";
+            pass_filenames = true;
+          };
         };
       };
     in

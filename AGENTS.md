@@ -100,6 +100,26 @@ Nix flake builds only see **git-tracked** files. After creating any
 new file, run `git add <file>` before any rebuild or build, or it will
 be silently excluded.
 
+## Shell script shebangs
+
+Always use `#!/usr/bin/env bash` (or `#!/usr/bin/env python3`, etc.)
+for scripts in this repo. **Never `#!/bin/bash`.**
+
+NixOS does not ship `/bin/bash` on a default install — only `/bin/sh`
+(POSIX shell) and `/usr/bin/env` are guaranteed to exist. WSL hosts
+populate `/bin/bash` for compat with Linux tooling that hardcodes the
+path, which makes it easy to author a script on WSL that works locally
+but fails with `bad interpreter: No such file or directory` the
+moment it runs on bare-metal `pb-x1` / `pb-t480` / `ah-1`.
+
+For scripts embedded in `.nix` files, use `pkgs.writeShellApplication`
+or `pkgs.writeShellScript` — those generate a Nix-store shebang that's
+always valid. Don't hand-write `/bin/bash` paths in Nix-emitted scripts.
+
+The `check-bash-shebang` pre-commit hook (declared in
+`flake-modules/dev-shell.nix`) rejects commits that introduce a
+hardcoded bash path; `nix flake check` runs the same hook.
+
 ## Deploy split: NixOS vs home-manager
 
 - System-level (`flake.modules.nixos.*`): PipeWire, kernel, services,
