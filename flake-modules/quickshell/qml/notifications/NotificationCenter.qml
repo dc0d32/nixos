@@ -67,6 +67,16 @@ Scope {
       margins { top: Theme.barHeight + Theme.gap * 2; right: Theme.gap }
       color: "transparent"
       implicitWidth: 360
+      // When there are no notification popups, hide the entire
+      // PanelWindow surface. The previous `Math.max(1, ...)`
+      // dance kept a 1px-tall surface mapped at all times to
+      // satisfy WlrLayershell's "non-zero size" requirement,
+      // which was harmless when surfaces had no backdrop effect
+      // \u2014 but the catch-all layer-rule blur in niri.nix now
+      // renders that 360x1 strip as a visible blurred line at
+      // the top-right of the screen. Setting `visible: false`
+      // unmaps the surface entirely, so niri renders nothing.
+      visible: col.implicitHeight > 0
       implicitHeight: Math.max(1, col.implicitHeight + (col.implicitHeight > 0 ? Theme.gap : 0))
 
       mask: Region {
