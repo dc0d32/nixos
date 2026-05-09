@@ -1,5 +1,15 @@
 // Network status chip. State from NetworkState (event-driven via
 // `nmcli monitor`); this file is pure rendering + click handling.
+//
+// Click launches `alacritty -e nmtui`. The previous implementation
+// opened an inline AP-list flyout with a password sub-row, but the
+// password TextInput could not receive keystrokes — the bar's
+// layer-shell surface defaults to WlrKeyboardFocus.None and no amount
+// of QML focus juggling fixes that without granting the bar
+// keyboard-focus rights, which has its own side effects. nmtui is the
+// least-surprising answer: it's already on the system as part of the
+// NetworkManager package and handles the full picker + auth flow in
+// a real terminal that niri focuses normally.
 import Quickshell
 import QtQuick
 import QtQuick.Layouts
@@ -29,7 +39,12 @@ Item {
 
   MouseArea {
     anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-    onClicked: FlyoutManager.toggle("network")
+    // execDetached: the spawned alacritty is fully detached, so quickshell
+    // doesn't track it and won't get blocked if nmtui takes a long time
+    // (e.g. user leaves the picker open). NetworkManager picks up the new
+    // connection via D-Bus; NetworkState's `nmcli monitor` keeps the chip
+    // label in sync without any explicit refresh from this side.
+    onClicked: Quickshell.execDetached(["alacritty", "-e", "nmtui"])
     onEntered: tipTimer.start()
     onExited:  { tipTimer.stop(); root.tooltipShown = false }
     Timer { id: tipTimer; interval: 600; onTriggered: root.tooltipShown = true }

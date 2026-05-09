@@ -29,7 +29,6 @@ ProfileButton 1.0 bar/ProfileButton.qml
 Separator 1.0 bar/Separator.qml
 BarTooltip 1.0 bar/BarTooltip.qml
 
-NetworkFlyout 1.0 bar/flyouts/NetworkFlyout.qml
 BluetoothFlyout 1.0 bar/flyouts/BluetoothFlyout.qml
 VolumeFlyout 1.0 bar/flyouts/VolumeFlyout.qml
 BatteryFlyout 1.0 bar/flyouts/BatteryFlyout.qml

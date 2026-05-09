@@ -192,7 +192,6 @@ PanelWindow {
 
   // ── flyouts ───────────────────────────────────────────────────────────
   NotificationFlyout { chipCenterX: bar.notifCX; chipWidth: notifChip.width; server: bar.notificationServer }
-  NetworkFlyout    { chipCenterX: bar.networkCX;    chipWidth: networkChip.width }
   BluetoothFlyout  { chipCenterX: bar.bluetoothCX;  chipWidth: bluetoothChip.width }
   VolumeFlyout     { chipCenterX: bar.volumeCX;     chipWidth: volumeChip.width }
   BatteryFlyout    { chipCenterX: bar.batteryCX;    chipWidth: batteryChip.width }
