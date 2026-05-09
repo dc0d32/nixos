@@ -97,7 +97,7 @@ Scope {
         height: Math.min(parent.height - 240, 60 + listView.contentHeight + 8)
         radius: Theme.radius
         color: Theme.base
-        opacity: Theme.opacity
+        opacity: Theme.panelOpacity
         border.color: Theme.surface1; border.width: 1
 
         Connections {

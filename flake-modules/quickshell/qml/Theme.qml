@@ -39,7 +39,35 @@ QtObject {
   readonly property int   radius:    10
   readonly property int   gap:       8
   readonly property int   barHeight: 32
-  readonly property real  opacity:   0.6
+
+  // Surface opacity. Two values because we have two visually
+  // different surface classes:
+  //
+  //   * `opacity` — used by the always-visible bar surface
+  //     (Bar.qml + bar/flyouts/*) which lives inside the
+  //     `quickshell-bar` WlrLayershell namespace. Niri layer-rule
+  //     forces blur OFF for that namespace (see niri.nix), so the
+  //     low value paints directly over wallpaper. The bar is short
+  //     and content-sparse; see-through reads as "minimal" rather
+  //     than "unreadable".
+  //
+  //   * `panelOpacity` — used by every other Quickshell surface
+  //     (OSDs, launcher, clipboard, screenshot, notifications).
+  //     These are independent layer-shell surfaces in the default
+  //     namespace, so they get blur from the catch-all layer-rule.
+  //     But they are large and content-dense (lists, multi-line
+  //     text), and even with a blurred backdrop a 0.6 alpha is too
+  //     transparent to read against busy wallpapers. Bumping just
+  //     this class restores legibility without losing the see-
+  //     through bar aesthetic.
+  //
+  // Retire/collapse back into one `opacity` if niri ever
+  // exposes a per-surface input-region-aware blur (so the bar
+  // chip strip can also blur without bleeding into the 420px
+  // flyout-canvas region) AND the bar gets the same visual
+  // density treatment as popups.
+  readonly property real  opacity:      0.6
+  readonly property real  panelOpacity: 0.85
 
   // Typography
   readonly property string font:     "Inter"

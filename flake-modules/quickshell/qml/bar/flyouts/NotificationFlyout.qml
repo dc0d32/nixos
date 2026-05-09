@@ -34,7 +34,7 @@ Item {
     id: card
     x: 0; y: Theme.gap; width: root.cardWidth
     implicitHeight: col.implicitHeight + 16
-    radius: Theme.radius; color: Theme.base; opacity: Theme.opacity
+    radius: Theme.radius; color: Theme.base; opacity: Theme.panelOpacity
     border.color: Theme.surface1; border.width: 1
 
     Column {

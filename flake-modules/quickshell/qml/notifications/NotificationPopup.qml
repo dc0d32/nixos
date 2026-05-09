@@ -23,7 +23,7 @@ Item {
     width: parent.width
     radius: Theme.radius
     color: Theme.surface0
-    opacity: Theme.opacity
+    opacity: Theme.panelOpacity
     border.color: notification.urgency === NotificationUrgency.Critical
       ? Theme.urgent : Theme.surface2
     border.width: 1

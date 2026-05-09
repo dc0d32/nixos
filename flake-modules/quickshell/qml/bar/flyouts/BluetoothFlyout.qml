@@ -90,7 +90,7 @@ Item {
     implicitHeight: col.implicitHeight + 20
     radius: Theme.radius
     color: Theme.base
-    opacity: Theme.opacity
+    opacity: Theme.panelOpacity
     border.color: Theme.surface1; border.width: 1
 
     Column {
