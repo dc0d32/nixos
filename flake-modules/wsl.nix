@@ -75,6 +75,12 @@
 
         networking.networkmanager.enable = lib.mkForce false;
 
+        # WSL manages DNS via /etc/resolv.conf itself (generateResolvConf
+        # in wsl.conf). The upstream fork sets
+        # `environment.etc."resolv.conf".enable = false` which collides
+        # with NixOS's resolvconf service — disable it.
+        networking.resolvconf.enable = lib.mkForce false;
+
         services.thermald.enable = lib.mkForce false;
         services.fwupd.enable = lib.mkForce false;
 
