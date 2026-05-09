@@ -24,22 +24,14 @@ import QtQuick.Controls.Basic
 
 import "../.."
 
-Item {
+FlyoutWindow {
   id: root
-  property real chipCenterX: 0
-  property real chipWidth:   0
+  flyoutName: "bluetooth"
+  cardWidth: 300
+  cardImplicitHeight: card.implicitHeight
 
-  readonly property int cardWidth:  300
-  readonly property int istmusH:    Theme.gap
-  readonly property int istmusW:    Math.max(chipWidth, 24)
-
-  visible: FlyoutManager.active === "bluetooth"
-
-  x: Math.min(Math.max(Math.round(chipCenterX - cardWidth / 2), 0),
-              (parent ? parent.width - cardWidth : 0))
-  y: Theme.barHeight
-  width:  cardWidth
-  height: istmusH + card.implicitHeight + 20
+  readonly property int istmusH: Theme.gap
+  readonly property int istmusW: Math.max(chipWidth, 24)
 
   // Refresh once on open; --monitor handles updates afterwards. Also
   // start a scan automatically so the discovered list populates without

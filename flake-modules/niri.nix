@@ -755,33 +755,27 @@
     # catch-all entry in `programs.niri.settings.window-rules`
     # and `…layer-rules`.
     #
-    # Bar exclusion: the Quickshell bar (namespace
-    # "quickshell-bar") is a single tall PanelWindow — visible
-    # chip strip at the top, ~420 px of transparent canvas
-    # below, used to host flyouts/tooltips as plain QML Items
-    # (so we don't need separate PanelWindows per popup). niri
-    # blurs the entire layer surface rectangle, not just the
-    # painted-alpha region, so the catch-all above produces a
-    # visible 460 px-tall blurred-wallpaper strip across the
-    # screen even when nothing is open. The bar's input mask
-    # (Bar.qml:43) constrains clicks to the chip row but has
-    # no effect on the surface bounds niri uses for blur.
+    # Flyout-canvas exclusion: the Quickshell flyout canvas
+    # (namespace "quickshell-flyouts") is a full-screen layer
+    # surface mapped while a flyout or tooltip is shown, hosting
+    # flyout cards plus a click-to-dismiss MouseArea covering
+    # the rest of the screen. niri blurs the entire layer
+    # surface rectangle, so leaving this in the catch-all would
+    # blur the whole screen behind the flyout the moment one
+    # opens — exactly the visual we want flyout cards to
+    # provide locally, not a screen-wide effect. Each flyout
+    # card already paints its own translucent backdrop via
+    # Theme.panelOpacity. The third KDL node below
+    # (a more-specific layer-rule matching this exact
+    # namespace, last-wins per the niri `Configuration: Layer
+    # Rules` docs) sets blur false, turning blur off for the
+    # flyout-canvas surface only.
     #
-    # The third KDL node below (a more-specific layer-rule
-    # matching this exact namespace, last-wins per the niri
-    # `Configuration: Layer Rules` docs) sets blur false,
-    # turning blur off for the bar surface only. Other
-    # Quickshell layers (OSDs, launcher, clipboard, etc.) and
-    # all windows continue to inherit the catch-all blur.
-    #
-    # Trade-off: the chip strip's translucent Theme.base
-    # background no longer reveals blurred wallpaper — only the
-    # raw wallpaper through the Theme.opacity alpha. Acceptable
-    # because the strip is small and mostly hidden by content
-    # anyway. The "real" fix is to split the bar into a
-    # chip-row PanelWindow (small, blurred) plus a separate
-    # full-screen flyout-canvas PanelWindow (un-blurred), but
-    # that's a non-trivial refactor we're deferring.
+    # The chip-strip surface itself (namespace "quickshell-bar")
+    # is exactly Theme.barHeight + 2 px tall and intentionally
+    # opts in to the catch-all blur, giving the chip strip a
+    # frosted-glass live-composite look over whatever is
+    # underneath it (workspace content or wallpaper).
     programs.niri.config =
       let
         kdl = inputs.niri.lib.kdl;
@@ -793,12 +787,12 @@
           (kdl.node "blur" [ false ] [ ])
           (kdl.node "xray" [ false ] [ ])
         ];
-        barMatch = kdl.node "match" [{ namespace = "^quickshell-bar$"; }] [ ];
+        flyoutCanvasMatch = kdl.node "match" [{ namespace = "^quickshell-flyouts$"; }] [ ];
       in
       options.programs.niri.config.default ++ [
         (kdl.node "window-rule" [ ] [ blurChild ])
         (kdl.node "layer-rule" [ ] [ blurChild ])
-        (kdl.node "layer-rule" [ ] [ barMatch noBlurChild ])
+        (kdl.node "layer-rule" [ ] [ flyoutCanvasMatch noBlurChild ])
       ];
   };
 }

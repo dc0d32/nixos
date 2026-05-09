@@ -5,24 +5,18 @@ import Quickshell.Services.Notifications
 
 import "../.."
 
-Item {
+FlyoutWindow {
   id: root
-  property real chipCenterX: 0
-  property real chipWidth:   0
+  flyoutName: "notifications"
+  cardWidth: 320
+  cardImplicitHeight: card.implicitHeight
+  extraSlack: 16
+
   property NotificationServer server
 
-  readonly property int cardWidth: 320
-  readonly property int istmusW:   Math.max(chipWidth, 24)
+  readonly property int istmusW: Math.max(chipWidth, 24)
   readonly property int count: (server && server.trackedNotifications) ? server.trackedNotifications.values.length : 0
   readonly property int maxListHeight: 300  // keep total flyout under bar's 420px flyoutSpace
-
-  visible: FlyoutManager.active === "notifications"
-
-  x: Math.min(Math.max(Math.round(chipCenterX - cardWidth / 2), 0),
-              (parent ? parent.width - cardWidth : 0))
-  y: Theme.barHeight
-  width:  cardWidth
-  height: Theme.gap + card.implicitHeight + 16
 
   Isthmus {
     cardWidth: root.cardWidth
@@ -60,9 +54,9 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-              var c = server.trackedNotifications.values.length
+              var c = root.server.trackedNotifications.values.length
               for (var i = c - 1; i >= 0; i--)
-                server.trackedNotifications.values[i].dismiss()
+                root.server.trackedNotifications.values[i].dismiss()
             }
           }
         }

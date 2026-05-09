@@ -10,6 +10,7 @@ singleton MediaState 1.0 MediaState.qml
 singleton BluetoothState 1.0 BluetoothState.qml
 
 Isthmus 1.0 Isthmus.qml
+FlyoutWindow 1.0 FlyoutWindow.qml
 Bar 1.0 bar/Bar.qml
 NotificationChip 1.0 bar/NotificationChip.qml
 Workspaces 1.0 bar/Workspaces.qml

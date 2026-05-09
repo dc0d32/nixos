@@ -4,21 +4,13 @@ import QtQuick.Layouts
 
 import "../.."
 
-Item {
+FlyoutWindow {
   id: root
-  property real chipCenterX: 0
-  property real chipWidth:   0
+  flyoutName: "weather"
+  cardWidth: 260
+  cardImplicitHeight: card.implicitHeight
 
-  readonly property int cardWidth: 260
-  readonly property int istmusW:   Math.max(chipWidth, 24)
-
-  visible: FlyoutManager.active === "weather"
-
-  x: Math.min(Math.max(Math.round(chipCenterX - cardWidth / 2), 0),
-              (parent ? parent.width - cardWidth : 0))
-  y: Theme.barHeight
-  width:  cardWidth
-  height: Theme.gap + col.implicitHeight + 20
+  readonly property int istmusW: Math.max(chipWidth, 24)
 
   // isthmus
   Isthmus {
@@ -29,6 +21,7 @@ Item {
 
   // card
   Rectangle {
+    id: card
     x: 0; y: Theme.gap; width: root.cardWidth
     implicitHeight: col.implicitHeight + 20
     radius: Theme.radius; color: Theme.base; opacity: Theme.panelOpacity

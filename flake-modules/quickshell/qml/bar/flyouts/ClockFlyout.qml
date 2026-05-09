@@ -4,21 +4,14 @@ import QtQuick.Layouts
 
 import "../.."
 
-Item {
+FlyoutWindow {
   id: root
-  property real chipCenterX: 0
-  property real chipWidth:   0
+  flyoutName: "clock"
+  cardWidth: 240
+  cardImplicitHeight: card.implicitHeight
+  extraSlack: 16
 
-  readonly property int cardWidth: 240
-  readonly property int istmusW:   Math.max(chipWidth, 24)
-
-  visible: FlyoutManager.active === "clock"
-
-  x: Math.min(Math.max(Math.round(chipCenterX - cardWidth / 2), 0),
-              (parent ? parent.width - cardWidth : 0))
-  y: Theme.barHeight
-  width:  cardWidth
-  height: Theme.gap + col.implicitHeight + 16
+  readonly property int istmusW: Math.max(chipWidth, 24)
 
   property var now: new Date()
   Timer { interval: 1000; running: root.visible; repeat: true; onTriggered: root.now = new Date() }
@@ -48,6 +41,7 @@ Item {
 
   // card
   Rectangle {
+    id: card
     x: 0; y: Theme.gap; width: root.cardWidth
     implicitHeight: col.implicitHeight + 16
     radius: Theme.radius; color: Theme.base; opacity: Theme.panelOpacity

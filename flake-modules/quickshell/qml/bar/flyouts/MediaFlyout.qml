@@ -8,21 +8,16 @@ import QtQuick.Layouts
 
 import "../.."
 
-Item {
+FlyoutWindow {
   id: root
-  property real chipCenterX: 0
-  property real chipWidth:   0
+  flyoutName: "media"
+  cardWidth: 300
+  cardImplicitHeight: card.implicitHeight
 
-  readonly property int cardWidth: 300
-  readonly property int istmusW:   Math.max(chipWidth, 24)
+  readonly property int istmusW: Math.max(chipWidth, 24)
 
+  // Override base's visibility to also require an active player.
   visible: FlyoutManager.active === "media" && player !== null
-
-  x: Math.min(Math.max(Math.round(chipCenterX - cardWidth / 2), 0),
-              (parent ? parent.width - cardWidth : 0))
-  y: Theme.barHeight
-  width:  cardWidth
-  height: Theme.gap + col.implicitHeight + 20
 
   readonly property var player: MediaState.player
 
@@ -42,6 +37,7 @@ Item {
 
   // card
   Rectangle {
+    id: card
     x: 0; y: Theme.gap; width: root.cardWidth
     implicitHeight: col.implicitHeight + 20
     radius: Theme.radius; color: Theme.base; opacity: Theme.panelOpacity
