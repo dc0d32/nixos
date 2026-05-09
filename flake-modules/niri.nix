@@ -682,23 +682,38 @@
 
     # ── Background blur (niri 26.04+, Window Effects) ───────────
     # niri exposes per-window-rule and per-layer-rule
-    # `background-effect { blur true; }` to blur whatever sits
-    # behind a (semi-)transparent surface. With xray on (the
-    # default once any background-effect is active), the
-    # wallpaper is sampled and blurred ONCE per frame and reused
-    # for every window/layer that opts in — cost is essentially
-    # constant regardless of how many surfaces request it.
+    # `background-effect { blur true; xray false; }` to blur
+    # whatever sits behind a (semi-)transparent surface. With
+    # xray=false (live-composite mode), niri samples the actual
+    # composite of whatever is rendered below the surface (other
+    # windows, wallpaper) and blurs it per frame — so a
+    # translucent window over another app shows blurred app
+    # content, and the bar shows a blurred live preview of the
+    # workspace beneath it. With xray=true, niri samples only
+    # the wallpaper (cheaper, constant cost) and the bar would
+    # always look the same regardless of what's under it.
     #
-    # We enable it globally: a catch-all window-rule and a
-    # catch-all layer-rule, both with `background-effect.blur
-    # true`. Opaque surfaces visually swallow the effect (their
-    # own pixels cover the blurred wallpaper), so this only
-    # actually shows up where we've intentionally made things
-    # translucent — currently the bar/OSDs (Quickshell layer
-    # surfaces backed by Theme.opacity / Theme.panelOpacity) and
-    # at the rounded-corner cutouts of every window. Future
+    # We enable it globally with xray=false: a catch-all
+    # window-rule and a catch-all layer-rule. Opaque surfaces
+    # visually swallow the effect (their own pixels cover the
+    # blurred composite), so this only actually shows up where
+    # we've intentionally made things translucent — currently
+    # the bar/OSDs (Quickshell layer surfaces backed by
+    # Theme.opacity / Theme.panelOpacity), at the rounded-corner
+    # cutouts of every window, and on the per-app translucent
+    # windows (alacritty, VS Code, Chrome, PiP). Future
     # translucent apps automatically inherit the effect with no
     # extra config.
+    #
+    # Perf cost: live-composite mode is more expensive than xray
+    # mode — niri does a per-frame backdrop blur of the actual
+    # composite for every blurred surface, vs one wallpaper
+    # sample reused everywhere. On modern GPUs this is fine for
+    # a single bar + a handful of translucent windows; if it
+    # ever becomes a problem the simplest knob is to flip the
+    # catch-all xray back to `true` (cheap wallpaper-only) and
+    # opt specific surfaces back into live composite via a
+    # more-specific rule.
     #
     # Why we go through `programs.niri.config` instead of
     # `programs.niri.settings.window-rules`: the niri-flake
@@ -719,21 +734,17 @@
     # computed once); appending and reassigning would otherwise
     # cause infinite recursion.
     #
-    # Why we explicitly emit `xray true` instead of relying on
-    # the implicit default: niri-flake's KDL serializer
-    # (kdl.nix:68-73 should-collapse) collapses any chain of
-    # single-child nodes onto one line as
+    # Why each `background-effect` block always has TWO children
+    # (blur + xray) instead of just `blur`: niri-flake's KDL
+    # serializer (kdl.nix:68-73 should-collapse) collapses any
+    # chain of single-child nodes onto one line as
     # `window-rule { background-effect { blur true; }; }`. The
     # niri 26.04 KDL parser then mis-parses the inner `;` and
     # tries to treat `background-effect` as a top-level node,
     # erroring with `unexpected node \`background-effect\``.
-    # Giving `background-effect` two children (`blur` + `xray`)
-    # defeats the collapse and forces multi-line output, which
-    # parses correctly. `xray true` is also the documented
-    # default anyway (Window-Effects wiki: "Xray is
-    # automatically enabled by default if any other
-    # background effect is active") so this is a no-op for
-    # rendering, just a serialization workaround.
+    # Giving `background-effect` two children defeats the
+    # collapse and forces multi-line output, which parses
+    # correctly.
     #
     # Retire when: niri-flake's settings.nix grows a typed
     # `background-effect = { blur = true; xray = ...; }` field
@@ -776,19 +787,6 @@
         kdl = inputs.niri.lib.kdl;
         blurChild = kdl.node "background-effect" [ ] [
           (kdl.node "blur" [ true ] [ ])
-          (kdl.node "xray" [ true ] [ ])
-        ];
-        # Like blurChild but xray=false: the blur sample is the
-        # live composite (windows behind), not just the
-        # wallpaper. More expensive (per-frame backdrop blur of
-        # actual content vs a single wallpaper sample) but
-        # produces a "real" frosted-glass look. Used only for
-        # Chrome's Picture-in-Picture window so the blur stage
-        # is doing visible work \u2014 the alpha-blended PiP frames
-        # over a blurred underlying browser window read more
-        # like a floating glass card than a wallpaper cutout.
-        blurLiveChild = kdl.node "background-effect" [ ] [
-          (kdl.node "blur" [ true ] [ ])
           (kdl.node "xray" [ false ] [ ])
         ];
         noBlurChild = kdl.node "background-effect" [ ] [
@@ -796,23 +794,11 @@
           (kdl.node "xray" [ false ] [ ])
         ];
         barMatch = kdl.node "match" [{ namespace = "^quickshell-bar$"; }] [ ];
-        # Chrome's Wayland Picture-in-Picture window has an
-        # empty app-id, so we match it by title. The
-        # opacity=0.8 lives on the typed PiP window-rule
-        # earlier in this module (search "Picture in picture"
-        # \u2014 it stacks with is-focused=false's 0.8 to give a
-        # 0.64 effective alpha). Here we override the catch-all
-        # blur (xray=true, wallpaper-only) with xray=false so
-        # PiP shows the live blurred composite of windows
-        # behind it. Per niri docs the more-specific
-        # window-rule wins per-field.
-        pipMatch = kdl.node "match" [{ title = "^Picture in picture$"; }] [ ];
       in
       options.programs.niri.config.default ++ [
         (kdl.node "window-rule" [ ] [ blurChild ])
         (kdl.node "layer-rule" [ ] [ blurChild ])
         (kdl.node "layer-rule" [ ] [ barMatch noBlurChild ])
-        (kdl.node "window-rule" [ ] [ pipMatch blurLiveChild ])
       ];
   };
 }
