@@ -44,7 +44,10 @@ in
     email = "CHANGEME@example.com";
   };
 
-  gpu.driver = "intel";
+  # NOTE: `gpu.driver` is set inside `configurations.nixos.${hostName}.module`
+  # below, NOT here. gpu.nix declares its option as a NixOS module
+  # option (per-NixOS-config) so multi-host setups can each pick their
+  # own driver without singleton conflicts.
 
   locale = {
     timezone = "America/Los_Angeles";
@@ -107,6 +110,11 @@ in
       networking.hostName = hostName;
       users.primary = user;
       console.keyMap = "us";
+
+      # GPU: Intel Iris Xe iGPU (Tiger Lake / Alder Lake on this
+      # generation of X1 Yoga). See flake-modules/gpu.nix for what
+      # this enables.
+      gpu.driver = "intel";
 
       # Battery / hibernate config (declared as a NixOS module option
       # by flake-modules/battery.nix). Lenovo X1 Yoga supports kernel

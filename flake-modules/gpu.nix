@@ -12,71 +12,80 @@
 # that import the module but want a no-op driver setup (e.g. for the
 # hardware.graphics defaults without picking a vendor).
 #
+# Per-NixOS-config option scoping: `options.gpu.driver` is declared
+# INSIDE the NixOS module body (not at the flake-parts top level) so
+# each NixOS configuration can pick its own driver. Declaring it at
+# the flake-parts level would make it a global singleton and any two
+# hosts with different GPUs (e.g. pb-x1 intel + m-pc amd) would
+# conflict. Hosts set `gpu.driver = "...";` inside their
+# `configurations.nixos.<name>.module` block. Same scoping pattern as
+# `battery.*` and HM-side `audio.*`/`idle.*` — see the long comments
+# in those modules and the matching NOTE blocks in flake-modules/
+# hosts/pb-x1.nix.
+#
 # Retire when: NixOS upstream auto-detects and configures the right
 #   GPU stack (intel-media / amdgpu / nvidia) such that no per-host
 #   `gpu.driver` selection is needed, OR every host in the repo
 #   converges on a single driver and this dispatcher becomes overkill.
-{ lib, config, ... }:
-let
-  # Captured from the flake-parts top-level scope. Inside the NixOS
-  # module function below, `config` shadows to the system-level
-  # config, so we close over `driver` here.
-  driver = config.gpu.driver;
-in
 {
-  options.gpu.driver = lib.mkOption {
-    type = lib.types.enum [ "intel" "amd" "nvidia" "none" ];
-    description = "GPU driver stack to enable on a host that imports the gpu module.";
-  };
-
-  config.flake.modules.nixos.gpu = { config, lib, pkgs, ... }:
+  flake.modules.nixos.gpu = { lib, pkgs, config, ... }:
+    let
+      driver = config.gpu.driver;
+    in
     {
-      # Modern name in nixpkgs; also export hardware.graphics for
-      # compatibility. mkDefault so WSL / headless hosts can disable
-      # cleanly even when this module is imported.
-      hardware.graphics = {
-        enable = lib.mkDefault true;
-        enable32Bit = lib.mkDefault true;
+      options.gpu.driver = lib.mkOption {
+        type = lib.types.enum [ "intel" "amd" "nvidia" "none" ];
+        description = "GPU driver stack to enable on a host that imports the gpu module.";
       };
 
-      # ---------- Intel ----------
-      # Modern Intel iGPU (Broadwell+, 2014+) uses the iHD VAAPI
-      # backend. For pre-Broadwell GPUs add `intel-vaapi-driver` (the
-      # renamed i965-va-driver). For legacy apps that only speak
-      # VDPAU, add `libvdpau-va-gl` as a bridge.
-      hardware.graphics.extraPackages = lib.mkIf (driver == "intel") (with pkgs; [
-        intel-media-driver
-      ]);
+      config = {
+        # Modern name in nixpkgs; also export hardware.graphics for
+        # compatibility. mkDefault so WSL / headless hosts can disable
+        # cleanly even when this module is imported.
+        hardware.graphics = {
+          enable = lib.mkDefault true;
+          enable32Bit = lib.mkDefault true;
+        };
 
-      # Prefer the modern iHD VAAPI backend on Intel.
-      environment.sessionVariables = lib.mkIf (driver == "intel") {
-        LIBVA_DRIVER_NAME = "iHD";
+        # ---------- Intel ----------
+        # Modern Intel iGPU (Broadwell+, 2014+) uses the iHD VAAPI
+        # backend. For pre-Broadwell GPUs add `intel-vaapi-driver` (the
+        # renamed i965-va-driver). For legacy apps that only speak
+        # VDPAU, add `libvdpau-va-gl` as a bridge.
+        hardware.graphics.extraPackages = lib.mkIf (driver == "intel") (with pkgs; [
+          intel-media-driver
+        ]);
+
+        # Prefer the modern iHD VAAPI backend on Intel.
+        environment.sessionVariables = lib.mkIf (driver == "intel") {
+          LIBVA_DRIVER_NAME = "iHD";
+        };
+
+        # AMD/Intel/NVIDIA xorg drivers. mkDefault so WSL can clear the
+        # list without mkForce and hosts can override directly.
+        services.xserver.videoDrivers = lib.mkDefault (
+          if driver == "amd" then [ "amdgpu" ]
+          else if driver == "nvidia" then [ "nvidia" ]
+          else if driver == "intel" then [ "modesetting" ]
+          else [ ]
+        );
+
+        # ---------- NVIDIA ----------
+        hardware.nvidia = lib.mkIf (driver == "nvidia") {
+          modesetting.enable = true;
+          powerManagement.enable = true;
+          open = false; # set true if you want the open kernel module
+          nvidiaSettings = true;
+          package = config.boot.kernelPackages.nvidiaPackages.stable;
+        };
+
+        boot.kernelParams = lib.mkMerge [
+          (lib.mkIf (driver == "nvidia") [ "nvidia-drm.modeset=1" ])
+        ];
+
+        # Vulkan + 32-bit userspace for gaming / wine. RADV is the
+        # default Vulkan driver on Mesa and requires no extra packages
+        # beyond `mesa`, which nix pulls in via hardware.graphics.enable.
       };
-
-      # AMD/Intel/NVIDIA xorg drivers. mkDefault so WSL can clear the
-      # list without mkForce and hosts can override directly.
-      services.xserver.videoDrivers = lib.mkDefault (
-        if driver == "amd" then [ "amdgpu" ]
-        else if driver == "nvidia" then [ "nvidia" ]
-        else if driver == "intel" then [ "modesetting" ]
-        else [ ]
-      );
-
-      # ---------- NVIDIA ----------
-      hardware.nvidia = lib.mkIf (driver == "nvidia") {
-        modesetting.enable = true;
-        powerManagement.enable = true;
-        open = false; # set true if you want the open kernel module
-        nvidiaSettings = true;
-        package = config.boot.kernelPackages.nvidiaPackages.stable;
-      };
-
-      boot.kernelParams = lib.mkMerge [
-        (lib.mkIf (driver == "nvidia") [ "nvidia-drm.modeset=1" ])
-      ];
-
-      # Vulkan + 32-bit userspace for gaming / wine. RADV is the
-      # default Vulkan driver on Mesa and requires no extra packages
-      # beyond `mesa`, which nix pulls in via hardware.graphics.enable.
     };
 }

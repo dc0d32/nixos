@@ -137,12 +137,8 @@ in
     email = "CHANGEME@example.com";
   };
 
-  # GPU driver is a guess — revisit after generating real hardware-config.
-  # T480 SKUs ship with Intel UHD 620 alone, or Intel + Nvidia MX150
-  # Optimus. Today this module only knows intel/amd/nvidia/none — proper
-  # PRIME/Optimus support is a follow-up commit once the real bus IDs
-  # are known from `lspci -nn | grep -E 'VGA|3D'`.
-  gpu.driver = "intel";
+  # NOTE: `gpu.driver` is set inside `configurations.nixos.${hostName}.module`
+  # below, NOT here — see the same note in pb-x1.nix.
 
   locale = {
     timezone = "America/Los_Angeles";
@@ -290,6 +286,14 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
       console.keyMap = "us";
+
+      # GPU driver is a guess — revisit after generating real hardware
+      # config. T480 SKUs ship with Intel UHD 620 alone, or Intel +
+      # Nvidia MX150 Optimus. flake-modules/gpu.nix only knows
+      # intel/amd/nvidia/none — proper PRIME/Optimus support is a
+      # follow-up commit once the real bus IDs are known from
+      # `lspci -nn | grep -E 'VGA|3D'`.
+      gpu.driver = "intel";
 
       # Grant the kid accounts USB-device access (dialout/plugdev/uucp)
       # for robotics work — RP2040 UF2 flashing, ESP32 esptool runs,
