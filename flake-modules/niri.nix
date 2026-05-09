@@ -482,31 +482,48 @@
           # Apps that paint their entire content area opaque
           # (Chromium-family, VS Code/Electron, Firefox, …). These
           # are excluded from the focused/unfocused opacity rules
-          # below — see the long-form comment on those rules for
-          # why. Match patterns are anchored regexes against
-          # Wayland app-id (xdg-shell `set_app_id`); discover an
-          # app's id at runtime with
-          # `niri msg --json windows | jq '.[].app_id'`.
+          # below — niri's `opacity` is applied to the whole
+          # compositor surface, so on opaque-painting apps it just
+          # produces a washed-out, low-contrast blend with whatever
+          # is underneath (compounded by the global blur, which
+          # makes the bleed-through wallpaper blurry too — kills
+          # contrast even further). Excluded apps render at full
+          # opacity in both focus states; they still get the global
+          # blur via the catch-all window-rule (visible at the
+          # rounded-corner cutout, where their alpha is 0). Match
+          # patterns are anchored regexes against Wayland app-id
+          # (xdg-shell `set_app_id`); discover an app's id at
+          # runtime with `niri msg --json windows | jq '.[].app_id'`.
           excludeOpaqueApps = [
-            # Chromium family
-            { app-id = "^google-chrome$"; }
-            { app-id = "^chromium-browser$"; }
-            { app-id = "^chromium$"; }
-            # VS Code / Electron
-            { app-id = "^code$"; }
-            { app-id = "^code-url-handler$"; }
-            { app-id = "^Code$"; }
             # Firefox (Wayland-native)
             { app-id = "^firefox$"; }
             { app-id = "^org\\.mozilla\\.firefox$"; }
           ];
         in
         [
-          # Uniform 4px rounded corners on every window. Niri's
-          # window-rule property `geometry-corner-radius` takes per-corner
-          # values (no shorthand in the niri-flake Nix schema), so we set
-          # all four explicitly. No `matches` key = applies to every
-          # window; later rules can override per-window if ever needed.
+          # Catch-all window defaults: rounded corners + don't fill
+          # the window area with the focus-ring/border background.
+          #
+          # Why `draw-border-with-background false` is the default:
+          # we use the global `prefer-no-csd` setting to ask apps
+          # to omit their client-side decorations, which means niri
+          # would otherwise paint the focus ring as a SOLID
+          # colored rectangle filling the entire window area
+          # (the "background" mode). For opaque apps that's
+          # invisible (their pixels cover it); for translucent
+          # rules (alacritty, VS Code, Chrome, PiP) that solid
+          # backdrop occludes the wallpaper / live-composite blur
+          # and makes the window look gray instead of frosted.
+          # Disabling it globally means the focus ring/border
+          # always draws as a thin frame around the window only.
+          # CSD apps already default to `false`, so this is a
+          # no-op for them.
+          #
+          # Niri's window-rule property `geometry-corner-radius`
+          # takes per-corner values (no shorthand in the niri-flake
+          # Nix schema), so we set all four explicitly. No
+          # `matches` key = applies to every window; later rules
+          # can override per-window if ever needed.
           {
             geometry-corner-radius = {
               top-left = 4.0;
@@ -514,6 +531,7 @@
               bottom-right = 4.0;
               bottom-left = 4.0;
             };
+            draw-border-with-background = false;
           }
 
           # Per-window opacity rules. Two rules — focused vs.
@@ -529,18 +547,27 @@
           # global blur via the catch-all window-rule (visible at
           # the rounded-corner cutout, where their alpha is 0).
           #
-          # Apps that intentionally have transparent regions
-          # (alacritty's background_opacity = 0.92, terminals
-          # generally) are NOT excluded, so the focused/unfocused
-          # opacity dim still applies on top of their own
-          # transparency and the blur shows through cleanly.
+          # Apps that intentionally have transparent regions (or
+          # that we want translucent for visual effect, like
+          # alacritty's macOS-style frosted-glass look) are NOT
+          # excluded, so the focused/unfocused opacity dim applies
+          # on top of any built-in transparency and the catch-all
+          # blur shows through cleanly behind them. Alacritty has
+          # an additional explicit per-app rule below that
+          # overrides the catch-all 0.7 with 0.85, picked to match
+          # the macOS Terminal "Pro"/"Basic" profile feel.
           #
-          # Resulting opacity matrix:
-          #   focused translucent app (e.g. Alacritty):   0.8
-          #   unfocused translucent app:                  0.8
-          #   any opaque app (Chrome/Code/Firefox/...):   1.0 (focused or not)
-          #   focused PiP (rule below):                   0.8 * 0.8 = 0.64
-          #   unfocused PiP:                              0.8 * 0.8 = 0.64
+          # Resulting opacity matrix (niri's per-window-rule opacity
+          # is last-match-wins, not multiplicative):
+          #   focused alacritty:                          0.85
+          #   unfocused alacritty:                        0.85
+          #   focused VS Code:                            0.85
+          #   unfocused VS Code:                          0.85
+          #   focused Chrome/Chromium:                    0.85
+          #   unfocused Chrome/Chromium:                  0.85
+          #   any other translucent app (none currently): 0.7
+          #   any opaque app (Firefox/...):               1.0 (focused or not)
+          #   PiP (rule below):                           0.6
           # (Both is-focused rules currently use the same value;
           # they're kept as separate rules so each can be tuned
           # independently later.)
@@ -556,12 +583,61 @@
           {
             matches = [{ is-focused = false; }];
             excludes = excludeOpaqueApps;
-            opacity = 0.8;
+            opacity = 0.7;
           }
           {
             matches = [{ is-focused = true; }];
             excludes = excludeOpaqueApps;
-            opacity = 0.8;
+            opacity = 0.7;
+          }
+
+          # macOS-style frosted-glass terminal. Alacritty paints
+          # opaque, so the only way to get see-through is at the
+          # compositor level. We override the catch-all 0.7 with
+          # 0.85 (close to the macOS Terminal default) in both
+          # focus states so the look is consistent whether the
+          # terminal is active or not — that's the "macOS feel"
+          # asked for here. The catch-all blur window-rule (below)
+          # then samples + blurs the wallpaper behind it for the
+          # frosted-glass effect. The catch-all rule above already
+          # disables `draw-border-with-background`, which is what
+          # keeps the focus ring from filling the window area
+          # with a solid backdrop and occluding the blur.
+          {
+            matches = [{ app-id = "^Alacritty$"; }];
+            opacity = 0.85;
+          }
+
+          # Same macOS-style frosted-glass treatment for VS Code.
+          # The Electron surface is opaque so niri's per-window
+          # opacity does the work. VS Code is denser than a
+          # terminal so 0.85 sits closer to the readability
+          # threshold — bump up if code becomes hard to read.
+          # Three matchers cover the variants seen in the wild:
+          # `code` (system VS Code), `code-url-handler` (deep-link
+          # invocations), `Code` (some Insiders/OSS builds).
+          {
+            matches = [
+              { app-id = "^code$"; }
+              { app-id = "^code-url-handler$"; }
+              { app-id = "^Code$"; }
+            ];
+            opacity = 0.85;
+          }
+
+          # Chromium family - same macOS-style frosted-glass
+          # treatment. Chrome paints opaque so niri's per-window
+          # opacity does the work. White web pages will render
+          # with visible wallpaper bleed-through behind them; if
+          # that becomes annoying for a specific reading session,
+          # switch to an `is-focused=false` matcher only.
+          {
+            matches = [
+              { app-id = "^google-chrome$"; }
+              { app-id = "^chromium-browser$"; }
+              { app-id = "^chromium$"; }
+            ];
+            opacity = 0.85;
           }
 
           # Chrome Picture-in-Picture window. Niri has no across-workspace
@@ -595,11 +671,11 @@
             # Don't steal focus from whatever you were doing when you hit the
             # video's PiP button.
             open-focused = false;
-            # Slight transparency so the PiP doesn't fully obscure whatever
-            # is underneath. Combined with the global is-focused=false rule
-            # above (opacity 0.9), an unfocused PiP renders at 0.9 * 0.8 =
-            # 0.72; focused PiP stays at 0.8.
-            opacity = 0.8;
+            # Slight transparency so the PiP doesn't fully obscure
+            # whatever is underneath. niri rule opacity is
+            # last-match-wins, so this 0.6 overrides the global
+            # 0.7 catch-all in both focus states.
+            opacity = 0.6;
           }
         ];
     };
@@ -619,9 +695,10 @@
     # own pixels cover the blurred wallpaper), so this only
     # actually shows up where we've intentionally made things
     # translucent — currently the bar/OSDs (Quickshell layer
-    # surfaces backed by Theme.opacity = 0.92) and the alacritty
-    # terminal (background_opacity 0.92). Future translucent
-    # apps automatically inherit the effect with no extra config.
+    # surfaces backed by Theme.opacity / Theme.panelOpacity) and
+    # at the rounded-corner cutouts of every window. Future
+    # translucent apps automatically inherit the effect with no
+    # extra config.
     #
     # Why we go through `programs.niri.config` instead of
     # `programs.niri.settings.window-rules`: the niri-flake
