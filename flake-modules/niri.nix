@@ -116,8 +116,30 @@
     systemd.user.services.niri-flake-polkit.enable = false;
   };
 
-  flake.modules.homeManager.niri = { inputs, lib, pkgs, ... }: {
+  flake.modules.homeManager.niri = { config, options, inputs, lib, pkgs, ... }: {
     imports = [ inputs.niri.homeModules.niri ];
+
+    # niri-flake's home-manager module defaults `programs.niri.package`
+    # to `niri-stable` (v25.08 as of 2026-05) — the same manually-pinned
+    # commit the NixOS module would default to. We've explicitly pinned
+    # the NixOS-side package to `niri-unstable` (see the comment in
+    # `flake.modules.nixos.niri` above), and the HM module *must* track
+    # that same version, because:
+    #
+    #   1. niri-flake's HM module runs `<cfg.package>/bin/niri validate`
+    #      on the rendered config.kdl as part of the build. If HM's
+    #      `cfg.package` is older than the system niri, any config that
+    #      uses newer KDL nodes (e.g. `background-effect` from v26.04)
+    #      will fail validation at HM build time, even though the
+    #      actual running niri (the system one) accepts it.
+    #   2. Drift between the two would also mean the version of
+    #      `niri msg` referenced from HM-installed scripts could differ
+    #      from the running compositor's IPC schema.
+    #
+    # Retire when: niri-flake's `niri-stable` pin catches up to the
+    # niri-unstable revision the NixOS module is already on.
+    programs.niri.package =
+      inputs.niri.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable;
 
     # ── Wayland session env propagation ─────────────────────────
     # niri does not natively push WAYLAND_DISPLAY / XDG_CURRENT_DESKTOP
@@ -455,64 +477,265 @@
         };
       };
 
-      window-rules = [
-        # Uniform 4px rounded corners on every window. Niri's
-        # window-rule property `geometry-corner-radius` takes per-corner
-        # values (no shorthand in the niri-flake Nix schema), so we set
-        # all four explicitly. No `matches` key = applies to every
-        # window; later rules can override per-window if ever needed.
-        {
-          geometry-corner-radius = {
-            top-left = 4.0;
-            top-right = 4.0;
-            bottom-right = 4.0;
-            bottom-left = 4.0;
-          };
-        }
+      window-rules =
+        let
+          # Apps that paint their entire content area opaque
+          # (Chromium-family, VS Code/Electron, Firefox, …). These
+          # are excluded from the focused/unfocused opacity rules
+          # below — see the long-form comment on those rules for
+          # why. Match patterns are anchored regexes against
+          # Wayland app-id (xdg-shell `set_app_id`); discover an
+          # app's id at runtime with
+          # `niri msg --json windows | jq '.[].app_id'`.
+          excludeOpaqueApps = [
+            # Chromium family
+            { app-id = "^google-chrome$"; }
+            { app-id = "^chromium-browser$"; }
+            { app-id = "^chromium$"; }
+            # VS Code / Electron
+            { app-id = "^code$"; }
+            { app-id = "^code-url-handler$"; }
+            { app-id = "^Code$"; }
+            # Firefox (Wayland-native)
+            { app-id = "^firefox$"; }
+            { app-id = "^org\\.mozilla\\.firefox$"; }
+          ];
+        in
+        [
+          # Uniform 4px rounded corners on every window. Niri's
+          # window-rule property `geometry-corner-radius` takes per-corner
+          # values (no shorthand in the niri-flake Nix schema), so we set
+          # all four explicitly. No `matches` key = applies to every
+          # window; later rules can override per-window if ever needed.
+          {
+            geometry-corner-radius = {
+              top-left = 4.0;
+              top-right = 4.0;
+              bottom-right = 4.0;
+              bottom-left = 4.0;
+            };
+          }
 
-        {
-          matches = [{ is-focused = false; }];
-          opacity = 0.9;
-        }
+          # Per-window opacity rules. Two rules — focused vs.
+          # unfocused — both with the same `excludes` clause that
+          # carves out apps which paint their entire content area
+          # opaque. niri's `opacity` is applied to the whole
+          # compositor surface, so on opaque-painting apps it just
+          # produces a washed-out, low-contrast blend with whatever
+          # is underneath (compounded by the global blur, which
+          # makes the bleed-through wallpaper blurry too — kills
+          # contrast even further). Excluded apps render at full
+          # opacity in both focus states; they still get the
+          # global blur via the catch-all window-rule (visible at
+          # the rounded-corner cutout, where their alpha is 0).
+          #
+          # Apps that intentionally have transparent regions
+          # (alacritty's background_opacity = 0.92, terminals
+          # generally) are NOT excluded, so the focused/unfocused
+          # opacity dim still applies on top of their own
+          # transparency and the blur shows through cleanly.
+          #
+          # Resulting opacity matrix:
+          #   focused translucent app (e.g. Alacritty):   0.8
+          #   unfocused translucent app:                  0.8
+          #   any opaque app (Chrome/Code/Firefox/...):   1.0 (focused or not)
+          #   focused PiP (rule below):                   0.8 * 0.8 = 0.64
+          #   unfocused PiP:                              0.8 * 0.8 = 0.64
+          # (Both is-focused rules currently use the same value;
+          # they're kept as separate rules so each can be tuned
+          # independently later.)
+          #
+          # Add new opaque-painting apps to `excludeOpaqueApps`
+          # below. Use `niri msg --json windows | jq '.[].app_id'`
+          # to discover an app's id at runtime.
+          #
+          # Retire when: niri grows a per-app or per-surface
+          # "blur-only, don't tint" mode (currently impossible —
+          # opacity and background-effect are independent fields
+          # but opacity always applies to the whole surface).
+          {
+            matches = [{ is-focused = false; }];
+            excludes = excludeOpaqueApps;
+            opacity = 0.8;
+          }
+          {
+            matches = [{ is-focused = true; }];
+            excludes = excludeOpaqueApps;
+            opacity = 0.8;
+          }
 
-        # Chrome Picture-in-Picture window. Niri has no across-workspace
-        # sticky window support (only layer-shell surfaces persist on
-        # workspace switch), so the best we can do per-workspace is:
-        #   1. open it floating (so it sits above tiled windows),
-        #   2. anchor to the top-right corner with a small gap,
-        #   3. give it a sensible default size (480x270 = 16:9 thumbnail).
-        # Use Mod+P (defined above) to teleport an existing PiP to the
-        # currently-focused workspace when you've moved away. Matches both
-        # classic HTMLVideoElement PiP and the newer Document PiP API
-        # (YouTube Miniplayer, Discord, Meet) — Chrome titles both
-        # exactly "Picture in picture" on Wayland.
-        #
-        # Match on title only: Chrome's PiP window has an EMPTY app-id on
-        # Wayland (verified via `niri msg --json windows`). Anchored to
-        # ^…$ so we don't accidentally match a tab title that happens to
-        # contain the words.
-        {
-          matches = [{
-            title = "^Picture in picture$";
-          }];
-          open-floating = true;
-          default-floating-position = {
-            x = 32;
-            y = 32;
-            relative-to = "top-right";
-          };
-          default-column-width = { fixed = 480; };
-          default-window-height = { fixed = 270; };
-          # Don't steal focus from whatever you were doing when you hit the
-          # video's PiP button.
-          open-focused = false;
-          # Slight transparency so the PiP doesn't fully obscure whatever
-          # is underneath. Combined with the global is-focused=false rule
-          # above (opacity 0.9), an unfocused PiP renders at 0.9 * 0.8 =
-          # 0.72; focused PiP stays at 0.8.
-          opacity = 0.8;
-        }
-      ];
+          # Chrome Picture-in-Picture window. Niri has no across-workspace
+          # sticky window support (only layer-shell surfaces persist on
+          # workspace switch), so the best we can do per-workspace is:
+          #   1. open it floating (so it sits above tiled windows),
+          #   2. anchor to the top-right corner with a small gap,
+          #   3. give it a sensible default size (480x270 = 16:9 thumbnail).
+          # Use Mod+P (defined above) to teleport an existing PiP to the
+          # currently-focused workspace when you've moved away. Matches both
+          # classic HTMLVideoElement PiP and the newer Document PiP API
+          # (YouTube Miniplayer, Discord, Meet) — Chrome titles both
+          # exactly "Picture in picture" on Wayland.
+          #
+          # Match on title only: Chrome's PiP window has an EMPTY app-id on
+          # Wayland (verified via `niri msg --json windows`). Anchored to
+          # ^…$ so we don't accidentally match a tab title that happens to
+          # contain the words.
+          {
+            matches = [{
+              title = "^Picture in picture$";
+            }];
+            open-floating = true;
+            default-floating-position = {
+              x = 32;
+              y = 32;
+              relative-to = "top-right";
+            };
+            default-column-width = { fixed = 480; };
+            default-window-height = { fixed = 270; };
+            # Don't steal focus from whatever you were doing when you hit the
+            # video's PiP button.
+            open-focused = false;
+            # Slight transparency so the PiP doesn't fully obscure whatever
+            # is underneath. Combined with the global is-focused=false rule
+            # above (opacity 0.9), an unfocused PiP renders at 0.9 * 0.8 =
+            # 0.72; focused PiP stays at 0.8.
+            opacity = 0.8;
+          }
+        ];
     };
+
+    # ── Background blur (niri 26.04+, Window Effects) ───────────
+    # niri exposes per-window-rule and per-layer-rule
+    # `background-effect { blur true; }` to blur whatever sits
+    # behind a (semi-)transparent surface. With xray on (the
+    # default once any background-effect is active), the
+    # wallpaper is sampled and blurred ONCE per frame and reused
+    # for every window/layer that opts in — cost is essentially
+    # constant regardless of how many surfaces request it.
+    #
+    # We enable it globally: a catch-all window-rule and a
+    # catch-all layer-rule, both with `background-effect.blur
+    # true`. Opaque surfaces visually swallow the effect (their
+    # own pixels cover the blurred wallpaper), so this only
+    # actually shows up where we've intentionally made things
+    # translucent — currently the bar/OSDs (Quickshell layer
+    # surfaces backed by Theme.opacity = 0.92) and the alacritty
+    # terminal (background_opacity 0.92). Future translucent
+    # apps automatically inherit the effect with no extra config.
+    #
+    # Why we go through `programs.niri.config` instead of
+    # `programs.niri.settings.window-rules`: the niri-flake
+    # schema (sodiboo/niri-flake, settings.nix) does not yet
+    # expose a typed `background-effect` field on window-rule or
+    # layer-rule. Verified against the latest upstream HEAD as
+    # of 2026-05; only `match`, `excludes`, `opacity`,
+    # `block-out-from`, `shadow`, `geometry-corner-radius`, etc.
+    # are in the serializer. So we render the typed settings
+    # tree as normal, then append two raw KDL nodes built via
+    # niri-flake's exported `inputs.niri.lib.kdl.node`
+    # constructor. niri-flake still runs `niri validate` on the
+    # final concatenated config, so syntax errors fail the
+    # build, not runtime.
+    #
+    # We read the default render via `options.programs.niri.config.default`
+    # (the option's default is `settings.render cfg.settings`,
+    # computed once); appending and reassigning would otherwise
+    # cause infinite recursion.
+    #
+    # Why we explicitly emit `xray true` instead of relying on
+    # the implicit default: niri-flake's KDL serializer
+    # (kdl.nix:68-73 should-collapse) collapses any chain of
+    # single-child nodes onto one line as
+    # `window-rule { background-effect { blur true; }; }`. The
+    # niri 26.04 KDL parser then mis-parses the inner `;` and
+    # tries to treat `background-effect` as a top-level node,
+    # erroring with `unexpected node \`background-effect\``.
+    # Giving `background-effect` two children (`blur` + `xray`)
+    # defeats the collapse and forces multi-line output, which
+    # parses correctly. `xray true` is also the documented
+    # default anyway (Window-Effects wiki: "Xray is
+    # automatically enabled by default if any other
+    # background effect is active") so this is a no-op for
+    # rendering, just a serialization workaround.
+    #
+    # Retire when: niri-flake's settings.nix grows a typed
+    # `background-effect = { blur = true; xray = ...; }` field
+    # on window-rule / layer-rule, OR niri-flake fixes the
+    # should-collapse codepath to not collapse children whose
+    # only child is itself a block. At that point, drop this
+    # block and add `background-effect.blur = true;` to a
+    # catch-all entry in `programs.niri.settings.window-rules`
+    # and `…layer-rules`.
+    #
+    # Bar exclusion: the Quickshell bar (namespace
+    # "quickshell-bar") is a single tall PanelWindow — visible
+    # chip strip at the top, ~420 px of transparent canvas
+    # below, used to host flyouts/tooltips as plain QML Items
+    # (so we don't need separate PanelWindows per popup). niri
+    # blurs the entire layer surface rectangle, not just the
+    # painted-alpha region, so the catch-all above produces a
+    # visible 460 px-tall blurred-wallpaper strip across the
+    # screen even when nothing is open. The bar's input mask
+    # (Bar.qml:43) constrains clicks to the chip row but has
+    # no effect on the surface bounds niri uses for blur.
+    #
+    # The third KDL node below (a more-specific layer-rule
+    # matching this exact namespace, last-wins per the niri
+    # `Configuration: Layer Rules` docs) sets blur false,
+    # turning blur off for the bar surface only. Other
+    # Quickshell layers (OSDs, launcher, clipboard, etc.) and
+    # all windows continue to inherit the catch-all blur.
+    #
+    # Trade-off: the chip strip's translucent Theme.base
+    # background no longer reveals blurred wallpaper — only the
+    # raw wallpaper through the Theme.opacity alpha. Acceptable
+    # because the strip is small and mostly hidden by content
+    # anyway. The "real" fix is to split the bar into a
+    # chip-row PanelWindow (small, blurred) plus a separate
+    # full-screen flyout-canvas PanelWindow (un-blurred), but
+    # that's a non-trivial refactor we're deferring.
+    programs.niri.config =
+      let
+        kdl = inputs.niri.lib.kdl;
+        blurChild = kdl.node "background-effect" [ ] [
+          (kdl.node "blur" [ true ] [ ])
+          (kdl.node "xray" [ true ] [ ])
+        ];
+        # Like blurChild but xray=false: the blur sample is the
+        # live composite (windows behind), not just the
+        # wallpaper. More expensive (per-frame backdrop blur of
+        # actual content vs a single wallpaper sample) but
+        # produces a "real" frosted-glass look. Used only for
+        # Chrome's Picture-in-Picture window so the blur stage
+        # is doing visible work \u2014 the alpha-blended PiP frames
+        # over a blurred underlying browser window read more
+        # like a floating glass card than a wallpaper cutout.
+        blurLiveChild = kdl.node "background-effect" [ ] [
+          (kdl.node "blur" [ true ] [ ])
+          (kdl.node "xray" [ false ] [ ])
+        ];
+        noBlurChild = kdl.node "background-effect" [ ] [
+          (kdl.node "blur" [ false ] [ ])
+          (kdl.node "xray" [ false ] [ ])
+        ];
+        barMatch = kdl.node "match" [{ namespace = "^quickshell-bar$"; }] [ ];
+        # Chrome's Wayland Picture-in-Picture window has an
+        # empty app-id, so we match it by title. The
+        # opacity=0.8 lives on the typed PiP window-rule
+        # earlier in this module (search "Picture in picture"
+        # \u2014 it stacks with is-focused=false's 0.8 to give a
+        # 0.64 effective alpha). Here we override the catch-all
+        # blur (xray=true, wallpaper-only) with xray=false so
+        # PiP shows the live blurred composite of windows
+        # behind it. Per niri docs the more-specific
+        # window-rule wins per-field.
+        pipMatch = kdl.node "match" [{ title = "^Picture in picture$"; }] [ ];
+      in
+      options.programs.niri.config.default ++ [
+        (kdl.node "window-rule" [ ] [ blurChild ])
+        (kdl.node "layer-rule" [ ] [ blurChild ])
+        (kdl.node "layer-rule" [ ] [ barMatch noBlurChild ])
+        (kdl.node "window-rule" [ ] [ pipMatch blurLiveChild ])
+      ];
   };
 }

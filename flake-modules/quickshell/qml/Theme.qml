@@ -39,7 +39,7 @@ QtObject {
   readonly property int   radius:    10
   readonly property int   gap:       8
   readonly property int   barHeight: 32
-  readonly property real  opacity:   0.92
+  readonly property real  opacity:   0.6
 
   // Typography
   readonly property string font:     "Inter"
