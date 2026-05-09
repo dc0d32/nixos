@@ -76,7 +76,12 @@ Scope {
           Text {
             width: parent.width; horizontalAlignment: Text.AlignHCenter
             font.family: Theme.font; font.pixelSize: 14; color: Theme.text
-            text: root.label
+            // Mute stays as just the word — no percentage makes sense
+            // when the sink is muted. Otherwise mirror BrightnessOsd's
+            // "<label> N%" format so the user gets the same readable
+            // numeric feedback on both keybinds.
+            text: VolumeState.muted ? root.label
+                                    : root.label + " " + root.value + "%"
           }
           Rectangle {
             width: parent.width; height: 6; radius: 3; color: Theme.surface1
