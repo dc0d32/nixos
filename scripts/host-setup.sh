@@ -11,16 +11,15 @@
 #   --partition    DESTRUCTIVE: wipe disk, write GPT + ESP + btrfs,
 #                  create root/home/nix subvols. Leaves nothing
 #                  mounted (run --mount after).
-#   --install <h>  Generate hardware-config, patch the host bridge's
-#                  resumeDevice UUID (if it has one), git add both,
-#                  sanity-check via nix eval, then nixos-install
-#                  --root /mnt --flake .#<h>. Assumes /mnt is
-#                  already mounted. Then (if the host uses
-#                  hibernate) provisions /swap/swapfile, captures
-#                  the real `resume_offset`, patches it into the
-#                  host bridge's boot.kernelParams, and re-runs
-#                  nixos-install so the bootloader cmdline picks it
-#                  up — no first-boot reboot loop required.
+#   --install <h>  Generate hardware-config, git add it, sanity-check
+#                  via nix eval, then nixos-install --root /mnt
+#                  --flake .#<h>. Assumes /mnt is already mounted.
+#                  Then (if the host uses hibernate) provisions
+#                  /swap/swapfile, captures the real `resume_offset`,
+#                  patches it into the host bridge's
+#                  boot.kernelParams, and re-runs nixos-install so
+#                  the bootloader cmdline picks it up — no first-boot
+#                  reboot loop required.
 #   --install-hm   Trigger the home-manager-bootstrap-*.service
 #                  units. Auto-detects context: if /mnt has an
 #                  installed system at /mnt/etc/systemd/system, runs
@@ -674,51 +673,19 @@ do_install() {
     echo ">> regenerating $hwcfg via nixos-generate-config --root /mnt …"
     nixos-generate-config --root /mnt --show-hardware-config > "$hwcfg"
 
-    # 4b. If the host bridge declares a `resumeDevice = "..."` line
-    # (i.e. the host imports flake-modules/battery.nix and configures
-    # hibernate), patch it to point at the real btrfs UUID. Without
-    # this, the placeholder all-zeros UUID lands on the kernel cmdline
-    # as `resume=UUID=00000000-…` and the initrd hangs ~90s waiting
-    # for that device to appear before falling through to a stuck
-    # boot. The btrfs root UUID is also the swapfile's host device
-    # (the swapfile lives on the root subvol's parent fs).
+    # 4b. resumeDevice patching is no longer needed: battery.nix
+    # defaults `resumeDevice` to `config.fileSystems."/".device`,
+    # which the freshly-regenerated hardware-configuration.nix
+    # already populates with the real btrfs root UUID. The host
+    # bridge carries no per-instance UUID, so there's nothing to
+    # patch.
+    #
+    # We still declare $hostbridge_backup and $had_resume_line here
+    # because the resume_offset insertion further down (the
+    # provision_swap_and_offset path) uses them to back up the host
+    # bridge before its own patch and to gate restore-on-abort.
     local hostbridge_backup="${host_bridge}.before-install"
     local had_resume_line=0
-    local mnt_dev_for_resume mnt_uuid_for_resume
-    mnt_dev_for_resume=$(findmnt --nofsroot -no SOURCE /mnt)
-    mnt_uuid_for_resume=$(blkid -s UUID -o value "$mnt_dev_for_resume" 2>/dev/null || true)
-    if [[ -z "$mnt_uuid_for_resume" ]]; then
-        echo "error: blkid could not read UUID from $mnt_dev_for_resume" >&2
-        echo "       (does the device have a recognised filesystem signature?)" >&2
-        # No host bridge backup yet, just clean up the hwcfg.
-        if (( had_prior )); then cp "$hwcfg_backup" "$hwcfg"; else rm -f "$hwcfg"; fi
-        rm -f "$hwcfg_backup"
-        exit 3
-    fi
-    if grep -qE '^[[:space:]]*resumeDevice[[:space:]]*=' "$host_bridge"; then
-        had_resume_line=1
-        cp "$host_bridge" "$hostbridge_backup"
-        echo ">> patching resumeDevice in $host_bridge → /dev/disk/by-uuid/$mnt_uuid_for_resume"
-        # The replacement is anchored on the literal `resumeDevice =`
-        # prefix and replaces the entire by-uuid path inside the
-        # string. Works for both placeholder zeros and any real UUID
-        # already present.
-        sed -i -E \
-            "s|(resumeDevice[[:space:]]*=[[:space:]]*\")/dev/disk/by-uuid/[^\"]*(\";)|\1/dev/disk/by-uuid/${mnt_uuid_for_resume}\2|" \
-            "$host_bridge"
-        # Sanity: confirm the replacement actually happened.
-        if ! grep -qF "/dev/disk/by-uuid/$mnt_uuid_for_resume" "$host_bridge"; then
-            echo "error: sed replacement of resumeDevice in $host_bridge did not stick." >&2
-            echo "       check the file's resumeDevice line format matches:" >&2
-            echo "         resumeDevice = \"/dev/disk/by-uuid/<uuid>\";" >&2
-            cp "$hostbridge_backup" "$host_bridge"
-            if (( had_prior )); then cp "$hwcfg_backup" "$hwcfg"; else rm -f "$hwcfg"; fi
-            rm -f "$hwcfg_backup" "$hostbridge_backup"
-            exit 3
-        fi
-    else
-        echo ">> no resumeDevice line in $host_bridge; skipping resume patch."
-    fi
 
     # Cleanup helper used both on abort and on success.
     cleanup_hwcfg_artifacts() {
@@ -763,23 +730,15 @@ do_install() {
     else
         echo "  (no prior file existed; full content is new)"
     fi
-    if (( had_resume_line )); then
-        echo
-        echo ">> diff of $host_bridge against previously-committed:"
-        diff -u "$hostbridge_backup" "$host_bridge" || true
-    fi
     echo
 
     # 6. git add. The flake build only sees git-tracked files, even
     # for in-tree paths — this is the AGENTS.md hard rule that bites
-    # everyone exactly once. Stage both the regenerated hwconfig and
-    # (if applicable) the resumeDevice-patched host bridge.
+    # everyone exactly once. Stage the regenerated hwconfig.
+    # (The host bridge gets staged later if/when the resume_offset
+    # insertion patches it.)
     echo ">> git add $hwcfg"
     git -C "$flake_root" add "hosts/$HOSTNAME/hardware-configuration.nix"
-    if (( had_resume_line )); then
-        echo ">> git add $host_bridge"
-        git -C "$flake_root" add "flake-modules/hosts/$HOSTNAME.nix"
-    fi
 
     # Assert the hwconfig actually appears as staged in `git status
     # --short`. Output prefix is two columns: index, working tree.
@@ -798,22 +757,6 @@ do_install() {
             echo "       status line: '$staged'" >&2
             echo "       check .gitignore, submodule state, or rebase-in-progress." >&2
             abort_revert
-        fi
-    fi
-    if (( had_resume_line )); then
-        local staged_bridge
-        staged_bridge=$(git -C "$flake_root" status --short -- \
-            "flake-modules/hosts/$HOSTNAME.nix" || true)
-        echo ">> git status (host bridge):"
-        echo "${staged_bridge:-  (clean — file unchanged from HEAD)}"
-        if [[ -n "$staged_bridge" ]]; then
-            local idx_col_bridge="${staged_bridge:0:1}"
-            if [[ "$idx_col_bridge" == " " || "$idx_col_bridge" == "?" ]]; then
-                echo
-                echo "error: git add did not stage the host bridge." >&2
-                echo "       status line: '$staged_bridge'" >&2
-                abort_revert
-            fi
         fi
     fi
     echo
@@ -889,43 +832,11 @@ do_install() {
     fi
     echo "  ✓ root UUIDs match."
 
-    # 7b. If the host has a resumeDevice, verify Nix will install
-    # with the patched value (not the placeholder zeros). This
-    # catches the bug where the host bridge edit didn't actually
-    # reach Nix (stale cache, .gitignore, etc) — the system would
-    # boot but hang in initrd waiting for the placeholder UUID.
-    if (( had_resume_line )); then
-        echo
-        echo ">> resolving boot.resumeDevice via nix eval --refresh …"
-        local nix_resume_dev nix_resume_uuid resume_eval_rc
-        set +e
-        nix_resume_dev=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --raw \
-            "$flake_root#nixosConfigurations.$HOSTNAME.config.boot.resumeDevice")
-        resume_eval_rc=$?
-        set -e
-        if (( resume_eval_rc != 0 )); then
-            echo "error: nix eval boot.resumeDevice failed (exit $resume_eval_rc)." >&2
-            abort_revert
-        fi
-        nix_resume_uuid="${nix_resume_dev#/dev/disk/by-uuid/}"
-        echo "  nix says resumeDevice: $nix_resume_dev"
-        if [[ "$nix_resume_uuid" == "00000000-0000-0000-0000-000000000000" ]]; then
-            echo
-            echo "error: boot.resumeDevice still resolves to the all-zeros placeholder." >&2
-            echo "       The sed patch of $host_bridge didn't reach Nix." >&2
-            echo "       The booted kernel would hang in initrd waiting for that UUID." >&2
-            abort_revert
-        fi
-        if [[ "$nix_resume_uuid" != "$mnt_uuid" ]]; then
-            echo
-            echo "error: resumeDevice UUID does not match /mnt." >&2
-            echo "       resumeDevice: $nix_resume_uuid" >&2
-            echo "       /mnt:         $mnt_uuid" >&2
-            echo "       (For our btrfs-swapfile-on-root layout these MUST match.)" >&2
-            abort_revert
-        fi
-        echo "  ✓ resumeDevice UUID matches root."
-    fi
+    # 7b. boot.resumeDevice verification used to live here. It's
+    # gone now: battery.nix defaults `resumeDevice` to
+    # `config.fileSystems."/".device`, which step 7 above already
+    # verified matches the real /mnt UUID. A second eval of
+    # `boot.resumeDevice` would just round-trip the same value.
     echo
 
     # 8. Confirm and run.
@@ -1068,11 +979,11 @@ provision_swap_and_offset() {
     fi
 
     echo ">> patching resume_offset in $host_bridge: $cur_resume_offset → $offset"
-    # If we haven't already backed up the host bridge (because no
-    # resumeDevice patch happened earlier — unusual, but possible if
-    # someone runs this on a host that has resume_offset but no
-    # resumeDevice, which would be a misconfigured battery.nix
-    # consumer), back it up now so the abort path can roll back.
+    # Back up the host bridge before any in-place edit so the abort
+    # path (and our verify-and-restore on sed-failure below) can
+    # roll it back. `had_resume_line` is initialised to 0 in step 4b
+    # of do_install; we promote it here because the resume_offset
+    # path is now the only thing that touches the host bridge.
     if (( ! had_resume_line )); then
         cp "$host_bridge" "$hostbridge_backup"
         had_resume_line=1
@@ -1183,8 +1094,7 @@ provision_swap_and_offset() {
     fi
 
     # 4. Stage the patched host bridge (it's already backed up;
-    # the existing abort_revert handles rollback). git add is fine
-    # to call again even if it was added earlier for resumeDevice.
+    # the existing abort_revert handles rollback).
     echo ">> git add $host_bridge"
     git -C "$flake_root" add "flake-modules/hosts/$HOSTNAME.nix"
 
@@ -1260,8 +1170,9 @@ Next steps (in order):
 
   4. After first boot:
 
-       - The hwconfig + resumeDevice + resume_offset are already in
-         the working tree (auto-staged by --install). Verify the
+       - The hwconfig (with the real root UUID) and any
+         resume_offset kernelParams override are already in the
+         working tree (auto-staged by --install). Verify the
          system boots and works, then:
            git status                                  # review
            git diff --cached                           # review staged

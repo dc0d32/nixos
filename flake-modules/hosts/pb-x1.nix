@@ -57,7 +57,7 @@ in
   # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
   # below, NOT here. battery.nix declares its options as NixOS module
   # options (per-NixOS-config) so multi-laptop hosts can each carry
-  # their own resumeDevice / thresholds without singleton conflicts.
+  # their own thresholds without singleton conflicts.
 
   # NOTE: `audio.*` is set inside `configurations.homeManager."${user}@${hostName}".module`
   # below, NOT here. audio.nix declares its options as HM module
@@ -122,6 +122,11 @@ in
       # charge_control_*_threshold. Capping at 80% extends battery
       # lifespan substantially. Set to 100 (and recharge to full)
       # before flying or other long unplug.
+      #
+      # battery.resumeDevice defaults to config.fileSystems."/".device
+      # (the btrfs root, captured in
+      # hosts/pb-x1/hardware-configuration.nix), so there's no
+      # per-instance UUID to manage here.
       battery = {
         chargeStopThreshold = 80;
         chargeStartThreshold = 75;
@@ -140,8 +145,6 @@ in
         # /swap/swapfile on btrfs (CoW disabled per kernel
         # requirement).
         swapSizeGiB = 32;
-        # btrfs root partition holding /swap/swapfile.
-        resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported

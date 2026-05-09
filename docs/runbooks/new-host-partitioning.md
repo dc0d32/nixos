@@ -19,16 +19,15 @@ layout as `pb-x1`. Adapted from the live layout on this machine
 > ```
 >
 > The `--install` mode regenerates `hosts/<hostname>/hardware-configuration.nix`,
-> patches `flake-modules/hosts/<hostname>.nix`'s `resumeDevice = "..."`
-> line (if present) to use the real btrfs UUID, `git add`s both
-> (the AGENTS.md gotcha that bites everyone exactly once), verifies
-> via `nix eval --refresh` that the resolved root device UUID and
-> resumeDevice both match what's actually mounted at `/mnt`, and
-> only then runs `nixos-install`. It refuses to proceed if
-> `/mnt/boot` isn't a vfat mountpoint, or if the resumeDevice still
-> resolves to the all-zeros placeholder — both failure modes left
-> earlier installs hanging in initrd waiting for non-existent
-> devices.
+> `git add`s it (the AGENTS.md gotcha that bites everyone exactly
+> once), verifies via `nix eval --refresh` that the resolved root
+> device UUID matches what's actually mounted at `/mnt`, and only
+> then runs `nixos-install`. For hibernate hosts it also provisions
+> `/swap/swapfile` and injects the captured `resume_offset` into
+> `boot.kernelParams` of the host bridge before re-running
+> `nixos-install` to bake the new cmdline into the bootloader.
+> It refuses to proceed if `/mnt/boot` isn't a vfat mountpoint, or
+> if the resolved root UUID disagrees with `/mnt`.
 >
 > Aborting at the `--install` confirm prompt cleanly reverts the
 > staged hwconfig and removes the temporary backup file, so the repo
@@ -43,7 +42,8 @@ hibernate swapfile: a single btrfs filesystem with a `root`
 subvolume, and `/swap/swapfile` provisioned by NixOS into it (CoW
 disabled). If you change the layout (separate swap partition,
 zfs, ext4, encrypted, etc.) you will need to revisit battery.nix
-and the host bridge's `boot.resumeDevice` / `boot.kernelParams`.
+and the host bridge's `battery.resumeDevice` (which defaults to
+`config.fileSystems."/".device`) / `boot.kernelParams`.
 
 ## Reference layout (pb-x1)
 
@@ -205,31 +205,22 @@ The file should contain `fileSystems."/"`, `fileSystems."/home"`,
 at `/dev/disk/by-uuid/<uuid>` (NOT `/dev/nvme0n1pN` — UUIDs
 survive disk reshuffles).
 
-## Capture the resume UUID for hibernate
+## Hibernate / resume_offset
 
-flake-modules/battery.nix needs `boot.resumeDevice` to point at the
-btrfs partition holding the swapfile (which is the same partition
-as `/`):
+flake-modules/battery.nix wires up `boot.resumeDevice` automatically
+by defaulting `battery.resumeDevice` to `config.fileSystems."/".device`.
+That value is captured in the regenerated `hardware-configuration.nix`,
+so there is nothing to copy by hand — the host bridge carries no UUID.
 
-```sh
-blkid -s UUID -o value $(findmnt -no SOURCE /mnt)
-# e.g. e2ac9790-a670-4602-ba38-6aaee856b73c
-```
-
-Set it in `flake-modules/hosts/<hostname>.nix`:
-
-```nix
-battery = {
-  # …
-  resumeDevice = "/dev/disk/by-uuid/e2ac9790-a670-4602-ba38-6aaee856b73c";
-};
-```
-
-The `battery-resume-offset` systemd unit will print the right
+The kernel still needs the swapfile's physical offset
+(`resume_offset=NNN`) to actually resume from hibernate.
+`scripts/host-setup.sh --install` provisions `/swap/swapfile` and
+injects this value automatically. If you provision swap manually, the
+`battery-resume-offset` systemd unit prints the right
 `boot.kernelParams = [ "resume_offset=NNN" ];` line on first boot
-once the swapfile exists; add that to the host bridge afterward
-and `nixos-rebuild switch` once more for hibernate-resume to
-actually work.
+once the swapfile exists; add that to the host bridge afterward and
+`nixos-rebuild switch` once more for hibernate-resume to actually
+work.
 
 ## First install
 

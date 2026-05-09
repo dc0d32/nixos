@@ -309,11 +309,13 @@ in
       # charge thresholds — capping BAT1 at 80% costs nothing and
       # extends its lifespan alongside BAT0.
       #
-      # resumeDevice is the btrfs root UUID (the swapfile lives on
-      # the root subvol's parent fs). The kernelParams `resume_offset`
-      # gets injected by `scripts/host-setup.sh --install` after it
-      # creates the swapfile and reads the offset via
-      # `btrfs inspect-internal map-swapfile`. battery.nix ships a
+      # battery.resumeDevice defaults to config.fileSystems."/".device
+      # (the btrfs root, captured in
+      # hosts/pb-t480/hardware-configuration.nix), so there's no
+      # per-instance UUID to manage here. The kernelParams
+      # `resume_offset` gets injected by `scripts/host-setup.sh
+      # --install` after it creates the swapfile and reads the offset
+      # via `btrfs inspect-internal map-swapfile`. battery.nix ships a
       # `boot.kernelParams = [ "resume_offset=0" ]` default which the
       # injected `lib.mkForce` line overrides; until --install runs,
       # hibernate-resume will fail safely (kernel boots fresh).
@@ -325,7 +327,6 @@ in
         criticalAction = "Hibernate";
         powerSaverPercent = 40;
         swapSizeGiB = 32;
-        resumeDevice = "/dev/disk/by-uuid/26b43411-b5dc-406f-a737-9205fbd21732";
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported

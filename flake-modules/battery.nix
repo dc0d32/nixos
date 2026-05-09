@@ -85,11 +85,22 @@
         };
         resumeDevice = lib.mkOption {
           type = lib.types.str;
+          default = config.fileSystems."/".device;
+          defaultText = lib.literalExpression ''config.fileSystems."/".device'';
           example = "/dev/disk/by-uuid/abcd-1234";
           description = ''
-            Block device that hosts /swap/swapfile (the btrfs root).
-            Looked up at activation via /dev/disk/by-uuid/* so it survives
-            nvme renumbering.
+            Block device that hosts /swap/swapfile. Defaults to the root
+            filesystem's device, which is correct for every host whose
+            swap lives on the btrfs root subvol (the only layout this
+            module provisions). Override only when swap lives on a
+            separate disk.
+
+            Looked up at activation via /dev/disk/by-uuid/* so it
+            survives nvme renumbering. The UUID lives in the
+            generated `hosts/<name>/hardware-configuration.nix`
+            (which `nixos-generate-config` produces from the running
+            machine), NOT in the host bridge — keeping per-instance
+            identity out of the per-policy bridge file.
           '';
         };
         batteries = lib.mkOption {
@@ -112,35 +123,14 @@
       };
 
       config = {
-        # ── Placeholder protection ──────────────────────────────────
-        # The all-zeros sentinel UUID indicates a host bridge that
-        # was never updated with real hardware UUIDs. Refusing to
-        # build with it prevents the failure mode where the system
-        # installs cleanly, boots, then hangs ~90s in initrd waiting
-        # for a non-existent resume device. Mirrors the same gate
-        # that `hosts/<name>/hardware-configuration.nix` uses.
-        # NIXOS_ALLOW_PLACEHOLDER=1 is the smoke-build escape hatch.
-        assertions = [{
-          assertion = cfg.resumeDevice
-            != "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000"
-            || builtins.getEnv "NIXOS_ALLOW_PLACEHOLDER" == "1";
-          message = ''
-            battery.resumeDevice is the all-zeros PLACEHOLDER UUID.
-            Booting this configuration will hang in initrd waiting
-            for a non-existent device. Update the resumeDevice line
-            in your host bridge (e.g. flake-modules/hosts/<name>.nix)
-            to point at the real btrfs partition's UUID:
-
-              blkid -s UUID -o value $(findmnt --nofsroot -no SOURCE /)
-
-              battery.resumeDevice =
-                "/dev/disk/by-uuid/<that-uuid>";
-
-            scripts/host-setup.sh --install does this automatically
-            during a fresh install. To smoke-build the placeholder
-            from a dev machine, set NIXOS_ALLOW_PLACEHOLDER=1.
-          '';
-        }];
+        # No placeholder-UUID assertion here: `resumeDevice` defaults
+        # to `config.fileSystems."/".device`, and the
+        # `hosts/<name>/hardware-configuration.nix` placeholder
+        # already carries an assertion that fires on the all-zeros
+        # sentinel UUID for `/`. A second assertion here would just
+        # duplicate the first one's error path. Hosts that override
+        # `battery.resumeDevice` to a non-root device own validating
+        # that override themselves.
 
         # ── Charge thresholds via sysfs ──────────────────────────────
         # The Lenovo X1 Yoga (and most ThinkPads on a recent kernel)

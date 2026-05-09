@@ -273,14 +273,11 @@ in
       # services.xserver.videoDrivers = [ "amdgpu" ].
       gpu.driver = "amd";
 
-      # Desktop with no battery, but battery.nix wants a resumeDevice
-      # for its swapfile/hibernate machinery. Until the real fs UUID
-      # is captured (see hardware-configuration.nix regen step), this
-      # is the all-zeros sentinel — battery.nix's assertion blocks
-      # build unless NIXOS_ALLOW_PLACEHOLDER=1, same gate as the hw
-      # config's root device. After the real install:
-      #   blkid -s UUID -o value $(findmnt --nofsroot -no SOURCE /)
-      # then replace the UUID below.
+      # battery.nix imported even though this is a desktop — we use it
+      # for the swapfile + hibernate plumbing. battery.resumeDevice
+      # defaults to config.fileSystems."/".device (the btrfs root,
+      # captured in hosts/m-pc/hardware-configuration.nix), so there's
+      # no per-instance UUID to manage here.
       #
       # swapSizeGiB lowered to 12 (vs the 32 default) — RAM is 8 GiB
       # so 12 gives hibernate enough headroom (RAM + a margin) without
@@ -289,7 +286,6 @@ in
       # module defaults; they no-op on this host.
       battery = {
         swapSizeGiB = 12;
-        resumeDevice = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported
