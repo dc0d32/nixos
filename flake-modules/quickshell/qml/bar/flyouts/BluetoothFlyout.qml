@@ -117,12 +117,19 @@ Item {
           border.color: BluetoothState.discovering ? Theme.accent : "transparent"
           border.width: 1
           Text {
+            id: scanGlyph
             anchors.centerIn: parent; font.family: Theme.iconFont; font.pixelSize: 14
             color: BluetoothState.discovering ? Theme.accent : Theme.subtext
-            text: "search"
+            // `radar` (a sweeping radar dish) is purpose-designed to
+            // rotate; `search` looked off when spun. When idle we
+            // still show `radar` so the affordance is consistent.
+            text: "radar"
             RotationAnimator on rotation {
               running: BluetoothState.discovering
               from: 0; to: 360; duration: 1500; loops: Animation.Infinite
+              // Reset to 0 when the scan stops so the next start
+              // doesn't snap-back-then-spin.
+              onRunningChanged: if (!running) scanGlyph.rotation = 0
             }
           }
           MouseArea {
