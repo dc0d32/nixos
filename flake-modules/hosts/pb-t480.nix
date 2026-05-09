@@ -310,11 +310,13 @@ in
       # extends its lifespan alongside BAT0.
       #
       # resumeDevice is the btrfs root UUID (the swapfile lives on
-      # the root subvol's parent fs). After first hibernate cycle on
-      # real hardware, capture `resume_offset=NNN` from
-      #   journalctl -u battery-resume-offset
-      # and add it to boot.kernelParams below (currently the
-      # placeholder `resume_offset=0` value).
+      # the root subvol's parent fs). The kernelParams `resume_offset`
+      # gets injected by `scripts/host-setup.sh --install` after it
+      # creates the swapfile and reads the offset via
+      # `btrfs inspect-internal map-swapfile`. battery.nix ships a
+      # `boot.kernelParams = [ "resume_offset=0" ]` default which the
+      # injected `lib.mkForce` line overrides; until --install runs,
+      # hibernate-resume will fail safely (kernel boots fresh).
       battery = {
         batteries = [ "BAT0" "BAT1" ];
         chargeStopThreshold = 80;

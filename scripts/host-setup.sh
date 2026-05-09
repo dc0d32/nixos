@@ -1078,6 +1078,27 @@ provision_swap_and_offset() {
         had_resume_line=1
     fi
 
+    # Two paths depending on whether the host bridge already has an
+    # override line for resume_offset:
+    #
+    #   (a) Override present (literal `"resume_offset=N"` somewhere in
+    #       the file, typically inside `boot.kernelParams = [ ... ];`):
+    #       in-place sed replaces the digits. Cheap and obvious.
+    #
+    #   (b) No override: the host inherits battery.nix's default of
+    #       `boot.kernelParams = [ "resume_offset=0" ];`. We INSERT a
+    #       `boot.kernelParams = lib.mkForce [ "resume_offset=NNN" ];`
+    #       line into the NixOS module block, anchored to the closing
+    #       `};` of the host's `battery = { ... };` block (every
+    #       battery.nix consumer has one — battery.resumeDevice is a
+    #       required option, so the assignment must exist somewhere
+    #       in the host bridge).
+    #
+    # Path (b) is what newer hosts hit: keeping the kernelParams
+    # override out of every host bridge file means there's no manual
+    # placeholder to forget. The insert is idempotent because path (a)
+    # takes over on the next run.
+    #
     # The replacement is anchored on `resume_offset=` inside the
     # kernelParams list. Matches `"resume_offset=N"` (with quotes)
     # since that's how Nix string literals appear in source. We use
@@ -1087,9 +1108,76 @@ provision_swap_and_offset() {
         "$host_bridge"
 
     if ! grep -qF "\"resume_offset=${offset}\"" "$host_bridge"; then
-        echo "error: sed replacement of resume_offset in $host_bridge did not stick." >&2
-        echo "       check the file's kernelParams line format matches:" >&2
+        # Path (b): no override line existed. Insert one after the
+        # `battery = { ... };` block. Match the indentation of the
+        # `battery =` line so the inserted line sits at the same
+        # nesting level. awk does the matching+insert in one pass:
+        # it tracks brace depth inside the battery block (starting
+        # at 1 when the opening `{` on the same line is seen) and
+        # emits the new line right after the matching `};` is
+        # printed.
+        echo "  no \"resume_offset=N\" literal in host bridge; inserting an override line."
+        local awk_status
+        set +e
+        awk -v off="$offset" '
+            BEGIN { state = 0; depth = 0; indent = "" }
+            # state 0 = looking for the battery block opener.
+            state == 0 {
+                # Match `<indent>battery = {` (with optional spaces).
+                # Capture indent without gawk-specific match() array
+                # form: extract leading whitespace via sub() on a copy.
+                if ($0 ~ /^[[:space:]]*battery[[:space:]]*=[[:space:]]*\{/) {
+                    indent = $0
+                    sub(/[^[:space:]].*$/, "", indent)
+                    state = 1
+                    depth = 1
+                    print
+                    next
+                }
+                print
+                next
+            }
+            # state 1 = inside battery block; track brace depth.
+            state == 1 {
+                # Count {} on this line. gsub returns the substitution
+                # count even when the replacement equals the match —
+                # we use it as a brace counter. (Naive: no string- or
+                # comment-literal handling, but battery blocks in our
+                # bridges are plain attrset literals with no braces
+                # inside strings.)
+                line = $0
+                opens = gsub(/\{/, "{", line)
+                closes = gsub(/\}/, "}", line)
+                depth += opens - closes
+                print
+                if (depth <= 0) {
+                    # Just printed the closing `};` of the battery
+                    # block. Emit the kernelParams override at the
+                    # same indent.
+                    printf "\n%sboot.kernelParams = lib.mkForce [ \"resume_offset=%s\" ];\n", indent, off
+                    state = 2
+                }
+                next
+            }
+            # state 2 = past insertion point; pass through.
+            { print }
+        ' "$host_bridge" > "${host_bridge}.tmp"
+        awk_status=$?
+        set -e
+        if (( awk_status != 0 )); then
+            echo "error: awk insertion of resume_offset failed (exit $awk_status)." >&2
+            rm -f "${host_bridge}.tmp"
+            cp "$hostbridge_backup" "$host_bridge"
+            abort_revert
+        fi
+        mv "${host_bridge}.tmp" "$host_bridge"
+    fi
+
+    if ! grep -qF "\"resume_offset=${offset}\"" "$host_bridge"; then
+        echo "error: failed to inject resume_offset=${offset} into $host_bridge." >&2
+        echo "       expected either an existing kernelParams override:" >&2
         echo "         boot.kernelParams = [ \"resume_offset=N\" ];" >&2
+        echo "       or a battery = { ... }; block to anchor the insert on." >&2
         cp "$hostbridge_backup" "$host_bridge"
         abort_revert
     fi
