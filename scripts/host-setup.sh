@@ -20,6 +20,19 @@
 #                  boot.kernelParams, and re-runs nixos-install so
 #                  the bootloader cmdline picks it up — no first-boot
 #                  reboot loop required.
+#                  After nixos-install succeeds, --install ALSO
+#                  (unless overridden) seeds ~/nixos for every HM-
+#                  enabled user via `git clone https://github.com/
+#                  dc0d32/nixos`, then chains --install-hm so each
+#                  user's home-manager profile is bootstrapped before
+#                  reboot. The primary user's clone gets the just-
+#                  generated hardware-configuration.nix copied into
+#                  its working tree (and the resume_offset patch, if
+#                  one was applied) so that on first boot they can
+#                  `git diff && git commit && git push` to land the
+#                  hwconfig in origin/main without re-deriving it.
+#                  Opt out of the seeding with --no-clone-sources or
+#                  the HM bootstrap with --no-install-hm.
 #   --install-hm   Trigger the home-manager-bootstrap-*.service
 #                  units. Auto-detects context: if /mnt has an
 #                  installed system at /mnt/etc/systemd/system, runs
@@ -71,6 +84,8 @@
 #   sudo ./scripts/host-setup.sh --unmount                   # umount /mnt tree
 #   sudo ./scripts/host-setup.sh /dev/nvme0n1 --partition    # destructive
 #   sudo ./scripts/host-setup.sh --install pb-t480           # full install
+#   sudo ./scripts/host-setup.sh --install pb-t480 \
+#       --no-clone-sources --no-install-hm                   # bare install
 #   sudo ./scripts/host-setup.sh --install-hm                # bootstrap HM
 #   ./scripts/host-setup.sh --audio-discover                 # print autoload
 #   sudo ./scripts/host-setup.sh --hm-switch m               # HM switch for m
@@ -121,6 +136,20 @@ TARGET_USER=""
 MODE=""        # one of: mount | unmount | partition | install | install-hm | audio-discover | hm-switch
 SHOW_HELP=0
 
+# Post-install chained steps. Both default ON; opt out per invocation.
+# Only consulted by --install mode; ignored by other modes.
+INSTALL_HM_AUTO=1     # toggled by --no-install-hm
+CLONE_SOURCES=1       # toggled by --no-clone-sources
+
+# Repo URL used to seed each user's ~/nixos at install time. HTTPS so
+# the clone works without per-user SSH credentials being deployed
+# first; users who later want to push will need to either swap the
+# remote to git@github.com:dc0d32/nixos.git or set up gh-cli auth /
+# a credential helper. p's working tree gets the regenerated hwconfig
+# pre-populated by the seeding step (see do_clone_sources), so the
+# very first push from the new host is a single commit-and-push.
+SEED_REPO_URL="https://github.com/dc0d32/nixos"
+
 usage() {
     # Print everything from line 2 down to the END HELP sentinel.
     sed -n '2,/^# === END HELP ===$/p' "$0" \
@@ -167,6 +196,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --install-hm)
             set_mode install-hm
+            shift
+            ;;
+        --no-install-hm)
+            # Opt out of the auto-chain in --install mode. Has no
+            # effect on other modes.
+            INSTALL_HM_AUTO=0
+            shift
+            ;;
+        --no-clone-sources)
+            # Opt out of seeding ~/nixos for each user in --install
+            # mode. Has no effect on other modes.
+            CLONE_SOURCES=0
             shift
             ;;
         --audio-discover)
@@ -1139,6 +1180,102 @@ do_install_post() {
     # boots and you can verify everything works.
     cleanup_hwcfg_artifacts
 
+    # Optional chained steps: seed ~/nixos for every HM-enabled user
+    # and bootstrap each user's home-manager profile before reboot.
+    # Both default ON; opt out via --no-clone-sources / --no-install-hm.
+    # Failures are non-fatal: cloning is best-effort (depends on live-
+    # USB network), HM bootstrap has its own retry on first boot via
+    # the systemd units. We log + continue rather than aborting the
+    # whole install if either step fails — the system is already
+    # installed and bootable; these steps are smoothing the first-
+    # boot UX, not gating it.
+    if (( CLONE_SOURCES )); then
+        echo
+        echo "▶ chain step: clone ~/nixos for each HM user (--no-clone-sources to skip)"
+        if ! do_clone_sources "$flake_root"; then
+            echo
+            echo ">> warning: clone step had failures; continuing." >&2
+            echo "   You can re-run by mounting /mnt and re-invoking --install," >&2
+            echo "   or by manually cloning from each user's home after first boot:" >&2
+            echo "     git clone $SEED_REPO_URL ~/nixos" >&2
+        fi
+    else
+        echo
+        echo "▶ chain step: skipping ~/nixos clone (--no-clone-sources)"
+    fi
+
+    if (( INSTALL_HM_AUTO )); then
+        echo
+        echo "▶ chain step: bootstrap home-manager for each user (--no-install-hm to skip)"
+        # Run in a subshell so any `exit N` inside do_install_hm
+        # terminates only the subshell, not the install script.
+        # do_install_hm currently uses `exit 3` and `exit 4` for its
+        # own error paths; in chained mode we want those to be
+        # warnings, not script-killing aborts.
+        if ! ( do_install_hm ); then
+            echo
+            echo ">> warning: HM bootstrap had failures; continuing." >&2
+            echo "   The systemd units will retry automatically on first boot." >&2
+            echo "   Or re-run after reboot: sudo $0 --install-hm" >&2
+        fi
+    else
+        echo
+        echo "▶ chain step: skipping HM bootstrap (--no-install-hm)"
+    fi
+
+    # Build the next-steps text dynamically based on what was already
+    # done in the chain. The original block always printed the manual
+    # commands for steps that may now have run automatically.
+    local hm_step_text clone_step_text
+    if (( INSTALL_HM_AUTO )); then
+        hm_step_text="\
+  2. Home-manager profiles were bootstrapped above as part of this
+     install. If any user's bootstrap failed (e.g. WiFi wasn't up
+     yet on the live USB), the systemd units will retry on first
+     boot. To re-trigger manually after reboot:
+       sudo $0 --install-hm"
+    else
+        hm_step_text="\
+  2. (Optional, but recommended) Bootstrap home-manager profiles
+     before reboot. Runs each user's HM activation via nixos-enter
+     into /mnt — saves a reboot's worth of \"did the units fire?\"
+     uncertainty:
+
+       sudo $0 --install-hm
+
+     If skipped, the same units run on first boot via systemd
+     (gated on network-online.target; they self-retry on the next
+     boot if WiFi isn't up yet)."
+    fi
+
+    if (( CLONE_SOURCES )); then
+        clone_step_text="\
+       - ~/nixos was cloned during install for each HM user. The
+         PRIMARY user's clone has the regenerated
+         hardware-configuration.nix (and any resume_offset patch)
+         already in its working tree, so the first commit-and-push
+         on the new host is just:
+           cd ~/nixos
+           git status                                  # review
+           git diff                                    # review changes
+           git add -A
+           git commit -m \"<host>: real hardware config\"
+           git push"
+    else
+        clone_step_text="\
+       - The hwconfig (with the real root UUID) and any
+         resume_offset kernelParams override are in the working tree
+         of THIS checkout (auto-staged by --install). To land it
+         upstream from this machine before unmount:
+           git status                                  # review
+           git diff --cached                           # review staged
+           git commit -m \"<host>: real hardware config\"
+           git push
+         Or re-run with the default seeding to put a clone
+         (with the changes pre-populated) in the primary user's
+         home for them to push from after first boot."
+    fi
+
     cat <<EOF
 
 >> nixos-install finished.
@@ -1152,16 +1289,7 @@ Next steps (in order):
        nixos-enter --root /mnt -c 'passwd m'    # if applicable
        nixos-enter --root /mnt -c 'passwd s'    # if applicable
 
-  2. (Optional, but recommended) Bootstrap home-manager profiles
-     before reboot. Runs each user's HM activation via nixos-enter
-     into /mnt — saves a reboot's worth of "did the units fire?"
-     uncertainty:
-
-       sudo $0 --install-hm
-
-     If skipped, the same units run on first boot via systemd
-     (gated on network-online.target; they self-retry on the next
-     boot if WiFi isn't up yet).
+${hm_step_text}
 
   3. Release /mnt and reboot:
 
@@ -1170,19 +1298,7 @@ Next steps (in order):
 
   4. After first boot:
 
-       - The hwconfig (with the real root UUID) and any
-         resume_offset kernelParams override are already in the
-         working tree (auto-staged by --install). Verify the
-         system boots and works, then:
-           git status                                  # review
-           git diff --cached                           # review staged
-           git commit -m "<host>: real hardware config"
-           git push
-       - If you skipped --install-hm in step 2, check the bootstrap
-         units now:
-           systemctl status 'home-manager-bootstrap-*.service'
-         Re-trigger them if any failed (e.g. WiFi wasn't up yet):
-           sudo $0 --install-hm
+${clone_step_text}
        - Hibernate-resume is already wired correctly. Test by
          triggering a manual hibernate ('systemctl hibernate') and
          confirming wake restores the session. If resume fails,
@@ -1190,6 +1306,162 @@ Next steps (in order):
          offset (rare; only needed if the swapfile got recreated).
 
 EOF
+}
+
+# ── --install chain step: clone ~/nixos for each HM-enabled user ──
+# Discovers HM-enabled users by enumerating the
+# home-manager-bootstrap-<user>.service unit files generated by
+# flake-modules/home-manager-bootstrap.nix. For each user, runs
+# `git clone $SEED_REPO_URL ~/nixos` inside /mnt as that user via
+# nixos-enter + runuser.
+#
+# For the PRIMARY user (read from `users.primary` via nix eval) the
+# function additionally `cp`s the regenerated hardware-configuration.
+# nix and (if it differs from origin's HEAD) the host bridge file
+# from the install-time `flake_root` working tree into the user's
+# fresh clone, so the working tree of that clone shows the same
+# pre-staged-but-uncommitted changes that the install-time checkout
+# carries. That makes the first git push from the new host a single
+# commit-and-push instead of "regenerate hwconfig again on the
+# installed system, deal with branch state, then push".
+#
+# Network requirement: HTTPS clone goes out over whatever network
+# the live USB has (NetworkManager / iwd up). If offline, this
+# step's failures are non-fatal — caller (do_install_post) logs a
+# warning and continues. Users can clone manually after first boot.
+#
+# Idempotent: if a user already has ~/nixos/.git, the clone step is
+# skipped for them. The hwconfig copy step always overwrites the
+# target file (which is harmless — it's a regenerated artifact, not
+# user content).
+do_clone_sources() {
+    local flake_root="$1"
+    local sysroot="/mnt"
+
+    if ! mountpoint -q "$sysroot" || [[ ! -d "$sysroot/etc/systemd/system" ]]; then
+        echo "error: $sysroot is not a mounted, installed NixOS system." >&2
+        echo "       (do_clone_sources must run after nixos-install,"  >&2
+        echo "        before --unmount.)"                              >&2
+        return 1
+    fi
+
+    if ! command -v nixos-enter >/dev/null 2>&1; then
+        echo "warning: nixos-enter not found; cannot run clone step." >&2
+        return 1
+    fi
+
+    # Enumerate HM users from the bootstrap unit files. Same source
+    # of truth as do_install_hm — anything that has a bootstrap
+    # service has an HM config, and that's the set that gets a clone.
+    shopt -s nullglob
+    local units=( "$sysroot/etc/systemd/system"/home-manager-bootstrap-*.service )
+    shopt -u nullglob
+
+    if (( ${#units[@]} == 0 )); then
+        echo "note: no home-manager-bootstrap-*.service units found." >&2
+        echo "      Skipping clone step (no HM-enabled users to seed)." >&2
+        return 0
+    fi
+
+    # Read the primary user from the installed system's NixOS config.
+    # We read it from the running flake (same source as nixos-install
+    # used) rather than peeking inside /mnt, because /mnt doesn't
+    # have a usable nix eval surface from the live USB.
+    local primary_user
+    primary_user=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --raw \
+        "$flake_root#nixosConfigurations.$HOSTNAME.config.users.primary" 2>/dev/null || true)
+    if [[ -z "$primary_user" ]]; then
+        echo "warning: could not read users.primary for $HOSTNAME; hwconfig pre-staging will be skipped." >&2
+    else
+        echo ">> primary user: $primary_user (will receive pre-staged hwconfig)"
+    fi
+
+    local u user any_failed=0
+    for u in "${units[@]}"; do
+        # Parse "User=…" from the unit. systemd allows multiple
+        # User= lines but our generator emits exactly one. head -1
+        # is safe.
+        user=$(grep -E '^User=' "$u" | head -1 | cut -d= -f2- | tr -d '[:space:]')
+        if [[ -z "$user" ]]; then
+            echo "warning: could not parse User= from $(basename "$u"); skipping." >&2
+            any_failed=1
+            continue
+        fi
+
+        local home="/home/$user"
+        if [[ ! -d "$sysroot$home" ]]; then
+            echo "warning: $sysroot$home does not exist; skipping clone for $user." >&2
+            any_failed=1
+            continue
+        fi
+
+        echo ">> seeding ~/nixos for $user"
+
+        # Idempotency: skip if the clone already exists. Don't try
+        # to update it — that's the user's call, not ours.
+        if [[ -d "$sysroot$home/nixos/.git" ]]; then
+            echo "   ✓ $home/nixos already exists; skipping clone."
+        else
+            # Clone via nixos-enter so we use the installed system's
+            # git binary and CA certs (the live USB might have a
+            # different git version / cert store). runuser -u drops
+            # to the target user so the clone is owned correctly.
+            set +e
+            nixos-enter --root "$sysroot" -- \
+                runuser -u "$user" -- \
+                git clone --quiet "$SEED_REPO_URL" "$home/nixos"
+            local rc=$?
+            set -e
+            if (( rc != 0 )); then
+                echo "   ✗ clone failed (exit $rc) — likely no network on the live USB." >&2
+                any_failed=1
+                continue
+            fi
+            echo "   ✓ cloned $SEED_REPO_URL → $home/nixos"
+        fi
+
+        # Pre-stage hwconfig for the primary user only.
+        if [[ -n "$primary_user" && "$user" == "$primary_user" ]]; then
+            local clone_root="$sysroot$home/nixos"
+            local src_hwcfg="$flake_root/hosts/$HOSTNAME/hardware-configuration.nix"
+            local dst_hwcfg="$clone_root/hosts/$HOSTNAME/hardware-configuration.nix"
+            local src_bridge="$flake_root/flake-modules/hosts/$HOSTNAME.nix"
+            local dst_bridge="$clone_root/flake-modules/hosts/$HOSTNAME.nix"
+
+            if [[ -f "$src_hwcfg" ]]; then
+                # Ensure target dir exists (origin/main may not have
+                # the hosts/<NEW>/ dir yet for a brand-new host).
+                nixos-enter --root "$sysroot" -- \
+                    runuser -u "$user" -- \
+                    mkdir -p "$home/nixos/hosts/$HOSTNAME"
+                cp -f "$src_hwcfg" "$dst_hwcfg"
+                # Restore ownership (cp from root preserves root:root).
+                nixos-enter --root "$sysroot" -- \
+                    chown "$user:users" "$home/nixos/hosts/$HOSTNAME/hardware-configuration.nix" \
+                          "$home/nixos/hosts/$HOSTNAME"
+                echo "   ✓ pre-staged $dst_hwcfg in $user's clone"
+            else
+                echo "   note: no $src_hwcfg in install-time checkout; nothing to pre-stage." >&2
+            fi
+
+            # Always cp the host bridge too — if the install-time
+            # working tree has a resume_offset patch (or any other
+            # unstaged edit), this picks it up. If the file is
+            # unchanged from origin, the cp is a no-op as far as
+            # `git diff` in the clone is concerned.
+            if [[ -f "$src_bridge" && -f "$dst_bridge" ]]; then
+                cp -f "$src_bridge" "$dst_bridge"
+                nixos-enter --root "$sysroot" -- \
+                    chown "$user:users" "$home/nixos/flake-modules/hosts/$HOSTNAME.nix"
+                echo "   ✓ refreshed $dst_bridge in $user's clone (carries any resume_offset patch)"
+            fi
+        fi
+    done
+
+    if (( any_failed )); then
+        return 4
+    fi
+    return 0
 }
 
 # ── --install-hm mode: trigger home-manager-bootstrap-* services ──
