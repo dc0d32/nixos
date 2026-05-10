@@ -110,6 +110,13 @@ in
         # check skips it once ~/.local/state/nix/profiles/home-manager
         # exists). Same module also handles multi-user hosts.
         config.flake.modules.nixos.home-manager-bootstrap
+
+        # NOT imported on pb-x1: config.flake.modules.nixos.auto-upgrade.
+        # This is the active dev box — having a 04:40 timer racing
+        # in-progress edits is more annoying than it's worth, and
+        # `sudo nixos-rebuild switch --flake .#pb-x1` is already part
+        # of the workflow here. To opt in later, add the import line
+        # above. See flake-modules/auto-upgrade.nix for what gets wired.
       ];
 
       # Host identity + base packages + primary user.

@@ -90,6 +90,10 @@ let
       config.flake.modules.nixos.openssh
       config.flake.modules.nixos.docker
       config.flake.modules.nixos.boot
+      # Daily `nixos-rebuild switch --refresh --flake
+      # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
+      # reboot. See flake-modules/auto-upgrade.nix.
+      config.flake.modules.nixos.auto-upgrade
       # Auto-bootstraps the nas user's home-manager profile on first
       # boot of a fresh install. No-op once activated.
       config.flake.modules.nixos.home-manager-bootstrap

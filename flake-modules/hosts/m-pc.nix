@@ -262,6 +262,10 @@ in
         config.flake.modules.nixos.quickshell
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
+        # Daily `nixos-rebuild switch --refresh --flake
+        # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
+        # reboot. See flake-modules/auto-upgrade.nix.
+        config.flake.modules.nixos.auto-upgrade
         # Auto-bootstraps each user's HM profile on first boot. One
         # oneshot service per HM config matching `*@m-pc`. Removes
         # the post-install `home-manager switch` step for p and m.

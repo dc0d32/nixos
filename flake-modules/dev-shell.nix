@@ -40,12 +40,30 @@
 #                           authored on WSL and shipped to bare-metal
 #                           NixOS. Use `#!/usr/bin/env bash` instead.
 #                           See AGENTS.md > "Shell script shebangs".
+#   - smoke-build-hosts   : pre-PUSH hook (not pre-commit). Runs
+#                           `nix flake check --impure` with
+#                           NIXOS_ALLOW_PLACEHOLDER=1 so every
+#                           non-placeholder, native-arch NixOS and
+#                           home-manager configuration gets evaluated
+#                           AND built before the push completes.
+#                           Catches both eval breakage and build
+#                           failures before they reach origin/main —
+#                           critical now that secondary hosts
+#                           (pb-t480, ah-1, m-pc, wsl) auto-upgrade
+#                           from origin/main daily via flake-modules/
+#                           auto-upgrade.nix; pushing a broken main
+#                           bricks their next 24h of upgrades.
+#                           Skip with `git push --no-verify` only if
+#                           there's an explicit reason (AGENTS.md).
 #
 # To activate the hooks, enter the devShell once (`nix develop` or, if you use
 # direnv, `direnv allow`). The shellHook installs `.git/hooks/pre-commit`
-# pointing at the wrapper produced by git-hooks.nix. After that, every commit
-# runs the hooks. To bypass in an emergency: `git commit --no-verify` (but
-# AGENTS.md forbids skipping hooks unless explicitly requested).
+# AND `.git/hooks/pre-push` (git-hooks.nix automatically adds the pre-push
+# git hook because the smoke-build-hosts hook declares `stages = [ "pre-push" ]`).
+# After that, every commit runs the pre-commit hooks and every push runs
+# the smoke build. To bypass in an emergency: `git commit --no-verify` or
+# `git push --no-verify` (but AGENTS.md forbids skipping hooks unless
+# explicitly requested).
 #
 # Editor / language tools are not added here — they belong in the user's
 # home-manager config.
@@ -110,6 +128,54 @@
         '';
       };
 
+      # Pre-push smoke build: evaluate-and-build every non-placeholder,
+      # native-arch NixOS and home-manager configuration before letting
+      # the push complete. Catches eval breakage AND build failures
+      # before they hit GitHub — which matters because the secondary
+      # hosts (pb-t480, ah-1, m-pc, wsl) auto-upgrade from origin/main
+      # via flake-modules/auto-upgrade.nix. A broken main branch means
+      # those hosts spend the next 24h trying and failing to upgrade.
+      #
+      # Implementation: `nix flake check` builds every entry in
+      # `flake.checks.<currentSystem>` (assembled by
+      # flake-modules/nixos.nix and the home-manager dispatcher).
+      # That auto-list already filters out placeholders and
+      # non-native arches, so we don't redo that filtering here.
+      # `--impure` + `NIXOS_ALLOW_PLACEHOLDER=1` is required because
+      # `nix flake check` walks every entry in `nixosConfigurations`
+      # regardless of which subset ends up in checks (a built-in CLI
+      # behavior we can't suppress) and the placeholder hosts'
+      # toplevel evaluation would otherwise abort. See AGENTS.md >
+      # "Placeholder hosts".
+      #
+      # `--all-systems` is intentionally NOT passed: we only build
+      # for the local arch. Cross-arch hosts (e.g. wsl-arm) get
+      # validated when their owner runs the hook from a matching
+      # machine. With one of each arch in the loop (x86_64-linux on
+      # pb-x1/pb-t480/ah-1/m-pc/wsl, aarch64-linux on wsl-arm) the
+      # union of pre-push checks across users covers everything.
+      #
+      # Runtime: warm cache ~5-15s for the eval pass, plus whatever
+      # rebuild is needed. Cold first run after a nixpkgs bump can
+      # take many minutes — skip the hook with `git push --no-verify`
+      # if you genuinely need to push fast (AGENTS.md allows it for
+      # "explicit user request"; document why in the commit message).
+      smoke-build-hosts = pkgs.writeShellApplication {
+        name = "smoke-build-hosts";
+        runtimeInputs = with pkgs; [ nix coreutils ];
+        text = ''
+          echo "→ smoke-build: nix flake check (all native-arch hosts)" >&2
+          # NIXOS_ALLOW_PLACEHOLDER=1 lets nixosConfigurations walk
+          # past the placeholder-host assertions that protect against
+          # accidental `nixos-rebuild switch` on an unbootable config.
+          # --impure is then required by `nix flake check` to honor
+          # any environment-variable reads in the eval. See
+          # flake-modules/nixos.nix and AGENTS.md > "Placeholder
+          # hosts".
+          NIXOS_ALLOW_PLACEHOLDER=1 exec nix flake check --impure --print-build-logs
+        '';
+      };
+
       pre-commit-check = inputs.git-hooks.lib.${system}.run {
         src = ../.;
         hooks = {
@@ -143,6 +209,23 @@
             entry = "${check-bash-shebang}/bin/check-bash-shebang";
             language = "system";
             pass_filenames = true;
+          };
+
+          # See `smoke-build-hosts` above. `stages = [ "pre-push" ]`
+          # makes git-hooks.nix install a `pre-push` git hook in
+          # addition to the `pre-commit` one, so this fires only at
+          # `git push` time — too slow to run on every commit, but
+          # the right gate before code reaches origin/main where
+          # secondary hosts auto-upgrade from.
+          smoke-build-hosts = {
+            enable = true;
+            name = "smoke build all native-arch hosts";
+            entry = "${smoke-build-hosts}/bin/smoke-build-hosts";
+            language = "system";
+            stages = [ "pre-push" ];
+            # The script doesn't read filenames; it always does a
+            # full flake-check.
+            pass_filenames = false;
           };
         };
       };

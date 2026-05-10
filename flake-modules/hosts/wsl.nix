@@ -53,6 +53,13 @@ let
       config.flake.modules.nixos.system-utils
       config.flake.modules.nixos.users
       config.flake.modules.nixos.locale
+      # Daily `nixos-rebuild switch --refresh --flake
+      # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
+      # reboot. The `persistent` timer means a fresh `wsl --shutdown`
+      # / `wsl` cycle that misses 04:40 will trigger the upgrade on
+      # next boot — slightly noisy on a dev machine but keeps WSL
+      # in lockstep with the homelab. See flake-modules/auto-upgrade.nix.
+      config.flake.modules.nixos.auto-upgrade
       # Auto-bootstraps p's home-manager profile on first boot. WSL
       # systemd is somewhat constrained, but oneshot multi-user.target
       # services run fine.

@@ -277,6 +277,10 @@ in
         config.flake.modules.nixos.quickshell
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
+        # Daily `nixos-rebuild switch --refresh --flake
+        # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
+        # reboot. See flake-modules/auto-upgrade.nix.
+        config.flake.modules.nixos.auto-upgrade
         # Auto-bootstraps each user's home-manager profile on first
         # boot via a oneshot systemd service per HM config matching
         # `*@pb-t480`. Removes the post-install
