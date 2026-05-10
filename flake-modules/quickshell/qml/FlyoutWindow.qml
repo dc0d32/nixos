@@ -8,11 +8,20 @@
 // chip. Visible only while FlyoutManager.active matches flyoutName, so
 // at rest no extra layer surface is mapped.
 //
-// Coordinate model: chipCenterX is published by Bar.qml in the
-// chip-strip PanelWindow's local coordinates (origin = inside the
-// strip's `barGutter` left margin). To translate to screen-space
-// margins for this PanelWindow we add the same gutter and clamp to
-// keep the surface fully on-screen.
+// Coordinate model:
+//   - chipCenterX is published by Bar.qml in the chip-strip
+//     PanelWindow's local coordinates (origin = inside the strip's
+//     `barGutter` left margin). To translate to screen-space margins
+//     we add the same gutter and clamp to keep the surface on-screen.
+//   - The bar reserves an exclusive zone of `barHeight + barGutter` px
+//     along the top edge of the screen. Per the wlr-layer-shell
+//     protocol, sibling layer surfaces' margins are computed from the
+//     edge of the available area (i.e. past existing exclusion zones).
+//     So `margins.top: barGutter` lands the surface flush against the
+//     visible bottom of the bar (screen y = barHeight + 2*barGutter,
+//     where barGutter accounts for both the bar's top margin and the
+//     symmetric gap left by the bar's exclusive zone). DO NOT add
+//     barHeight here — that double-counts the bar.
 //
 // niri opts surfaces with namespace "quickshell-flyout-*" back into
 // the catch-all blur via a regex layer-rule in flake-modules/niri.nix
@@ -25,6 +34,13 @@
 // positioning (Isthmus at y=0, card at y=Theme.gap) works unchanged
 // because the surface bounds are exactly cardWidth × (Theme.gap +
 // cardImplicitHeight + extraSlack).
+//
+// Click routing: the dismiss canvas in Bar.qml is mapped before any
+// per-flyout surface and stays mapped, so within niri's Top layer it
+// always sits ABOVE this surface. To prevent the canvas from eating
+// our clicks, this window writes its screen-space rect into
+// FlyoutManager.activeX/Y/W/H on visibility, and the canvas's input
+// mask subtracts that rect.
 
 import Quickshell
 import Quickshell.Wayland
@@ -49,8 +65,9 @@ PanelWindow {
   property int    extraSlack: 20
   // Bar's gutter margin (uniform on all four sides; Bar.qml uses 2 px).
   // chipCenterX is published in bar-local coords (post-gutter), so we
-  // add `barGutter` to both top and left margins to align with screen
-  // space.
+  // add `barGutter` to the left margin to align with screen space.
+  // Top margin is just `barGutter` (see header note about the bar's
+  // exclusive zone).
   property int    barGutter: 2
 
   // ── layer surface plumbing ──────────────────────────────────────────
@@ -63,11 +80,10 @@ PanelWindow {
   WlrLayershell.exclusiveZone: 0
 
   anchors { top: true; left: true }
-  // top: bar gutter + bar height. Card sits at y=Theme.gap inside this
-  // surface, so the visible card top lands at barGutter + barHeight +
-  // Theme.gap — matches the pre-refactor `y: Theme.barHeight` anchor
-  // inside a surface that itself started at barGutter from the screen top.
-  margins.top: barGutter + Theme.barHeight
+  // Land flush against the bar's visible bottom. The bar's exclusive
+  // zone already pushes us past barHeight; we only need the symmetric
+  // gutter margin.
+  margins.top: barGutter
   // left: clamp(chipCenter - cardWidth/2, gutter, screen.width - cardWidth - gutter)
   margins.left: {
     var screenW = screen ? screen.width : 0
@@ -79,5 +95,38 @@ PanelWindow {
 
   implicitWidth:  cardWidth
   implicitHeight: Theme.gap + cardImplicitHeight + extraSlack
-}
 
+  // Chip center expressed in this panel's local coordinates. Used by
+  // child Isthmus instances to anchor the neck above the originating
+  // chip even when the panel is clamped against a screen edge (in
+  // which case the panel's geometric center is offset from the chip
+  // center). chipCenterX is bar-local (post-gutter); margins.left is
+  // screen-local (includes barGutter). Both share the same gutter
+  // origin, so chip-screen-X = barGutter + chipCenterX, and
+  // chip-in-panel = chip-screen-X - margins.left.
+  readonly property real chipCenterInPanel:
+    barGutter + chipCenterX - margins.left
+
+  // ── publish rect to FlyoutManager so the dismiss canvas can punch
+  //    a click-through hole here (see header note). Screen-space:
+  //    x = margins.left
+  //    y = barHeight + 2*barGutter (exclusive zone + this surface's top margin)
+  //    w/h = implicitWidth/Height
+  readonly property real screenX: margins.left
+  readonly property real screenY: Theme.barHeight + 2 * barGutter
+  readonly property real screenW: implicitWidth
+  readonly property real screenH: implicitHeight
+
+  onVisibleChanged: if (visible) publishRect()
+  onScreenXChanged: if (visible) publishRect()
+  onScreenYChanged: if (visible) publishRect()
+  onScreenWChanged: if (visible) publishRect()
+  onScreenHChanged: if (visible) publishRect()
+
+  function publishRect() {
+    FlyoutManager.activeX = screenX
+    FlyoutManager.activeY = screenY
+    FlyoutManager.activeW = screenW
+    FlyoutManager.activeH = screenH
+  }
+}

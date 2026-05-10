@@ -71,6 +71,7 @@ FlyoutWindow {
   Isthmus {
     cardWidth: root.cardWidth
     neckWidth: root.istmusW
+    centerX:   root.chipCenterInPanel
     fillColor: Theme.base
   }
 

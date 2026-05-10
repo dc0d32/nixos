@@ -1,6 +1,6 @@
 // Top bar: [Workspaces] | [ActiveWindow] | [Tray | Media | Weather] | [Notifs | Net | Vol | Brightness | Clock]
 //
-// This file declares THREE classes of PanelWindows that together make
+// This file declares FOUR classes of PanelWindows that together make
 // up "the bar" experience:
 //
 //   1. `bar` (namespace "quickshell-bar")
@@ -13,16 +13,11 @@
 //        band hangs below the strip.
 //
 //   2. `flyoutCanvas` (namespace "quickshell-flyouts")
-//        Full-screen layer surface, mapped while ANY flyout OR tooltip is
-//        shown. Hosts:
-//          - The dismiss-on-outside-click MouseArea (only enabled when a
-//            flyout is open; tooltips are passive)
-//          - All BarTooltip popups (positioned by chip center X published
-//            by `bar`; coordinate spaces match because both windows share
-//            the same 2-px gutter margins)
-//        niri excludes this namespace from the catch-all blur (the
-//        dismiss / passthrough region must stay clear, and tooltip cards
-//        already have an opaque-enough Theme.surface0 background).
+//        Full-screen layer surface, mapped only while a flyout is open.
+//        Hosts the dismiss-on-outside-click MouseArea. niri excludes
+//        this namespace from the catch-all blur (the dismiss /
+//        passthrough region must stay clear; the visible flyout cards
+//        live in their own per-flyout surfaces).
 //
 //   3. Per-flyout PanelWindows (namespace "quickshell-flyout-<name>")
 //        One PanelWindow per flyout (volume, brightness, etc.), each via
@@ -33,20 +28,29 @@
 //        exclusion regex), giving each card its own per-surface
 //        live-composite frosted-glass backdrop.
 //
-// Click routing during an open flyout:
-//   - A click inside the flyout's PanelWindow surface (its bounding box)
-//     hits whichever MouseArea is on the card at that point. Layer
-//     surfaces in the same layer are stacked by creation order, and the
-//     per-flyout surface is created lazily after the canvas, so it
-//     intercepts first.
-//   - A click outside the flyout's surface bounds passes to the
-//     full-screen canvas underneath, which fires its dismiss MouseArea.
+//   4. Per-tooltip PanelWindows (namespace "quickshell-tooltip-<id>")
+//        One PanelWindow per chip tooltip, via the BarTooltip.qml
+//        wrapper. Same anchoring scheme as FlyoutWindow so vertical
+//        placement matches the per-flyout panels (flush with the bar's
+//        visible bottom). Mapped only while the chip is hovered AND no
+//        flyout is open. Uses its own namespace so they pick up the
+//        catch-all blur (frosted-glass cards) without matching the
+//        flyout-canvas exclusion.
 //
-// Input mask of the canvas:
-//   - Flyout open: dismissArea region (entire surface receives input).
-//   - Tooltip only: empty mask (Region item: null) — clicks/hover pass
-//     through to windows underneath. Tooltips are visual-only.
-//   - Nothing shown: PanelWindow `visible: false` → surface unmapped.
+// Click routing during an open flyout:
+//   - niri stacks layer surfaces within the same layer by MAP order.
+//     The dismiss canvas is mapped lazily on first flyout open and
+//     stays mapped after; per-flyout surfaces are also mapped lazily.
+//     Confirmed via `niri msg layers`: bar < flyout-<name> < flyouts
+//     (canvas) bottom-to-top — i.e. the canvas always wins z-order.
+//   - To prevent the canvas from eating clicks meant for the per-flyout
+//     surface beneath it, the canvas's input mask is "full canvas region
+//     MINUS active flyout's screen rect". Each FlyoutWindow publishes
+//     its rect into FlyoutManager.activeX/Y/W/H on visibility; this
+//     scope subtracts it via Region.intersection: Subtract.
+//   - Clicks INSIDE the cutout fall through Wayland's input region
+//     check on the canvas → land on the per-flyout surface beneath.
+//   - Clicks OUTSIDE the cutout hit the canvas's dismiss MouseArea.
 //
 // History: previously a single tall PanelWindow (~460 px) hosted both
 // chips and flyouts as plain QML Items. niri blurs the entire layer-
@@ -55,7 +59,7 @@
 // screen even when no flyout was open. That forced niri.nix to exclude
 // the bar from blur entirely. The split here lets each surface be
 // exactly its visible bounds — the chip strip is glassy, each flyout
-// card is glassy, and nothing else is.
+// card is glassy, each tooltip card is glassy, and nothing else is.
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
@@ -73,22 +77,6 @@ Scope {
   property NotificationServer notificationServer
 
   readonly property bool flyoutOpen: FlyoutManager.active !== ""
-
-  // Aggregate of every chip's tooltipShown. Used to map the flyout
-  // canvas while a tooltip is visible (so the tooltip card can render
-  // there). Recomputed automatically by QML's binding engine whenever
-  // any chip's tooltipShown changes.
-  readonly property bool anyTooltipShown:
-       networkChip.tooltipShown
-    || bluetoothChip.tooltipShown
-    || volumeChip.tooltipShown
-    || (batteryChip.tooltipShown && batteryChip.present)
-    || brightnessChip.tooltipShown
-    || powerProfileChip.tooltipShown
-    || clockChip.tooltipShown
-    || powerChip.tooltipShown
-    || weatherChip.tooltipShown
-    || mediaChip.tooltipShown
 
   // ── chip-strip surface ────────────────────────────────────────────────
   PanelWindow {
@@ -192,14 +180,12 @@ Scope {
   }
 
   // ── flyout canvas surface ───────────────────────────────────────────────
-  // Full-screen layer surface that hosts flyout cards, BarTooltip popups,
-  // and a click-to-dismiss MouseArea. Mapped only while at least one of
-  // them is showing so at rest there is no additional layer surface and
-  // no compositor cost.
+  // Full-screen layer surface that hosts the click-to-dismiss
+  // MouseArea while a flyout is open. Mapped only while a flyout is
+  // open so at rest there is no additional layer surface and no
+  // compositor cost.
   //
-  // Margins match the chip-strip window (top:2; left:2; right:2) and the
-  // canvas anchors top+left+right+bottom, so chip-center X coordinates
-  // published by `bar` work here without offset adjustment.
+  // Margins match the chip-strip window (top:2; left:2; right:2).
   PanelWindow {
     id: flyoutCanvas
 
@@ -207,19 +193,37 @@ Scope {
     anchors { top: true; left: true; right: true; bottom: true }
     margins  { top: 2; left: 2; right: 2; bottom: 2 }
 
-    visible: barScope.flyoutOpen || barScope.anyTooltipShown
+    visible: barScope.flyoutOpen
     color: "transparent"
     WlrLayershell.namespace: "quickshell-flyouts"
     WlrLayershell.layer: WlrLayershell.Top
     WlrLayershell.exclusiveZone: 0
 
-    // Input mask:
-    //   - flyoutOpen: full-canvas region (the dismiss MouseArea below
-    //     receives outside-card clicks).
-    //   - tooltip only: null region — entire surface is click-through;
-    //     hover/click reaches the windows underneath. Tooltip cards
-    //     are purely visual.
-    mask: Region { item: barScope.flyoutOpen ? dismissArea : null }
+    // Input mask: full-canvas region MINUS the active flyout's screen
+    // rect (translated into canvas-local coords). Outside-card clicks
+    // hit the dismiss MouseArea; clicks INSIDE the cutout fall through
+    // this surface to the per-flyout layer surface beneath it. The
+    // cutout is necessary because niri stacks layer surfaces by map
+    // order and this canvas tends to be mapped after the per-flyout
+    // surfaces (so it's on TOP), so without a cutout the canvas would
+    // eat every click meant for the flyout.
+    mask: Region {
+      item: barScope.flyoutOpen ? dismissArea : null
+      Region {
+        // Canvas-local coords = screen coords minus this canvas's
+        // top-left corner. Top-left in screen coords is (gutter,
+        // barExclusionZone + gutter) = (2, 36) at default values, but
+        // bind dynamically so both surfaces stay in sync if someone
+        // tweaks gutter/barHeight.
+        x: barScope.flyoutOpen ? Math.round(FlyoutManager.activeX - 2) : 0
+        y: barScope.flyoutOpen
+            ? Math.round(FlyoutManager.activeY - (Theme.barHeight + 4))
+            : 0
+        width:  barScope.flyoutOpen ? Math.round(FlyoutManager.activeW) : 0
+        height: barScope.flyoutOpen ? Math.round(FlyoutManager.activeH) : 0
+        intersection: Intersection.Subtract
+      }
+    }
 
     // ── dismiss backdrop ────────────────────────────────────────────────
     // Disabled while only a tooltip is shown: tooltips don't dismiss on
@@ -232,53 +236,73 @@ Scope {
     }
 
     // ── tooltips ────────────────────────────────────────────────────────
-    BarTooltip {
-      chipCenterX: bar.networkCX; shown: networkChip.tooltipShown
-      text: networkChip.state === "wifi"  ? "WiFi: "  + networkChip.label
-          : networkChip.state === "wired" ? "Wired: " + networkChip.label
-          : "Not connected"
-    }
-    BarTooltip {
-      chipCenterX: bar.bluetoothCX; shown: bluetoothChip.tooltipShown
-      text: !bluetoothChip.powered                  ? "Bluetooth: off"
-          : bluetoothChip.connectedCount === 0      ? "Bluetooth: on"
-          : bluetoothChip.connectedCount === 1      ? "Bluetooth: " + bluetoothChip.label
-                                                    : "Bluetooth: " + bluetoothChip.connectedCount + " devices"
-    }
-    BarTooltip {
-      chipCenterX: bar.volumeCX; shown: volumeChip.tooltipShown
-      text: volumeChip.muted ? "Muted" : "Volume: " + volumeChip.volume + "%"
-    }
-    BarTooltip {
-      chipCenterX: bar.batteryCX; shown: batteryChip.tooltipShown && batteryChip.present
-      text: "Battery: " + batteryChip.percent + "% — " + batteryChip.status
-    }
-    BarTooltip {
-      chipCenterX: bar.brightnessCX; shown: brightnessChip.tooltipShown
-      text: "Brightness: " + brightnessChip.brightness + "%"
-    }
-    BarTooltip {
-      chipCenterX: bar.powerProfileCX; shown: powerProfileChip.tooltipShown
-      text: "Profile: " + powerProfileChip.profileName
-    }
-    BarTooltip {
-      chipCenterX: bar.clockCX; shown: clockChip.tooltipShown
-      text: Qt.formatDateTime(new Date(), "dddd, MMMM d yyyy")
-    }
-    BarTooltip {
-      chipCenterX: bar.powerCX; shown: powerChip.tooltipShown
-      text: "Power menu"
-    }
-    BarTooltip {
-      chipCenterX: bar.weatherCX; shown: weatherChip.tooltipShown
-      text: WeatherModel.location !== ""
-          ? WeatherModel.location + ": " + WeatherModel.conditionText + ", " + WeatherModel.temp
-          : WeatherModel.conditionText + ", " + WeatherModel.temp
-    }
-    BarTooltip {
-      chipCenterX: bar.mediaCX; shown: mediaChip.tooltipShown
-      text: mediaChip.player ? (mediaChip.player.trackTitle + " · " + mediaChip.player.trackArtist) : ""
-    }
+    // Tooltips are their own per-tooltip PanelWindows (siblings of
+    // the per-flyout surfaces below) — see BarTooltip.qml header for
+    // why. Nothing rendered here.
+  }
+
+  // ── per-tooltip PanelWindows ───────────────────────────────────────────
+  // Each tooltip is its own Wayland layer surface (namespace
+  // "quickshell-tooltip-<id>"), positioned over its originating chip
+  // with the same anchoring scheme as FlyoutWindow so vertical
+  // placement is identical to the per-flyout panels (flush with the
+  // bar's visible bottom). Mapped only while the chip is hovered.
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "network"
+    chipCenterX: bar.networkCX; shown: networkChip.tooltipShown
+    text: NetworkState.currentState === "wifi"  ? "WiFi: "  + networkChip.label
+        : NetworkState.currentState === "wired" ? "Wired: " + networkChip.label
+        : "Not connected"
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "bluetooth"
+    chipCenterX: bar.bluetoothCX; shown: bluetoothChip.tooltipShown
+    text: !bluetoothChip.powered                  ? "Bluetooth: off"
+        : bluetoothChip.connectedCount === 0      ? "Bluetooth: on"
+        : bluetoothChip.connectedCount === 1      ? "Bluetooth: " + bluetoothChip.label
+                                                  : "Bluetooth: " + bluetoothChip.connectedCount + " devices"
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "volume"
+    chipCenterX: bar.volumeCX; shown: volumeChip.tooltipShown
+    text: VolumeState.muted ? "Muted" : "Volume: " + VolumeState.volume + "%"
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "battery"
+    chipCenterX: bar.batteryCX; shown: batteryChip.tooltipShown && BatteryState.present
+    text: "Battery: " + BatteryState.percent + "% — " + BatteryState.status
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "brightness"
+    chipCenterX: bar.brightnessCX; shown: brightnessChip.tooltipShown
+    text: "Brightness: " + BrightnessState.percent + "%"
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "powerprofile"
+    chipCenterX: bar.powerProfileCX; shown: powerProfileChip.tooltipShown
+    text: "Profile: " + powerProfileChip.profileName
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "clock"
+    chipCenterX: bar.clockCX; shown: clockChip.tooltipShown
+    text: Qt.formatDateTime(new Date(), "dddd, MMMM d yyyy")
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "power"
+    chipCenterX: bar.powerCX; shown: powerChip.tooltipShown
+    text: "Power menu"
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "weather"
+    chipCenterX: bar.weatherCX; shown: weatherChip.tooltipShown
+    text: WeatherModel.location !== ""
+        ? WeatherModel.location + ": " + WeatherModel.conditionText + ", " + WeatherModel.temp
+        : WeatherModel.conditionText + ", " + WeatherModel.temp
+  }
+  BarTooltip {
+    screen: barScope.screen; tooltipId: "media"
+    chipCenterX: bar.mediaCX; shown: mediaChip.tooltipShown
+    text: mediaChip.player ? (mediaChip.player.trackTitle + " · " + mediaChip.player.trackArtist) : ""
   }
 
   // ── per-flyout PanelWindows ────────────────────────────────────────────
@@ -288,10 +312,16 @@ Scope {
   // FlyoutWindow wrapper handles namespace/visibility/positioning; the
   // flyout's own QML defines the card.
   //
-  // Stacking: per-flyout surfaces are created lazily after `flyoutCanvas`,
-  // so within the Top layer they sit above it. Clicks inside the card's
-  // bounding box are intercepted by the card's PanelWindow; clicks
-  // outside fall through to the canvas's dismiss MouseArea below.
+  // Stacking (verified via `niri msg layers`): the dismiss canvas
+  // `flyoutCanvas` is mapped at startup and stays mapped, while these
+  // per-flyout surfaces map lazily on first show. Within niri's Top
+  // layer, surfaces are stacked by map order, so the canvas always sits
+  // ABOVE these surfaces — which would normally let it eat all clicks.
+  // The canvas's input mask compensates by subtracting the active
+  // flyout's screen rect (see header note + canvas's mask: Region).
+  // Clicks inside the cutout fall through Wayland's input region check
+  // on the canvas to land here; clicks outside hit the dismiss
+  // MouseArea on the canvas.
   NotificationFlyout { screen: barScope.screen; chipCenterX: bar.notifCX;        chipWidth: notifChip.width;        server: barScope.notificationServer }
   BluetoothFlyout    { screen: barScope.screen; chipCenterX: bar.bluetoothCX;    chipWidth: bluetoothChip.width }
   VolumeFlyout       { screen: barScope.screen; chipCenterX: bar.volumeCX;       chipWidth: volumeChip.width }

@@ -776,6 +776,13 @@
     # opts in to the catch-all blur, giving the chip strip a
     # frosted-glass live-composite look over whatever is
     # underneath it (workspace content or wallpaper).
+    #
+    # Per-tooltip surfaces (namespace "quickshell-tooltip-<id>")
+    # follow the per-flyout pattern — each tooltip is its own small
+    # layer surface sized to the card's bounding box, so they pick
+    # up the catch-all blur (the "^quickshell-flyouts$" exclusion
+    # only matches the dismiss canvas exactly) and get the same
+    # frosted-glass look as flyout cards.
     programs.niri.config =
       let
         kdl = inputs.niri.lib.kdl;
