@@ -9,28 +9,32 @@ Scope {
   id: root
 
   // Idempotent lock(): triggered via `quickshell ipc call lock lock`. If the
-  // lockscreen is already up (e.g. user pressed Super+Alt+L twice, or stasis
-  // re-fires before we've torn down), do nothing — re-running startAuth()
-  // would abort an in-flight biometric scan and reset the password buffer.
+  // lockscreen is already up (e.g. user pressed Super+Alt+L twice, or the
+  // idle daemon re-fires before we've torn down), do nothing — re-running
+  // startAuth() would abort an in-flight biometric scan and reset the
+  // password buffer.
   function lock() {
     if (locker.locked) return;
     locker.locked = true;
-    // Pause stasis so its dpms/suspend countdown doesn't fire while the
-    // user is mid-unlock. Symmetric resume happens in teardown() — we route
-    // every exit path through it so the daemon never gets stranded paused.
-    Quickshell.execDetached(["stasis", "pause"]);
     lockContext.startAuth();
   }
 
   // Single teardown path: called on successful unlock. Aborts any in-flight
-  // PAM contexts, clears state, resumes stasis. Made symmetric so any future
-  // dismissal path (manual unlock, session signal) goes through here.
+  // PAM contexts, clears state, drops the wayland session lock. Made
+  // symmetric so any future dismissal path (manual unlock, session signal)
+  // goes through here.
+  //
+  // Note: no idle-daemon pause/resume needed. idled (the current Wayland
+  // idle manager — see flake-modules/idle.nix) detects the user is back
+  // via fresh input events on unlock, and re-arms its DPMS / suspend
+  // countdown automatically. The previous stasis-era code called
+  // `stasis pause` / `stasis resume` here; that has been dead since the
+  // 2026-04-29 idled migration (stasis isn't on PATH anymore).
   function teardown() {
     lockContext.abortAuth();
     lockContext.currentText = "";
     lockContext.showFailure = false;
     locker.locked = false;
-    Quickshell.execDetached(["stasis", "resume"]);
   }
 
   LockContext {
