@@ -97,6 +97,15 @@ let
       # Auto-bootstraps the nas user's home-manager profile on first
       # boot of a fresh install. No-op once activated.
       config.flake.modules.nixos.home-manager-bootstrap
+      # Per-user oneshot that clones https://github.com/dc0d32/nixos
+      # into ~/nixos for the nas user (idempotent). Backfills hosts
+      # installed before host-setup.sh's install-time clone step.
+      # See flake-modules/nixos-clone.nix.
+      config.flake.modules.nixos.nixos-clone
+      # Daily `home-manager switch` at 05:30 local for nas. Pulls
+      # fresh from github:dc0d32/nixos each run. See
+      # flake-modules/hm-auto-upgrade.nix.
+      config.flake.modules.nixos.hm-auto-upgrade
     ];
 
     nixpkgs.hostPlatform = lib.mkDefault system;

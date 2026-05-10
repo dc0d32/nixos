@@ -270,6 +270,15 @@ in
         # oneshot service per HM config matching `*@m-pc`. Removes
         # the post-install `home-manager switch` step for p and m.
         config.flake.modules.nixos.home-manager-bootstrap
+        # Per-user oneshot that clones https://github.com/dc0d32/nixos
+        # into ~/nixos for each HM user (idempotent; backfills hosts
+        # installed before host-setup.sh's install-time clone step).
+        # See flake-modules/nixos-clone.nix.
+        config.flake.modules.nixos.nixos-clone
+        # Daily `home-manager switch` at 05:30 local for every HM
+        # user on this host. Pulls fresh from github:dc0d32/nixos
+        # each run. See flake-modules/hm-auto-upgrade.nix.
+        config.flake.modules.nixos.hm-auto-upgrade
         # Steam (system-wide programs.steam.enable). Restrictions
         # (game/store/chat) are configured per-Steam-account in
         # Steam's built-in Family View, not here. The WX 2100 is

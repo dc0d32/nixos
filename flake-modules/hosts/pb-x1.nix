@@ -111,12 +111,18 @@ in
         # exists). Same module also handles multi-user hosts.
         config.flake.modules.nixos.home-manager-bootstrap
 
-        # NOT imported on pb-x1: config.flake.modules.nixos.auto-upgrade.
-        # This is the active dev box — having a 04:40 timer racing
-        # in-progress edits is more annoying than it's worth, and
-        # `sudo nixos-rebuild switch --flake .#pb-x1` is already part
-        # of the workflow here. To opt in later, add the import line
-        # above. See flake-modules/auto-upgrade.nix for what gets wired.
+        # NOT imported on pb-x1: config.flake.modules.nixos.auto-upgrade,
+        # config.flake.modules.nixos.nixos-clone, and
+        # config.flake.modules.nixos.hm-auto-upgrade.
+        # This is the active dev box: a 04:40 nixos-rebuild timer
+        # racing in-progress edits is more annoying than it's worth,
+        # the ~/nixos clone already exists (you ARE editing it here),
+        # and 05:30 auto-`home-manager switch` from github: would
+        # blow away local HM iteration. `sudo nixos-rebuild switch
+        # --flake .#pb-x1` and `home-manager switch --flake .#'p@pb-x1'`
+        # are already part of the workflow here. To opt in later,
+        # add the corresponding import lines above. See
+        # flake-modules/{auto-upgrade,nixos-clone,hm-auto-upgrade}.nix.
       ];
 
       # Host identity + base packages + primary user.

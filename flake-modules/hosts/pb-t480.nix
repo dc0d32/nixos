@@ -287,6 +287,19 @@ in
         # `home-manager switch --flake .#'<user>@pb-t480'` step for
         # p, m, and s.
         config.flake.modules.nixos.home-manager-bootstrap
+        # Per-user oneshot that clones https://github.com/dc0d32/nixos
+        # into ~/nixos for every HM-enabled user (idempotent;
+        # ConditionPathExists guard skips users who already have a
+        # clone). Backfills hosts that were installed before
+        # scripts/host-setup.sh's install-time clone step. See
+        # flake-modules/nixos-clone.nix.
+        config.flake.modules.nixos.nixos-clone
+        # Daily `home-manager switch` at 05:30 local (30min after
+        # nixos-upgrade.timer's window) for every HM user on this
+        # host. Pulls the activation package fresh from
+        # github:dc0d32/nixos each run, mirroring system.autoUpgrade.
+        # See flake-modules/hm-auto-upgrade.nix.
+        config.flake.modules.nixos.hm-auto-upgrade
         # Steam (system-wide programs.steam.enable). Game/store/chat
         # restrictions are configured per-Steam-account in Steam's
         # built-in Family View, not here. See flake-modules/steam.nix.

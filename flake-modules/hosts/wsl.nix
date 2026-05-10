@@ -64,6 +64,17 @@ let
       # systemd is somewhat constrained, but oneshot multi-user.target
       # services run fine.
       config.flake.modules.nixos.home-manager-bootstrap
+      # Per-user oneshot that clones https://github.com/dc0d32/nixos
+      # into ~/nixos for p (idempotent). On WSL the clone often
+      # already exists (this IS where you tend to develop the
+      # flake), so the ConditionPathExists guard makes it a no-op.
+      # See flake-modules/nixos-clone.nix.
+      config.flake.modules.nixos.nixos-clone
+      # Daily `home-manager switch` at 05:30 local for p. Pulls
+      # fresh from github:dc0d32/nixos each run, so any local edits
+      # in ~/nixos that haven't been pushed are NOT what gets
+      # activated. See flake-modules/hm-auto-upgrade.nix.
+      config.flake.modules.nixos.hm-auto-upgrade
     ];
 
     # WSL has no hardware-configuration.nix to set the platform for
