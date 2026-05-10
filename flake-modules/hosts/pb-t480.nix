@@ -269,6 +269,12 @@ in
         # /dev/video2 only matters before that service runs.
         config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.niri
+        # Quickshell system-side wiring: security.pam.services.
+        # quickshell-password (the lockscreen always offers a password
+        # prompt; without this PAM service the prompt would silently
+        # reject every input). HM-side QML deployment comes via the
+        # home-desktop / home-kid bundles.
+        config.flake.modules.nixos.quickshell
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
         # Auto-bootstraps each user's home-manager profile on first

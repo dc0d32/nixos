@@ -180,7 +180,7 @@ in
           # Retire if bitwarden-desktop ever ships its own PAM service file.
           bitwarden = reorderPasswordFirst // { fprintAuth = lib.mkDefault true; };
 
-          # ── Quickshell lockscreen: split PAM services for parallel auth ──
+          # ── Quickshell lockscreen: biometric half of the split PAM stack ──
           # The default "login" PAM stack runs sequentially (unix →
           # howdy → fprintd → deny). With pam_unix as `sufficient`,
           # PAM immediately asks for a password and only falls
@@ -192,7 +192,18 @@ in
           # Solution: split the auth stack into two single-purpose
           # PAM services so quickshell can drive two parallel
           # PamContexts (one for each). Whichever one returns success
-          # first wins; the other is aborted.
+          # first wins; the other is aborted. The PASSWORD half
+          # (security.pam.services.quickshell-password) is owned by
+          # flake-modules/quickshell.nix — every host running the
+          # lockscreen needs it, biometrics or not. The BIOMETRIC
+          # half lives here because it depends on howdy + fprintd,
+          # which only this module installs. LockContext.qml gates
+          # its biometric PamContext on the QUICKSHELL_LOCK_FACE /
+          # QUICKSHELL_LOCK_FINGERPRINT env vars (set from
+          # `biometrics.enable` in flake-modules/quickshell.nix), so
+          # hosts that don't import this module never start the
+          # biometric stack and therefore never reference the
+          # missing PAM service.
           #
           # IMPORTANT: PAM resolves bare module names
           # (`pam_howdy.so`) relative to linux-pam's *own*
@@ -207,20 +218,6 @@ in
           # this because their `rules.auth.<name>` entries are
           # auto-prefixed by the framework with the right store path;
           # raw `text =` stacks must do it themselves.
-          quickshell-password = {
-            # Password-only: pam_unix verifies, pam_gnome_keyring
-            # captures the token to unlock the keyring on success.
-            # No biometrics.
-            text = ''
-              auth      required  pam_unix.so       likeauth nullok try_first_pass
-              auth      optional  ${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so use_authtok
-              account   required  pam_unix.so
-              password  required  pam_unix.so       sha512 shadow nullok try_first_pass
-              password  optional  ${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so use_authtok
-              session   required  pam_unix.so
-              session   optional  ${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so auto_start
-            '';
-          };
           quickshell-biometric = {
             # Biometric-only: try howdy (face) then fprintd (finger).
             # pam_deny last so failure of both yields a clean

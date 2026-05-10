@@ -98,6 +98,12 @@ in
         config.flake.modules.nixos.file-manager
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
+        # Quickshell system-side wiring: security.pam.services.
+        # quickshell-password (the lockscreen always offers a password
+        # prompt; without this PAM service the prompt would silently
+        # reject every input). HM-side QML deployment comes via the
+        # home-desktop bundle.
+        config.flake.modules.nixos.quickshell
         # Auto-bootstraps p's home-manager profile on first boot of
         # any fresh install via a oneshot systemd service. No-op on
         # already-bootstrapped systems (the unit's ConditionPathExists

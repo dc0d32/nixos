@@ -8,10 +8,19 @@ import QtQuick
 // pam_unix(sufficient), which immediately blocks asking for a password —
 // biometrics are only attempted after a wrong/missing password fails through.
 //
-// Splitting into two single-purpose PAM services (security.pam.services.
-// quickshell-password and quickshell-biometric, defined in modules/nixos/
-// biometrics.nix) lets us run both stacks concurrently and let whichever
-// one succeeds first unlock the session.
+// Splitting into two single-purpose PAM services lets us run both stacks
+// concurrently and let whichever one succeeds first unlock the session:
+//   - quickshell-password   defined in flake-modules/quickshell.nix
+//                           (always present — every desktop host imports
+//                           the quickshell NixOS module).
+//   - quickshell-biometric  defined in flake-modules/biometrics.nix
+//                           (only present on hosts that import biometrics).
+//
+// The biometric PamContext is gated on `biometricsAvailable` (face OR
+// fingerprint env vars set by the quickshell HM module from the host's
+// biometrics.enable signal). On hosts without biometrics the env vars are
+// empty, the gate is false, and the biometric PamContext is never started —
+// so we don't busy-loop a missing PAM service every 3 seconds.
 Scope {
   id: root
 
@@ -20,6 +29,19 @@ Scope {
   // Password input buffer (bound from the TextInput in LockScreen.qml).
   property string currentText: ""
   property bool   showFailure: false
+
+  // Which biometric methods are available on this host? Exposed so the
+  // status hint can read e.g. "Password, face, or fingerprint". Set by the
+  // quickshell HM module (flake-modules/quickshell.nix) from the host's
+  // biometrics.enable signal.
+  readonly property bool faceAvailable:        Quickshell.env("QUICKSHELL_LOCK_FACE")        !== ""
+  readonly property bool fingerprintAvailable: Quickshell.env("QUICKSHELL_LOCK_FINGERPRINT") !== ""
+  // Master gate for the biometric PamContext. False on hosts that don't
+  // import flake-modules/biometrics.nix — in that case the
+  // quickshell-biometric PAM service doesn't exist and starting the
+  // PamContext would log a "no such service" error every 3 s as the
+  // restart timer re-fires.
+  readonly property bool biometricsAvailable:  faceAvailable || fingerprintAvailable
 
   // Aggregated state for LockScreen.qml hints.
   readonly property bool pamActive:           pamPassword.active || pamBiometric.active
@@ -35,19 +57,14 @@ Scope {
   readonly property bool pamMessageIsError: pamPassword.messageIsError
                                          || pamBiometric.messageIsError
 
-  // Which biometric methods are available on this host? Exposed so the
-  // status hint can read e.g. "Password, face, or fingerprint". Set by the
-  // quickshell module from variables.biometrics.enable; see
-  // modules/home/desktop/quickshell/default.nix.
-  readonly property bool faceAvailable:        Quickshell.env("QUICKSHELL_LOCK_FACE")        !== ""
-  readonly property bool fingerprintAvailable: Quickshell.env("QUICKSHELL_LOCK_FINGERPRINT") !== ""
-
   // Start (or restart) both PAM stacks. Called on lock and after a failure.
+  // The biometric stack is only kicked off on hosts that have it; non-
+  // biometric hosts run password-only.
   function startAuth() {
     root.currentText = "";
     root.showFailure = false;
     if (!pamPassword.active)  pamPassword.start();
-    if (!pamBiometric.active) pamBiometric.start();
+    if (biometricsAvailable && !pamBiometric.active) pamBiometric.start();
   }
 
   // Submit the typed password to the password PamContext. Biometric stack
@@ -71,7 +88,8 @@ Scope {
   onCurrentTextChanged: showFailure = false
 
   // ── Password stack ────────────────────────────────────────────────────────
-  // PAM service: quickshell-password (pam_unix + pam_gnome_keyring).
+  // PAM service: quickshell-password (pam_unix + pam_gnome_keyring), defined
+  // in flake-modules/quickshell.nix.
   PamContext {
     id: pamPassword
     config: "quickshell-password"
@@ -93,8 +111,11 @@ Scope {
   }
 
   // ── Biometric stack ───────────────────────────────────────────────────────
-  // PAM service: quickshell-biometric (pam_howdy → pam_fprintd → pam_deny).
-  // Never sets responseRequired — runs entirely on its own.
+  // PAM service: quickshell-biometric (pam_howdy → pam_fprintd → pam_deny),
+  // defined in flake-modules/biometrics.nix. Only started when
+  // biometricsAvailable is true; on non-biometric hosts the PamContext is
+  // declared but never `start()`ed, so it never references the missing
+  // PAM service. Never sets responseRequired — runs entirely on its own.
   PamContext {
     id: pamBiometric
     config: "quickshell-biometric"
@@ -122,10 +143,11 @@ Scope {
 
   // Biometric restart cadence: long enough that a failed face scan doesn't
   // spin the IR camera at 100% duty cycle, short enough that the user
-  // doesn't have to wait noticeably between attempts.
+  // doesn't have to wait noticeably between attempts. Gated on
+  // biometricsAvailable so we don't restart a non-existent PAM service.
   Timer {
     id: biometricRestartTimer
     interval: 3000
-    onTriggered: if (!pamBiometric.active) pamBiometric.start()
+    onTriggered: if (root.biometricsAvailable && !pamBiometric.active) pamBiometric.start()
   }
 }

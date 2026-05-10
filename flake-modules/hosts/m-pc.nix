@@ -249,6 +249,17 @@ in
         config.flake.modules.nixos.file-manager
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
+        # Quickshell system-side wiring: security.pam.services.
+        # quickshell-password. m-pc deliberately does NOT import the
+        # biometrics module (no fingerprint reader, no IR camera) but
+        # still runs the lockscreen — it needs the password PAM
+        # service. The companion biometric PAM service lives in
+        # biometrics.nix and is intentionally absent here;
+        # LockContext.qml gates its biometric PamContext on
+        # QUICKSHELL_LOCK_FACE / QUICKSHELL_LOCK_FINGERPRINT (set
+        # from biometrics.enable, which stays false here) so the
+        # missing service is never referenced.
+        config.flake.modules.nixos.quickshell
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
         # Auto-bootstraps each user's HM profile on first boot. One
