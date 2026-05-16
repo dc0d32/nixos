@@ -1,7 +1,8 @@
 // Ink driver. Walks the STEPS array, accumulates Answers, renders a
-// final summary, and exits with the chosen Answers + proceed flag via
-// the onDone callback. Each render shows a small banner, prior
-// answers as a breadcrumb, and the current prompt.
+// wizard-style layout (banner / step sidebar / active prompt /
+// keymap footer), and exits with the chosen Answers + proceed flag
+// via the onDone callback. Esc rewinds one step (with gated steps
+// skipped). Ctrl-C aborts.
 import React, { useEffect, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
@@ -11,7 +12,7 @@ import { listDisks } from "./lsblk.js";
 import { AVAILABLE_FEATURES } from "./features.js";
 
 const BANNER =
-  "egghead — opinionated NixOS installer wizard (TUI, Ctrl-C to abort)";
+  "egghead — opinionated NixOS installer wizard";
 
 interface AppProps {
   onDone: (result: { answers: Answers; proceed: boolean }) => void;
@@ -19,19 +20,38 @@ interface AppProps {
 
 type Phase = "step" | "summary";
 
+// Walk backward (or forward) through STEPS, skipping gated-out
+// entries given the current answers. Returns the first index in the
+// requested direction whose shouldRun passes, or -1 / STEPS.length
+// if there is none.
+function findStep(
+  from: number,
+  dir: 1 | -1,
+  answers: Partial<Answers>,
+): number {
+  let i = from;
+  while (i >= 0 && i < STEPS.length) {
+    const s = STEPS[i]!;
+    if (!s.shouldRun || s.shouldRun(answers)) return i;
+    i += dir;
+  }
+  return i;
+}
+
 export const App: React.FC<AppProps> = ({ onDone }) => {
   const { exit } = useApp();
   const [answers, setAnswers] = useState<Partial<Answers>>({});
   const [stepIdx, setStepIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>("step");
   const [error, setError] = useState<string | undefined>();
+  // Bumps every time we (re)mount StepInput. Going back to the same
+  // step needs to remount so the inner useState(defaultValue) picks
+  // up the previously-entered answer.
+  const [mountTick, setMountTick] = useState(0);
 
-  // Skip steps whose shouldRun() returns false given prior answers.
-  // We advance lazily inside the render path; here we just compute the
-  // active step index based on `stepIdx` and what's been answered.
   const activeStep: StepDef | undefined = STEPS[stepIdx];
 
-  // If activeStep is gated out, auto-skip without rendering.
+  // If activeStep is gated out, auto-skip forward.
   useEffect(() => {
     if (phase !== "step") return;
     if (!activeStep) {
@@ -57,25 +77,49 @@ export const App: React.FC<AppProps> = ({ onDone }) => {
     const next: Partial<Answers> = { ...answers, [activeStep.key]: v };
     setAnswers(normalizeAnswers(next));
     setStepIdx((i) => i + 1);
+    setMountTick((t) => t + 1);
   };
 
-  // Ctrl-C aborts cleanly with exit code 1.
+  // Esc rewinds; Ctrl-C aborts. From the summary, Esc returns to the
+  // last non-gated step.
   useInput((input, key) => {
-    if (key.escape || (key.ctrl && input === "c")) {
+    if (key.ctrl && input === "c") {
       exit();
       onDone({ answers: answers as Answers, proceed: false });
+      return;
+    }
+    if (!key.escape) return;
+    if (phase === "summary") {
+      const prev = findStep(STEPS.length - 1, -1, answers);
+      if (prev >= 0) {
+        setPhase("step");
+        setStepIdx(prev);
+        setError(undefined);
+        setMountTick((t) => t + 1);
+      }
+      return;
+    }
+    const prev = findStep(stepIdx - 1, -1, answers);
+    if (prev >= 0) {
+      setStepIdx(prev);
+      setError(undefined);
+      setMountTick((t) => t + 1);
     }
   });
 
   if (phase === "summary") {
     return (
-      <SummaryScreen
-        answers={answers as Answers}
-        onConfirm={(proceed) => {
-          exit();
-          onDone({ answers: answers as Answers, proceed });
-        }}
-      />
+      <Box flexDirection="column">
+        <Header />
+        <SummaryScreen
+          answers={answers as Answers}
+          onConfirm={(proceed) => {
+            exit();
+            onDone({ answers: answers as Answers, proceed });
+          }}
+        />
+        <Footer hint="Esc: back · Enter: confirm · Ctrl-C: quit" />
+      </Box>
     );
   }
 
@@ -84,24 +128,27 @@ export const App: React.FC<AppProps> = ({ onDone }) => {
   return (
     <Box flexDirection="column">
       <Header />
-      <Breadcrumb answers={answers} />
-      <Box marginTop={1} flexDirection="column">
-        <Text>
+      <Box flexDirection="row">
+        <Sidebar activeIdx={stepIdx} answers={answers} />
+        <Box flexDirection="column" flexGrow={1} paddingX={1}>
           <Text color="cyan" bold>
             {activeStep.prompt}
           </Text>
           {activeStep.help ? (
-            <Text color="gray">  ({activeStep.help})</Text>
+            <Text color="gray">{activeStep.help}</Text>
           ) : null}
-        </Text>
-        <StepInput
-          key={activeStep.key}
-          step={activeStep}
-          answers={answers}
-          onSubmit={submit}
-        />
-        {error ? <Text color="red">  ✘ {error}</Text> : null}
+          <Box marginTop={1}>
+            <StepInput
+              key={`${activeStep.key}:${mountTick}`}
+              step={activeStep}
+              answers={answers}
+              onSubmit={submit}
+            />
+          </Box>
+          {error ? <Text color="red">  ✘ {error}</Text> : null}
+        </Box>
       </Box>
+      <Footer hint="Esc: back · Enter: next · Ctrl-C: quit" />
     </Box>
   );
 };
@@ -112,16 +159,46 @@ const Header: React.FC = () => (
   </Box>
 );
 
-const Breadcrumb: React.FC<{ answers: Partial<Answers> }> = ({ answers }) => {
-  const entries = Object.entries(answers);
-  if (entries.length === 0) return null;
+const Footer: React.FC<{ hint: string }> = ({ hint }) => (
+  <Box marginTop={1}>
+    <Text color="gray">{hint}</Text>
+  </Box>
+);
+
+function truncate(s: string, n: number): string {
+  if (s === "") return "(empty)";
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+const Sidebar: React.FC<{
+  activeIdx: number;
+  answers: Partial<Answers>;
+}> = ({ activeIdx, answers }) => {
   return (
-    <Box flexDirection="column">
-      {entries.map(([k, v]) => (
-        <Text key={k} color="gray">
-          ✓ {k} = {v === "" ? "(empty)" : v}
-        </Text>
-      ))}
+    <Box
+      flexDirection="column"
+      width={36}
+      borderStyle="round"
+      borderColor="gray"
+      paddingX={1}
+    >
+      <Text bold color="cyan">steps</Text>
+      {STEPS.map((s, i) => {
+        const gated = s.shouldRun ? !s.shouldRun(answers) : false;
+        const val = (answers as Record<string, string | undefined>)[s.key];
+        const answered = val !== undefined;
+        if (gated && !answered) return null;
+        const isActive = i === activeIdx;
+        const prefix = isActive ? "▸" : answered ? "✓" : "·";
+        const color = isActive ? "yellow" : answered ? "green" : "gray";
+        const shown = answered ? `: ${truncate(val!, 18)}` : "";
+        return (
+          <Text key={s.key} color={color} bold={isActive}>
+            {prefix} {s.key}
+            {shown}
+          </Text>
+        );
+      })}
     </Box>
   );
 };
@@ -133,7 +210,8 @@ interface StepInputProps {
 }
 
 const StepInput: React.FC<StepInputProps> = ({ step, answers, onSubmit }) => {
-  const defaultValue = step.defaultFrom(answers);
+  const prior = (answers as Record<string, string | undefined>)[step.key];
+  const defaultValue = prior !== undefined ? prior : step.defaultFrom(answers);
 
   if (step.kind === "text") {
     if (step.key === "DISK") {
@@ -281,7 +359,6 @@ const SummaryScreen: React.FC<{
 }> = ({ answers, onConfirm }) => {
   return (
     <Box flexDirection="column">
-      <Header />
       <Text color="cyan" bold>═══ Summary ═══</Text>
       {Object.entries(answers).map(([k, v]) => (
         <Text key={k}>
