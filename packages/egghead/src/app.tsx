@@ -8,6 +8,7 @@ import TextInput from "ink-text-input";
 import SelectInput from "ink-select-input";
 import { Answers, STEPS, normalizeAnswers, StepDef } from "./steps.js";
 import { listDisks } from "./lsblk.js";
+import { AVAILABLE_FEATURES } from "./features.js";
 
 const BANNER =
   "egghead — opinionated NixOS installer wizard (TUI, Ctrl-C to abort)";
@@ -157,6 +158,10 @@ const StepInput: React.FC<StepInputProps> = ({ step, answers, onSubmit }) => {
     );
   }
 
+  if (step.kind === "multi") {
+    return <MultiSelectStep step={step} defaultValue={defaultValue} onSubmit={onSubmit} />;
+  }
+
   // yesno
   const items = [
     { label: "yes", value: "yes" },
@@ -169,6 +174,64 @@ const StepInput: React.FC<StepInputProps> = ({ step, answers, onSubmit }) => {
       initialIndex={initialIndex}
       onSelect={(item) => onSubmit(String(item.value))}
     />
+  );
+};
+
+// Multi-select with checkboxes. Default pre-checks anything in the
+// step's defaultValue (space-separated). Arrow keys / j-k navigate,
+// space toggles, enter confirms. Submits a space-separated string
+// of the picked feature keys.
+const MultiSelectStep: React.FC<{
+  step: StepDef;
+  defaultValue: string;
+  onSubmit: (value: string) => void;
+}> = ({ step, defaultValue, onSubmit }) => {
+  const choices = step.choices ?? AVAILABLE_FEATURES.map((f) => f.key);
+  const descriptionByKey = new Map(
+    AVAILABLE_FEATURES.map((f) => [f.key, f.description]),
+  );
+  const defaultSet = new Set(defaultValue.split(/\s+/).filter(Boolean));
+
+  const [selected, setSelected] = useState<Set<string>>(defaultSet);
+  const [cursor, setCursor] = useState(0);
+
+  useInput((input, key) => {
+    if (key.upArrow || input === "k") {
+      setCursor((c) => (c - 1 + choices.length) % choices.length);
+    } else if (key.downArrow || input === "j") {
+      setCursor((c) => (c + 1) % choices.length);
+    } else if (input === " ") {
+      const k = choices[cursor]!;
+      setSelected((s) => {
+        const next = new Set(s);
+        if (next.has(k)) next.delete(k);
+        else next.add(k);
+        return next;
+      });
+    } else if (key.return) {
+      onSubmit(choices.filter((c) => selected.has(c)).join(" "));
+    }
+  });
+
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">
+        {"  "}↑/↓ or j/k to move · space to toggle · enter to confirm
+      </Text>
+      <Box flexDirection="column" marginTop={1}>
+        {choices.map((c, i) => {
+          const checked = selected.has(c);
+          const isCursor = i === cursor;
+          const desc = descriptionByKey.get(c);
+          return (
+            <Text key={c} color={isCursor ? "cyan" : undefined}>
+              {isCursor ? "›" : " "} [{checked ? "x" : " "}] {c}
+              {desc ? <Text color="gray">  — {desc}</Text> : null}
+            </Text>
+          );
+        })}
+      </Box>
+    </Box>
   );
 };
 

@@ -32,7 +32,7 @@ export interface Answers {
   UNATTENDED: string;
 }
 
-export type StepKind = "text" | "choice" | "yesno";
+export type StepKind = "text" | "choice" | "yesno" | "multi";
 
 export interface StepDef {
   key: keyof Answers;
@@ -118,8 +118,9 @@ export const STEPS: StepDef[] = [
   },
   {
     key: "FEATURES",
-    kind: "text",
-    prompt: "feature toggles (space-separated)",
+    kind: "multi",
+    prompt: "feature toggles",
+    help: "checkboxes; pre-checked from the role's defaults. Anything you toggle here flows into the bridge's imports list.",
     defaultFrom: (p) => envOr("FEATURES", role(p)?.features ?? ""),
   },
   {
