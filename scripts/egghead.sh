@@ -307,7 +307,12 @@ do_clone() {
     fi
 
     echo ">> cloning $EGGHEAD_FLAKE_URL (ref $EGGHEAD_FLAKE_REF) into $WORKDIR …"
-    git clone --branch "$EGGHEAD_FLAKE_REF" "$EGGHEAD_FLAKE_URL" "$WORKDIR"
+    # Use plain `clone` + `checkout` instead of `clone --branch <ref>`
+    # because --branch only accepts branch / tag names; the wizard's
+    # default ref is the SHA the wizard was built from (so it matches
+    # the wizard's source exactly), which --branch would reject.
+    git clone "$EGGHEAD_FLAKE_URL" "$WORKDIR"
+    git -C "$WORKDIR" checkout --detach "$EGGHEAD_FLAKE_REF"
 }
 
 # ─── bridge file generator ─────────────────────────────────────
@@ -653,6 +658,11 @@ main() {
   until host-setup.sh's own YES prompt.
 
 EOF
+
+    echo "  flake source: $EGGHEAD_FLAKE_URL"
+    echo "  flake ref:    $EGGHEAD_FLAKE_REF"
+    echo "  workdir:      $WORKDIR"
+    echo
 
     do_clone
 

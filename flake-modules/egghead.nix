@@ -61,7 +61,28 @@
         # SC2317: trap-set cleanup functions look unreachable to
         # shellcheck. SC2155: `local x=$(…)` is intentional throughout.
         excludeShellChecks = [ "SC2034" "SC2153" "SC2317" "SC2155" ];
-        text = builtins.readFile ../scripts/egghead.sh;
+        # Bake the source revision the wizard was built from into the
+        # default EGGHEAD_FLAKE_REF. Without this, the wizard built
+        # from a feature branch would still `git clone --branch main`,
+        # producing a checkout whose host-setup.sh predates whatever
+        # flags the wizard tries to hand off. `inputs.self.rev` is
+        # populated when the flake comes from a github fetch (i.e. how
+        # SL3 launches it via `nix run github:…`); `dirtyRev` covers
+        # local-tree builds. Fall back to "main" for the extreme edge
+        # case where neither is set.
+        text =
+          let
+            # Only use a clean revision; dirty local-tree builds
+            # produce "<sha>-dirty" which isn't a valid git ref. Local
+            # dev hits this branch and keeps the historical "main"
+            # default, which is fine because local dev typically uses
+            # --no-clone / --workdir to point at the live tree.
+            sourceRev = inputs.self.rev or "main";
+          in
+          builtins.replaceStrings
+            [ "EGGHEAD_FLAKE_REF:=main" ]
+            [ "EGGHEAD_FLAKE_REF:=${sourceRev}" ]
+            (builtins.readFile ../scripts/egghead.sh);
       };
 
       # In-store path to the bash entry point. The TUI wrapper sets
