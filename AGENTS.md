@@ -172,14 +172,53 @@ audio.easyeffects = {
 
 ## Adding a new host
 
-There is no scaffolder. To add a host:
+Two paths:
+
+**Wizard (preferred for fresh hosts) — `egghead`:** boot the
+official NixOS installer ISO and run
+
+```sh
+nix run github:dc0d32/nixos#egghead
+```
+
+The wizard asks for hostname, role (`bare-metal-laptop` /
+`bare-metal-desktop` / `vm-headless` / `vm-desktop`), target disk,
+users (with HM profiles), feature toggles (presets driven by role),
+locale, and timezone. It writes `flake-modules/hosts/<name>.nix` +
+`hosts/<name>/hardware-configuration.nix` into a fresh checkout,
+commits, and execs `scripts/host-setup.sh --install <name>
+--no-regen-hwconfig`. First-boot `egghead-amend.service` reruns
+`nixos-generate-config` against the installed kernel and commits
+any divergence in the primary user's `~/nixos` clone.
+
+Non-interactive use (tests / golden masters): every prompt is
+backed by an `EGGHEAD_<NAME>` env var; pass `--non-interactive`
+to fail-fast instead of prompting. See `nix run .#egghead -- --help`.
+
+**Hand-rolled (advanced):**
 
 1. Create `flake-modules/hosts/<name>.nix` modeled after `pb-x1.nix`
-   (full desktop) or `wsl.nix` (headless / multi-config).
+   (full desktop) or `wsl.nix` (headless / multi-config). Include
+   the disko block by importing `config.flake.modules.nixos.disko`
+   and the matching layout factory call from
+   `config.flake.lib.diskoLayouts.{bare-metal,vm}` with the target
+   disk path. Bare-metal hosts use `bare-metal` (hybrid BIOS+UEFI,
+   btrfs subvols); Proxmox/NFS-backed VMs use `vm` (UEFI-only, ext4,
+   no swap, no subvols).
 2. Generate `hosts/<name>/hardware-configuration.nix` via
-   `sudo nixos-generate-config --show-hardware-config`.
+   `sudo nixos-generate-config --no-filesystems --show-hardware-config`.
+   The `--no-filesystems` flag is mandatory — disko owns
+   `fileSystems.*` and `swapDevices`, and an emitted block would
+   collide. The placeholder pattern shipping with `m-pc`/`ah-1` (an
+   assertion gated on `NIXOS_ALLOW_PLACEHOLDER=1`) is the right
+   shape for unbuilt hosts.
 3. Pick which feature modules to import; set their option values.
 4. `git add` everything new and build.
+5. To install on real hardware: boot a NixOS live USB, clone this
+   flake, then `sudo ./scripts/host-setup.sh --install <name>` — it
+   builds the host's `config.system.build.diskoScript`, runs it
+   (formats + mounts /mnt), regenerates hwconfig, runs nixos-install,
+   then bootstraps each user's home-manager profile.
 
 ## Session log
 

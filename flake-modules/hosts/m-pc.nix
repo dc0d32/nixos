@@ -226,6 +226,15 @@ in
       imports = [
         ../../hosts/m-pc/hardware-configuration.nix
 
+        # Disko: declarative disk layout. Bare-metal layout includes
+        # a 1 MiB bios-boot partition so grub installs cleanly on
+        # this BIOS-era Compaq SFF (no UEFI firmware). /dev/sda is
+        # the onboard SATA SSD.
+        config.flake.modules.nixos.disko
+        (config.flake.lib.diskoLayouts.bare-metal {
+          disk = "/dev/sda";
+        })
+
         # Feature modules. Subset of pb-t480 with biometrics +
         # hardware-hacking dropped (no fingerprint/IR on this box;
         # m's robotics work happens on pb-t480, not here).

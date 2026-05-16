@@ -230,6 +230,15 @@ in
       imports = [
         ../../hosts/pb-t480/hardware-configuration.nix
 
+        # Disko: declarative disk layout. Provides config.fileSystems.*
+        # (root/nix/home/swap/.snapshots subvols, /boot ESP) from the
+        # shared bare-metal layout factory. /dev/nvme0n1 — single
+        # onboard NVMe on this T480.
+        config.flake.modules.nixos.disko
+        (config.flake.lib.diskoLayouts.bare-metal {
+          disk = "/dev/nvme0n1";
+        })
+
         # Hardware-specific defaults from nixos-hardware (kernel
         # modules, firmware, T480 quirks). Pulls in things like
         # thinkpad_acpi, microcode, sane TLP-vs-PPD defaults, etc.

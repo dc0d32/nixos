@@ -104,16 +104,68 @@ and (2) the condition under which it can be deleted.
 
 ## Adding a new host
 
-There is no scaffolder. To add a host:
+Two paths:
+
+**Hand-rolled (advanced):** create `flake-modules/hosts/<name>.nix`
+modeled after `pb-x1.nix` (full desktop laptop) or `wsl.nix` (headless
+/ WSL). See "Adding a hand-rolled host" below.
+
+**Wizard (`egghead`):** from the official NixOS installer ISO, run
+
+```sh
+nix run github:dc0d32/nixos#egghead
+```
+
+and answer prompts for hostname, role template
+(`bare-metal-laptop` / `bare-metal-desktop` / `vm-headless` /
+`vm-desktop`), target disk, users, feature toggles, and locale.
+The wizard writes `flake-modules/hosts/<name>.nix` +
+`hosts/<name>/hardware-configuration.nix` into a fresh checkout of
+the flake, commits them, then hands off to `scripts/host-setup.sh
+--install`. On first boot, a one-shot `egghead-amend.service`
+re-runs `nixos-generate-config` against the installed kernel and
+commits any divergence in the primary user's `~/nixos` clone.
+
+For non-interactive runs (tests, golden-master) every prompt is
+also accepted from a matching `EGGHEAD_<NAME>` env var; pass
+`--non-interactive` to fail-fast instead of prompting. See
+`nix run .#egghead -- --help` for the full surface.
+
+### Adding a hand-rolled host
 
 1. Create `flake-modules/hosts/<name>.nix` modeled after `pb-x1.nix`
-   (full desktop laptop) or `wsl.nix` (headless / WSL).
+   (full desktop laptop) or `wsl.nix` (headless / WSL). For physical
+   hosts and VMs, also import disko: pull in
+   `config.flake.modules.nixos.disko` plus one of
+   `config.flake.lib.diskoLayouts.bare-metal` (BIOS+UEFI capable,
+   btrfs subvols + swap) or `.vm` (UEFI-only ext4, no swap; for
+   Proxmox+NFS-backed VMs to avoid 3× CoW).
 2. Generate `hosts/<name>/hardware-configuration.nix` via
-   `sudo nixos-generate-config --show-hardware-config`.
+   `sudo nixos-generate-config --no-filesystems --show-hardware-config`.
+   `--no-filesystems` is required — disko provides `fileSystems.*`
+   and `swapDevices` already, so emitting them again would collide.
 3. Pick which feature modules to import; set their option values.
 4. Set `users.primary = "<your-user>";` inside the per-config
    `module` block (declared by `flake-modules/users.nix`).
 5. Build and switch as above.
+
+## Installing on real hardware
+
+For first-time installs onto bare metal or a fresh VM, boot a NixOS
+live USB / ISO. The fully-automated path is `egghead` (see above);
+for an existing hand-rolled host (already committed in this repo)
+clone the flake and run:
+
+```sh
+sudo ./scripts/host-setup.sh --install <hostname>
+```
+
+This builds the host's disko script
+(`config.system.build.diskoScript`), runs it to partition + format +
+mount /mnt, regenerates hardware-configuration.nix from the live
+installer kernel, runs `nixos-install`, then bootstraps each
+HM-enabled user's home-manager profile and seeds `~/nixos` from the
+canonical remote. `--help` documents every flag.
 
 ## Module conventions
 

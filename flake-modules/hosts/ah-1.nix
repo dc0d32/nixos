@@ -82,6 +82,22 @@ let
     imports = [
       ../../hosts/${name}/hardware-configuration.nix
 
+      # Disko: declarative disk layout. VM template — UEFI-only ESP +
+      # ext4 root, no swap, no btrfs subvols. /dev/vda assumes
+      # virtio-blk; if Proxmox is configured to expose the disk as
+      # /dev/sda (SATA emulation), change the `disk` argument here.
+      # ext4 (not btrfs) because Proxmox storage on this homelab is
+      # NFS-backed by TrueNAS ZFS, which already provides CoW /
+      # checksums / snapshots at the bottom of the stack — guest
+      # btrfs would mean three layers of CoW (btrfs + qcow2 + ZFS)
+      # and waste NFS round trips on metadata-CoW operations the
+      # lower stack already handles end-to-end. See
+      # flake-modules/disko.nix.
+      config.flake.modules.nixos.disko
+      (config.flake.lib.diskoLayouts.vm {
+        disk = "/dev/vda";
+      })
+
       config.flake.modules.nixos.nix-settings
       config.flake.modules.nixos.system-utils
       config.flake.modules.nixos.users

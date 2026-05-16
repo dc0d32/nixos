@@ -3,36 +3,28 @@
 #
 # Modes (exactly one per invocation, picked by flag):
 #
-#   --mount        Mount existing partitions on the given disk under
-#                  /mnt. Idempotent. This is the DEFAULT if no mode
-#                  flag is given but a disk is.
+#   --install <h>  DESTRUCTIVE: wipe target disk, apply the host's
+#                  disko layout, run nixos-install. The disk is read
+#                  from `nixosConfigurations.<h>.config.disko.devices.
+#                  disk.main.device` (defined in the host bridge via
+#                  config.flake.lib.diskoLayouts.{bare-metal,vm}). A
+#                  literal `--disk <path>` may override.
+#                    After nixos-install succeeds, --install ALSO
+#                  (unless overridden) regenerates
+#                  hardware-configuration.nix via nixos-generate-
+#                  config --no-filesystems, git-adds it, seeds ~/nixos
+#                  for every HM-enabled user via `git clone https://
+#                  github.com/dc0d32/nixos`, and chains --install-hm
+#                  so each user's home-manager profile is bootstrapped
+#                  before reboot. The primary user's clone gets the
+#                  just-regenerated hardware-configuration.nix copied
+#                  into its working tree so the first commit-and-push
+#                  on the new host is a single step.
+#                    Opt out of the chain steps with --no-regen-hwconfig
+#                  / --no-clone-sources / --no-install-hm.
 #   --unmount      Recursively unmount everything under /mnt and
-#                  remove the empty mountpoint dirs we own. Idempotent.
-#   --partition    DESTRUCTIVE: wipe disk, write GPT + ESP + btrfs,
-#                  create root/home/nix subvols. Leaves nothing
-#                  mounted (run --mount after).
-#   --install <h>  Generate hardware-config, git add it, sanity-check
-#                  via nix eval, then nixos-install --root /mnt
-#                  --flake .#<h>. Assumes /mnt is already mounted.
-#                  Then (if the host uses hibernate) provisions
-#                  /swap/swapfile, captures the real `resume_offset`,
-#                  patches it into the host bridge's
-#                  boot.kernelParams, and re-runs nixos-install so
-#                  the bootloader cmdline picks it up — no first-boot
-#                  reboot loop required.
-#                  After nixos-install succeeds, --install ALSO
-#                  (unless overridden) seeds ~/nixos for every HM-
-#                  enabled user via `git clone https://github.com/
-#                  dc0d32/nixos`, then chains --install-hm so each
-#                  user's home-manager profile is bootstrapped before
-#                  reboot. The primary user's clone gets the just-
-#                  generated hardware-configuration.nix copied into
-#                  its working tree (and the resume_offset patch, if
-#                  one was applied) so that on first boot they can
-#                  `git diff && git commit && git push` to land the
-#                  hwconfig in origin/main without re-deriving it.
-#                  Opt out of the seeding with --no-clone-sources or
-#                  the HM bootstrap with --no-install-hm.
+#                  remove the empty mountpoint dirs disko created.
+#                  Idempotent.
 #   --install-hm   Trigger the home-manager-bootstrap-*.service
 #                  units. Auto-detects context: if /mnt has an
 #                  installed system at /mnt/etc/systemd/system, runs
@@ -67,64 +59,62 @@
 #                  (e.g. for m and s on pb-t480, invoke twice).
 #
 # Why this exists:
-#   Re-entering a partially-installed system from the NixOS USB took
-#   six commands of muscle memory (mount root subvol, mkdir
-#   boot/home/nix, mount each subvol, mount ESP) plus an awkward
-#   nixos-generate-config + git add + nixos-install dance. Each step
-#   is an opportunity to silently install bootloader entries to a
-#   non-ESP /mnt/boot, leave the regenerated hwconfig untracked
-#   (flake silently uses the placeholder), or, in --partition mode,
-#   obliterate the wrong disk. Encode the layout from
-#   docs/runbooks/new-host-partitioning.md and the "git add or it
-#   doesn't count" rule from AGENTS.md into one auditable script.
+#   Disk layout is declarative (flake-modules/disko.nix) but the
+#   live-installer dance to apply it isn't: you still need to run the
+#   right disko script, wait for it to mount /mnt, then nixos-install,
+#   then HM bootstrap. Encoding the sequence here keeps "fresh
+#   install" to one command:
+#
+#     sudo ./scripts/host-setup.sh --install <host>
+#
+#   and bakes in the AGENTS.md "git add or it doesn't count" rule.
 #
 # Usage:
-#   sudo ./scripts/host-setup.sh /dev/nvme0n1 --mount        # mount (default)
-#   sudo ./scripts/host-setup.sh /dev/nvme0n1                # same as --mount
-#   sudo ./scripts/host-setup.sh --unmount                   # umount /mnt tree
-#   sudo ./scripts/host-setup.sh /dev/nvme0n1 --partition    # destructive
 #   sudo ./scripts/host-setup.sh --install pb-t480           # full install
 #   sudo ./scripts/host-setup.sh --install pb-t480 \
+#       --disk /dev/sda                                      # override disk
+#   sudo ./scripts/host-setup.sh --install pb-t480 \
 #       --no-clone-sources --no-install-hm                   # bare install
+#   sudo ./scripts/host-setup.sh --unmount                   # umount /mnt tree
 #   sudo ./scripts/host-setup.sh --install-hm                # bootstrap HM
 #   ./scripts/host-setup.sh --audio-discover                 # print autoload
 #   sudo ./scripts/host-setup.sh --hm-switch m               # HM switch for m
 #   sudo ./scripts/host-setup.sh --help
 #
-# Layout assumed (matches docs/runbooks/new-host-partitioning.md):
-#   p1: 1 GiB vfat ESP                    → /mnt/boot
-#   p2: btrfs filesystem, three subvols:
-#        subvol=root  → /mnt
-#        subvol=home  → /mnt/home
-#        subvol=nix   → /mnt/nix
-#
-# Disk naming:
-#   - NVMe disks: /dev/nvme0n1 → partitions /dev/nvme0n1p1, p2
-#   - SATA/SCSI:  /dev/sda     → partitions /dev/sda1, sda2
-#   - virtio:     /dev/vda     → partitions /dev/vda1, vda2
-#   The script auto-detects which suffix style applies via the
-#   `[0-9]$` test on the disk name (NVMe ends in a digit → needs `p`).
+# Disk layout:
+#   Defined declaratively by flake-modules/disko.nix and instantiated
+#   per host in flake-modules/hosts/<host>.nix via
+#   config.flake.lib.diskoLayouts.bare-metal / .vm. See those files
+#   for the actual partition + subvol layout. This script does not
+#   encode partition geometry.
 #
 # Safety:
 #   - Refuses to run as non-root (mount/mkfs/wipefs/nixos-install need it).
-#   - --partition demands the literal word YES (uppercase) at an
+#   - --install demands the literal word YES (uppercase) at an
 #     interactive prompt and echoes the disk identity (model/size/
-#     serial via lsblk) first.
-#   - --install also demands YES, after showing the diff against the
-#     committed hardware-config and the resolved root device that
-#     Nix will install (via `nix eval --refresh`). Aborting at the
-#     prompt cleanly reverts the staged hwconfig and removes the
-#     backup file — no leftover state.
-#   - --mount is idempotent: if a target is already correctly
-#     mounted, it skips; if mounted to something else, it errors out
-#     instead of clobbering. Hard-errors if ESP partition isn't vfat
-#     (the failure mode that bricked previous installs by writing
-#     systemd-boot entries onto btrfs root).
-#   - --unmount only removes the four directories we manage
-#     (/mnt/boot, /mnt/home, /mnt/nix, /mnt) and only if empty.
+#     serial via lsblk) first. The disko script itself is destructive
+#     and wipes the partition table — there is no recovery once YES
+#     is typed.
+#   - --unmount only walks /mnt and below; it does not touch anything
+#     outside that subtree.
 #
-# Retire when: you replace this with a disko-based declarative
-#   partitioning module and ditch manual mount sequences entirely.
+# Hibernate-resume first-boot caveat:
+#   battery.nix's swapfile is created on first boot (via the
+#   mkswap-swap-swapfile.service unit NixOS generates from
+#   swapDevices). The kernel cmdline ships `resume_offset=0` until
+#   the first post-install rebuild, so the very first hibernate-
+#   resume attempt after a fresh install will silently fail and the
+#   kernel will boot fresh. The battery-resume-offset.service unit
+#   prints the right value in dmesg; copy it into the host bridge's
+#   `boot.kernelParams` override, `nixos-rebuild switch`, reboot, and
+#   hibernate-resume works from then on. This is a one-time per-host
+#   wart; not worth automating.
+#
+# Retire when: disko publishes a turnkey installer for this exact
+#   "disko + nixos-install + per-user HM bootstrap + clone seeding"
+#   workflow upstream, OR you build a NixOS image (nixos-anywhere /
+#   nixos-generators) that bakes the install logic into the installer
+#   ISO itself.
 # === END HELP ===
 
 set -Eeuo pipefail
@@ -133,13 +123,14 @@ set -Eeuo pipefail
 DISK=""
 HOSTNAME=""
 TARGET_USER=""
-MODE=""        # one of: mount | unmount | partition | install | install-hm | audio-discover | hm-switch
+MODE=""        # one of: unmount | install | install-hm | audio-discover | hm-switch
 SHOW_HELP=0
 
-# Post-install chained steps. Both default ON; opt out per invocation.
+# Post-install chained steps. All default ON; opt out per invocation.
 # Only consulted by --install mode; ignored by other modes.
 INSTALL_HM_AUTO=1     # toggled by --no-install-hm
 CLONE_SOURCES=1       # toggled by --no-clone-sources
+REGEN_HWCONFIG=1      # toggled by --no-regen-hwconfig
 
 # Repo URL used to seed each user's ~/nixos at install time. HTTPS so
 # the clone works without per-user SSH credentials being deployed
@@ -160,7 +151,7 @@ usage() {
 set_mode() {
     local new="$1"
     if [[ -n "$MODE" && "$MODE" != "$new" ]]; then
-        echo "error: mode flags are mutually exclusive (--mount/--unmount/--partition/--install/--install-hm/--audio-discover/--hm-switch)" >&2
+        echo "error: mode flags are mutually exclusive (--unmount/--install/--install-hm/--audio-discover/--hm-switch)" >&2
         exit 2
     fi
     MODE="$new"
@@ -172,16 +163,8 @@ while [[ $# -gt 0 ]]; do
             SHOW_HELP=1
             shift
             ;;
-        --mount)
-            set_mode mount
-            shift
-            ;;
         --unmount|--umount)
             set_mode unmount
-            shift
-            ;;
-        --partition)
-            set_mode partition
             shift
             ;;
         --install)
@@ -192,6 +175,15 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             HOSTNAME="$1"
+            shift
+            ;;
+        --disk)
+            shift
+            if [[ $# -eq 0 || "$1" =~ ^- ]]; then
+                echo "error: --disk requires a device path argument" >&2
+                exit 2
+            fi
+            DISK="$1"
             shift
             ;;
         --install-hm)
@@ -208,6 +200,12 @@ while [[ $# -gt 0 ]]; do
             # Opt out of seeding ~/nixos for each user in --install
             # mode. Has no effect on other modes.
             CLONE_SOURCES=0
+            shift
+            ;;
+        --no-regen-hwconfig)
+            # Opt out of regenerating hardware-configuration.nix
+            # post-install. Has no effect on other modes.
+            REGEN_HWCONFIG=0
             shift
             ;;
         --audio-discover)
@@ -233,13 +231,9 @@ while [[ $# -gt 0 ]]; do
             exit 2
             ;;
         *)
-            if [[ -z "$DISK" ]]; then
-                DISK="$1"
-                shift
-            else
-                echo "error: unexpected positional arg: $1" >&2
-                exit 2
-            fi
+            echo "error: unexpected positional arg: $1" >&2
+            echo "       (use --disk <path> to override the host's disko-declared disk)" >&2
+            exit 2
             ;;
     esac
 done
@@ -249,60 +243,37 @@ if (( SHOW_HELP )); then
     exit 0
 fi
 
-# Default mode: if a disk was given but no flag, assume --mount.
 if [[ -z "$MODE" ]]; then
-    if [[ -n "$DISK" ]]; then
-        MODE="mount"
-    else
-        echo "error: no mode and no disk given." >&2
-        echo "       see: $0 --help" >&2
-        exit 2
-    fi
+    echo "error: no mode given." >&2
+    echo "       see: $0 --help" >&2
+    exit 2
 fi
 
 # Mode-specific arg validation.
 case "$MODE" in
-    mount|partition)
-        if [[ -z "$DISK" ]]; then
-            echo "error: --$MODE requires a disk argument" >&2
-            echo "usage: $0 <disk> --$MODE" >&2
-            exit 2
-        fi
+    install)
+        # --disk is optional (default comes from disko spec)
         ;;
-    unmount|install|install-hm|audio-discover|hm-switch)
+    unmount|install-hm|audio-discover|hm-switch)
         if [[ -n "$DISK" ]]; then
-            echo "error: --$MODE does not take a disk argument" >&2
+            echo "error: --$MODE does not take --disk" >&2
             exit 2
         fi
         ;;
 esac
 
 # ── preconditions ─────────────────────────────────────────────────
-if [[ "$EUID" -ne 0 ]]; then
-    echo "error: must run as root (need mount / mkfs / wipefs / nixos-install)" >&2
+# audio-discover is read-only; everything else mutates root-owned state.
+if [[ "$MODE" != "audio-discover" && "$EUID" -ne 0 ]]; then
+    echo "error: --$MODE must run as root (need mount / nix store / nixos-install)" >&2
     exit 2
 fi
 
-# Disk-related setup is only needed for mount/partition modes.
-P1=""
-P2=""
-if [[ "$MODE" == "mount" || "$MODE" == "partition" ]]; then
-    if [[ ! -b "$DISK" ]]; then
-        echo "error: $DISK is not a block device" >&2
-        exit 2
-    fi
-    # Resolve partition suffix style. NVMe / mmcblk style ends in a
-    # digit and uses pN; sd/vd/hd style appends N directly.
-    case "$DISK" in
-        *[0-9]) PSEP="p" ;;
-        *)      PSEP=""  ;;
-    esac
-    P1="${DISK}${PSEP}1"
-    P2="${DISK}${PSEP}2"
-fi
-
-# Required tools. lsblk + mount + umount + mkdir + mountpoint are
-# coreutils/util-linux core; the rest depend on mode.
+# Required tools. lsblk + mount + umount + findmnt are coreutils/util-
+# linux core; the rest depend on mode. Partition geometry tooling
+# (wipefs/sgdisk/parted/mkfs.*) is no longer needed in this script —
+# the disko-generated script in `config.system.build.diskoScript`
+# pulls those in from the nix store at runtime.
 require_tool() {
     if ! command -v "$1" >/dev/null 2>&1; then
         echo "error: required tool not found: $1" >&2
@@ -310,30 +281,21 @@ require_tool() {
     fi
 }
 require_tool lsblk
-require_tool mount
-require_tool umount
 require_tool findmnt
 
 case "$MODE" in
-    mount)
-        require_tool blkid
-        ;;
-    partition)
-        require_tool blkid
-        require_tool wipefs
-        require_tool sgdisk
-        require_tool parted
-        require_tool mkfs.fat
-        require_tool mkfs.btrfs
-        require_tool btrfs
+    unmount)
+        require_tool mount
+        require_tool umount
         ;;
     install)
-        require_tool blkid
+        require_tool mount
+        require_tool umount
         require_tool git
         require_tool nix
-        require_tool nixos-generate-config
         require_tool nixos-install
-        require_tool diff
+        # nixos-generate-config is invoked only when REGEN_HWCONFIG=1;
+        # check there rather than failing here.
         ;;
     install-hm)
         require_tool systemctl
@@ -387,214 +349,8 @@ show_disk() {
     echo
 }
 
-# ── helper: mount a btrfs subvol with the standard options ────────
-# Idempotent: if the target is already a mountpoint of the expected
-# device+subvol, skip; otherwise mkdir + mount.
-mount_subvol() {
-    local subvol="$1"
-    local target="$2"
-
-    mkdir -p "$target"
-
-    if mountpoint -q "$target"; then
-        local cur_src cur_subvol
-        # --nofsroot strips the "[/subvol]" annotation findmnt
-        # otherwise appends to btrfs SOURCE, so the comparison to
-        # the bare $P2 path actually works.
-        cur_src=$(findmnt --nofsroot -no SOURCE "$target")
-        cur_subvol=$(findmnt -no FSROOT "$target" | sed 's|^/||')
-        if [[ "$cur_src" == "$P2" && "$cur_subvol" == "$subvol" ]]; then
-            echo "  ok: $target already mounted ($P2 subvol=$subvol)"
-            return 0
-        fi
-        echo "error: $target is already a mountpoint, but for a different fs/subvol" >&2
-        echo "       found: $cur_src subvol=$cur_subvol" >&2
-        echo "       want:  $P2 subvol=$subvol" >&2
-        echo "       unmount it manually before re-running" >&2
-        exit 3
-    fi
-
-    mount -o "subvol=${subvol},compress=zstd,noatime" "$P2" "$target"
-    echo "  mounted: $P2 subvol=$subvol → $target"
-}
-
-# Same idempotence pattern for the ESP.
-mount_esp() {
-    local target="/mnt/boot"
-    mkdir -p "$target"
-
-    if mountpoint -q "$target"; then
-        local cur_src
-        cur_src=$(findmnt --nofsroot -no SOURCE "$target")
-        if [[ "$cur_src" == "$P1" ]]; then
-            echo "  ok: $target already mounted ($P1)"
-            return 0
-        fi
-        echo "error: $target is already mounted from $cur_src, expected $P1" >&2
-        exit 3
-    fi
-
-    mount "$P1" "$target"
-    echo "  mounted: $P1 → $target"
-}
-
-# ── --partition mode: destructive bringup ─────────────────────────
-do_partition() {
-    show_disk
-
-    cat <<EOF
-*** DESTRUCTIVE OPERATION ***
-
-About to:
-  1. wipefs -a $DISK            (erase all filesystem signatures)
-  2. sgdisk --zap-all $DISK     (clear GPT + MBR)
-  3. Recreate GPT with two partitions:
-       p1:  1 GiB vfat ESP   → $P1
-       p2:  remainder, btrfs → $P2
-  4. wipefs -a $P1 $P2          (clear stale per-partition signatures)
-  5. mkfs.fat -F 32 -n BOOT $P1
-  6. mkfs.btrfs -f $P2
-  7. Create subvolumes: root, home, nix
-
-Anything currently on $DISK will be lost beyond recovery.
-
-After --partition completes, nothing is mounted. Run:
-  sudo $0 $DISK --mount       # mount the new layout under /mnt
-  sudo $0 --install <h>       # then generate hwconfig + install
-
-EOF
-
-    # Refuse if any partition on $DISK is currently mounted. Match
-    # the exact partition-naming styles we know about:
-    #   - sd*N / vd*N / hd*N      → ${DISK}<digits>
-    #   - nvme*nN / mmcblk*       → ${DISK}p<digits>
-    # Anchor with a trailing space (findmnt's column delimiter) or EOL.
-    if findmnt -rno SOURCE | grep -E "^${DISK}p?[0-9]+( |$)" >/dev/null 2>&1; then
-        echo "error: partitions on $DISK are currently mounted:" >&2
-        findmnt -o SOURCE,TARGET,FSTYPE | grep -E "^${DISK}p?[0-9]+ " >&2 || true
-        echo "       run: sudo $0 --unmount   to release /mnt first" >&2
-        exit 3
-    fi
-
-    read -r -p "Type YES (uppercase) to proceed, anything else to abort: " confirm
-    if [[ "$confirm" != "YES" ]]; then
-        echo "aborted." >&2
-        exit 1
-    fi
-
-    echo
-    echo ">> wiping filesystem signatures on $DISK…"
-    wipefs -a "$DISK"
-
-    echo ">> zapping GPT + MBR…"
-    sgdisk --zap-all "$DISK"
-
-    echo ">> creating partitions…"
-    parted -s "$DISK" -- mklabel gpt
-    parted -s "$DISK" -- mkpart ESP fat32 1MiB 1025MiB
-    parted -s "$DISK" -- set 1 esp on
-    parted -s "$DISK" -- mkpart primary btrfs 1025MiB 100%
-
-    # Give udev a moment to materialise the partition device nodes,
-    # otherwise mkfs may race and fail with "no such device".
-    udevadm settle || sleep 1
-
-    echo ">> wiping per-partition signatures on $P1, $P2…"
-    wipefs -a "$P1" "$P2"
-
-    echo ">> formatting ESP ($P1)…"
-    mkfs.fat -F 32 -n BOOT "$P1"
-
-    echo ">> formatting btrfs ($P2)…"
-    mkfs.btrfs -f "$P2"
-
-    echo ">> creating subvolumes…"
-    local tmp
-    tmp=$(mktemp -d)
-    # Guarantee cleanup of the temp mountpoint even on error mid-way.
-    # shellcheck disable=SC2064
-    trap "umount '$tmp' 2>/dev/null || true; rmdir '$tmp' 2>/dev/null || true" EXIT
-    mount "$P2" "$tmp"
-    btrfs subvolume create "$tmp/root"
-    btrfs subvolume create "$tmp/home"
-    btrfs subvolume create "$tmp/nix"
-    umount "$tmp"
-    rmdir "$tmp"
-    trap - EXIT
-
-    # Done. Deliberately do NOT mount anything here — keep modes
-    # tightly scoped (partition does setup only; mount is a separate
-    # step). The user runs `host-setup.sh <disk> --mount` next.
-    echo
-    echo ">> partition + format + subvols complete on $DISK."
-    echo "next steps:"
-    echo "  sudo $0 $DISK --mount        # mount the new layout under /mnt"
-    echo "  sudo $0 --install <host>     # then generate hwconfig + install"
-}
-
-# ── --mount mode: mount existing partitions under /mnt ────────────
-do_mount() {
-    show_disk
-
-    # Fail fast if expected partitions don't exist.
-    if [[ ! -b "$P1" ]]; then
-        echo "error: ESP partition $P1 not found" >&2
-        exit 3
-    fi
-    if [[ ! -b "$P2" ]]; then
-        echo "error: btrfs partition $P2 not found" >&2
-        exit 3
-    fi
-
-    # Sanity: $P1 should be vfat, $P2 should be btrfs. blkid prints
-    # nothing (and exits 2) if there's no recognised signature.
-    # ESP fstype is a HARD error: if it's not vfat, systemd-boot
-    # would write loader entries onto the wrong filesystem and the
-    # firmware will boot nothing. This is the bug that bricked the
-    # previous t480 install attempts.
-    local p1_fs p2_fs
-    p1_fs=$(blkid -o value -s TYPE "$P1" 2>/dev/null || true)
-    p2_fs=$(blkid -o value -s TYPE "$P2" 2>/dev/null || true)
-    if [[ "$p1_fs" != "vfat" ]]; then
-        echo "error: $P1 fstype is '$p1_fs' (expected vfat)." >&2
-        echo "       systemd-boot would install entries to the wrong filesystem." >&2
-        echo "       run with --partition to format from scratch." >&2
-        exit 3
-    fi
-    if [[ "$p2_fs" != "btrfs" ]]; then
-        echo "error: $P2 fstype is '$p2_fs' (expected btrfs)." >&2
-        echo "       run with --partition to format from scratch." >&2
-        exit 3
-    fi
-
-    echo ">> mounting btrfs root subvol on /mnt…"
-    mount_subvol root /mnt
-
-    echo ">> mounting btrfs home subvol on /mnt/home…"
-    mount_subvol home /mnt/home
-
-    echo ">> mounting btrfs nix subvol on /mnt/nix…"
-    mount_subvol nix /mnt/nix
-
-    echo ">> mounting ESP on /mnt/boot…"
-    mount_esp
-
-    echo
-    echo ">> final mount state under /mnt:"
-    findmnt -R /mnt
-    echo
-    echo "ready. hardware-config UUIDs:"
-    echo "  /     $(blkid -s UUID -o value "$P2")  (btrfs, used for fileSystems and resumeDevice)"
-    echo "  /boot $(blkid -s UUID -o value "$P1")  (vfat ESP)"
-    echo
-    echo "next steps:"
-    echo "  sudo $0 --install <hostname>     # auto-generate hwconfig + nixos-install"
-    echo "  sudo $0 --unmount                # release /mnt cleanly"
-}
-
 # ── --unmount mode: release /mnt tree cleanly ─────────────────────
-# Idempotent: missing mountpoints are fine. Only removes directories
-# we manage (boot/home/nix/mnt itself), and only if empty.
+# Idempotent: missing mountpoints are fine. Only walks /mnt and below.
 do_unmount() {
     if ! mountpoint -q /mnt && [[ ! -d /mnt ]]; then
         echo "  ok: /mnt is not present, nothing to do."
@@ -608,9 +364,12 @@ do_unmount() {
         echo ">> umount -R /mnt …"
         umount -R /mnt
     else
-        # Walk submounts manually if any.
+        # Walk submounts manually if any. Covers both the bare-metal
+        # disko layout (boot/home/nix/swap/.snapshots) and the vm one
+        # (just /boot). Order matters for non-recursive umount: deepest
+        # first.
         local m
-        for m in /mnt/boot /mnt/home /mnt/nix; do
+        for m in /mnt/boot /mnt/home /mnt/nix /mnt/swap /mnt/.snapshots; do
             if mountpoint -q "$m"; then
                 echo ">> umount $m …"
                 umount "$m"
@@ -618,10 +377,10 @@ do_unmount() {
         done
     fi
 
-    # Remove empty mountpoint dirs that we created in --mount.
-    # rmdir refuses non-empty dirs, which is the desired safety.
+    # Remove empty mountpoint dirs that disko created. rmdir refuses
+    # non-empty dirs, which is the desired safety.
     local d
-    for d in /mnt/boot /mnt/home /mnt/nix; do
+    for d in /mnt/boot /mnt/home /mnt/nix /mnt/swap /mnt/.snapshots; do
         [[ -d "$d" ]] && rmdir "$d" 2>/dev/null || true
     done
     # /mnt itself: only remove if empty AND we're sure we own it
@@ -653,30 +412,7 @@ find_flake_root() {
 }
 
 do_install() {
-    # 1. /mnt sanity. Need at least / and /boot mounted.
-    if ! mountpoint -q /mnt; then
-        echo "error: /mnt is not a mountpoint." >&2
-        echo "       run: sudo $0 <disk> --mount   first." >&2
-        exit 3
-    fi
-    if ! mountpoint -q /mnt/boot; then
-        echo "error: /mnt/boot is not a mountpoint." >&2
-        echo "       run: sudo $0 <disk> --mount   first to mount the ESP." >&2
-        exit 3
-    fi
-    # The nixos-install bootloader install lands its entries on
-    # whatever /mnt/boot is. If that's not a vfat ESP, we'd be
-    # writing entries onto btrfs root and the firmware will never
-    # find them. Verify.
-    local boot_fs
-    boot_fs=$(findmnt -no FSTYPE /mnt/boot 2>/dev/null || true)
-    if [[ "$boot_fs" != "vfat" ]]; then
-        echo "error: /mnt/boot fstype is '$boot_fs', expected vfat." >&2
-        echo "       systemd-boot would install entries to the wrong place." >&2
-        exit 3
-    fi
-
-    # 2. Locate flake root.
+    # 1. Locate flake root.
     local flake_root
     if ! flake_root=$(find_flake_root); then
         echo "error: no flake.nix found in cwd or any ancestor of either" >&2
@@ -686,7 +422,7 @@ do_install() {
     fi
     echo ">> flake root: $flake_root"
 
-    # 3. Verify the host bridge file exists. This is also a sanity
+    # 2. Verify the host bridge file exists. This is also a sanity
     # check on the hostname argument.
     local host_dir="$flake_root/hosts/$HOSTNAME"
     local hwcfg="$host_dir/hardware-configuration.nix"
@@ -702,476 +438,206 @@ do_install() {
         exit 3
     fi
 
-    # 4. Regenerate hardware-config. Save the old one so we can show
-    # a diff and roll back if the user aborts at the confirm prompt.
-    # Cleanup is handled by the abort path and the success tail.
+    # 3. Regenerate hardware-configuration.nix from the live installer
+    # kernel. --no-filesystems is critical: disko owns fileSystems.*
+    # and swapDevices, and a generated `fileSystems."/"` entry would
+    # collide with the one disko produces from the host's diskoLayouts
+    # call. We also stay away from --root: that flag controls where
+    # the generator WRITES, not where it inspects. We want the live
+    # installer kernel's view of the hardware (lsmod / lspci / lsblk),
+    # which is what bare invocation gives us.
     local hwcfg_backup="${hwcfg}.before-install"
     local had_prior=0
     if [[ -f "$hwcfg" ]]; then
         cp "$hwcfg" "$hwcfg_backup"
         had_prior=1
     fi
-    echo ">> regenerating $hwcfg via nixos-generate-config --root /mnt …"
-    nixos-generate-config --root /mnt --show-hardware-config > "$hwcfg"
 
-    # 4b. resumeDevice patching is no longer needed: battery.nix
-    # defaults `resumeDevice` to `config.fileSystems."/".device`,
-    # which the freshly-regenerated hardware-configuration.nix
-    # already populates with the real btrfs root UUID. The host
-    # bridge carries no per-instance UUID, so there's nothing to
-    # patch.
-    #
-    # We still declare $hostbridge_backup and $had_resume_line here
-    # because the resume_offset insertion further down (the
-    # provision_swap_and_offset path) uses them to back up the host
-    # bridge before its own patch and to gate restore-on-abort.
-    local hostbridge_backup="${host_bridge}.before-install"
-    local had_resume_line=0
-
-    # Cleanup helper used both on abort and on success.
     cleanup_hwcfg_artifacts() {
         if [[ -f "$hwcfg_backup" ]]; then
             rm -f "$hwcfg_backup"
         fi
-        if [[ -f "$hostbridge_backup" ]]; then
-            rm -f "$hostbridge_backup"
-        fi
     }
 
-    # Abort handler: revert staging, restore working tree from backup,
-    # remove backup. Leaves the repo bit-identical to pre-invocation.
     abort_revert() {
         echo "aborted."
-        # Unstage, regardless of whether anything is actually staged.
         git -C "$flake_root" restore --staged \
             "hosts/$HOSTNAME/hardware-configuration.nix" 2>/dev/null || true
-        if (( had_resume_line )); then
-            git -C "$flake_root" restore --staged \
-                "flake-modules/hosts/$HOSTNAME.nix" 2>/dev/null || true
-        fi
         if (( had_prior )); then
-            # Restore the previous file content from our backup.
             cp "$hwcfg_backup" "$hwcfg"
         else
-            # No prior file existed; remove the freshly-generated one.
             rm -f "$hwcfg"
-        fi
-        if (( had_resume_line )); then
-            cp "$hostbridge_backup" "$host_bridge"
         fi
         cleanup_hwcfg_artifacts
         exit 1
     }
 
-    # 5. Show the diff. If unchanged, that's also fine (no-op).
-    echo
-    echo ">> diff of $hwcfg against previously-committed:"
-    if (( had_prior )); then
-        diff -u "$hwcfg_backup" "$hwcfg" || true
+    if (( REGEN_HWCONFIG )); then
+        require_tool nixos-generate-config
+        require_tool diff
+        echo ">> regenerating $hwcfg via nixos-generate-config --no-filesystems --show-hardware-config …"
+        nixos-generate-config --no-filesystems --show-hardware-config > "$hwcfg"
+
+        echo
+        echo ">> diff of $hwcfg against previously-committed:"
+        if (( had_prior )); then
+            diff -u "$hwcfg_backup" "$hwcfg" || true
+        else
+            echo "  (no prior file existed; full content is new)"
+        fi
+        echo
+
+        # git add. Flake builds only see git-tracked files
+        # (AGENTS.md hard rule).
+        echo ">> git add $hwcfg"
+        git -C "$flake_root" add "hosts/$HOSTNAME/hardware-configuration.nix"
+
+        local staged
+        staged=$(git -C "$flake_root" status --short -- \
+            "hosts/$HOSTNAME/hardware-configuration.nix" || true)
+        echo ">> git status (hwconfig):"
+        echo "${staged:-  (clean — file unchanged from HEAD)}"
+        if [[ -n "$staged" ]]; then
+            local idx_col="${staged:0:1}"
+            if [[ "$idx_col" == " " || "$idx_col" == "?" ]]; then
+                echo
+                echo "error: git add did not stage the hwconfig file." >&2
+                echo "       status line: '$staged'" >&2
+                echo "       check .gitignore, submodule state, or rebase-in-progress." >&2
+                abort_revert
+            fi
+        fi
+        echo
     else
-        echo "  (no prior file existed; full content is new)"
+        echo ">> skipping hardware-configuration.nix regeneration (--no-regen-hwconfig)."
     fi
-    echo
 
-    # 6. git add. The flake build only sees git-tracked files, even
-    # for in-tree paths — this is the AGENTS.md hard rule that bites
-    # everyone exactly once. Stage the regenerated hwconfig.
-    # (The host bridge gets staged later if/when the resume_offset
-    # insertion patches it.)
-    echo ">> git add $hwcfg"
-    git -C "$flake_root" add "hosts/$HOSTNAME/hardware-configuration.nix"
-
-    # Assert the hwconfig actually appears as staged in `git status
-    # --short`. Output prefix is two columns: index, working tree.
-    # We accept A_, M_, AM, MM (anything with a non-space in col 1
-    # for our path).
-    local staged
-    staged=$(git -C "$flake_root" status --short -- \
-        "hosts/$HOSTNAME/hardware-configuration.nix" || true)
-    echo ">> git status (hwconfig):"
-    echo "${staged:-  (clean — file unchanged from HEAD)}"
-    if [[ -n "$staged" ]]; then
-        local idx_col="${staged:0:1}"
-        if [[ "$idx_col" == " " || "$idx_col" == "?" ]]; then
-            echo
-            echo "error: git add did not stage the hwconfig file." >&2
-            echo "       status line: '$staged'" >&2
-            echo "       check .gitignore, submodule state, or rebase-in-progress." >&2
+    # 4. Resolve disk. Honour --disk override, otherwise read from
+    # the host's disko spec. Eval is --refresh'd so any just-staged
+    # hwconfig change is picked up; --impure lets the placeholder
+    # hosts evaluate under NIXOS_ALLOW_PLACEHOLDER=1 (which the env
+    # of `sudo` carries through to the child nix invocation).
+    if [[ -z "$DISK" ]]; then
+        echo ">> resolving disk via nix eval --refresh disko.devices.disk.main.device …"
+        local nix_eval_rc
+        set +e
+        DISK=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --raw \
+            "$flake_root#nixosConfigurations.$HOSTNAME.config.disko.devices.disk.main.device")
+        nix_eval_rc=$?
+        set -e
+        if (( nix_eval_rc != 0 )) || [[ -z "$DISK" ]]; then
+            echo "error: nix eval failed to resolve the host's disko disk device." >&2
+            echo "       (looked for disko.devices.disk.main.device on $HOSTNAME)" >&2
+            echo "       Pass --disk </dev/...> to override, or wire a" >&2
+            echo "       diskoLayouts.* call into the host bridge." >&2
             abort_revert
         fi
+        echo "  disk from disko spec: $DISK"
+    else
+        echo ">> using disk override from --disk flag: $DISK"
     fi
-    echo
 
-    # 7. Sanity: ask Nix what root device it will install. --refresh
-    # busts the flake source-copy cache. Compare to blkid's view of
-    # /mnt — they MUST match or the new system won't find its root.
-    echo ">> resolving fileSystems.\"/\".device via nix eval --refresh …"
-    local nix_root_dev mnt_uuid mnt_dev nix_root_uuid nix_eval_rc
-    # Capture exit code separately so a non-zero `nix eval` (network
-    # fetch failure, store permission issues, eval error, etc.) shows
-    # a clear diagnostic instead of `set -e` killing us silently via
-    # the $(...) substitution. Stderr passes through to the user.
+    if [[ ! -b "$DISK" ]]; then
+        echo "error: $DISK is not a block device on the live installer." >&2
+        abort_revert
+    fi
+    show_disk
+
+    # 5. Refuse if anything under /mnt is currently mounted. The
+    # disko script will mount its own layout at /mnt; pre-existing
+    # mounts would either get hidden under the new ones (silent data
+    # confusion) or cause disko to abort partway through.
+    if mountpoint -q /mnt || findmnt -rno SOURCE | grep -qE "[[:space:]]/mnt(/|$)" 2>/dev/null; then
+        echo "error: something is mounted at or under /mnt." >&2
+        echo "       run: sudo $0 --unmount   first, or unmount manually." >&2
+        findmnt -R /mnt >&2 || true
+        abort_revert
+    fi
+
+    # 6. Build the disko script. config.system.build.diskoScript is
+    # produced by disko's NixOS module from disko.devices, and is a
+    # shell script that wipes + partitions + formats + mounts the
+    # declared layout at /mnt. We build it explicitly (rather than
+    # invoking `nix run github:nix-community/disko#disko-install`)
+    # because:
+    #   - the layout is already in our flake, so there's no need to
+    #     re-resolve disko's own version from upstream
+    #   - having the script path in hand lets the YES prompt show
+    #     `--dry-run` or `ls -l` if the operator wants to inspect
+    #   - same nix invocation gets the niri-cachix substituters,
+    #     keeping behaviour consistent with nixos-install
+    echo
+    echo ">> building disko script for $HOSTNAME …"
+    local disko_script
     set +e
-    nix_root_dev=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --raw \
-        "$flake_root#nixosConfigurations.$HOSTNAME.config.fileSystems.\"/\".device")
-    nix_eval_rc=$?
+    disko_script=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" build --refresh --impure \
+        --no-link --print-out-paths \
+        "$flake_root#nixosConfigurations.$HOSTNAME.config.system.build.diskoScript")
+    local rc=$?
     set -e
-    if (( nix_eval_rc != 0 )); then
-        echo
-        echo "error: nix eval failed (exit $nix_eval_rc)." >&2
-        echo "       see stderr above for the actual failure. Common causes" >&2
-        echo "       on a live installer ISO:" >&2
-        echo "         - network: --refresh re-fetches every flake input" >&2
-        echo "           (niri, nixos-hardware, etc). Check connectivity." >&2
-        echo "         - flake input fetch rate-limited (github 60 req/h" >&2
-        echo "           unauthenticated). Wait or set GITHUB_TOKEN." >&2
-        echo "         - host bridge module evaluation error. Try without" >&2
-        echo "           --refresh by re-running the same command." >&2
-        echo "         - missing tool in installer (git, etc)." >&2
+    if (( rc != 0 )) || [[ -z "$disko_script" ]]; then
+        echo "error: failed to build diskoScript (exit $rc)." >&2
         abort_revert
     fi
-    if [[ -z "$nix_root_dev" ]]; then
-        echo
-        echo "error: nix eval succeeded but returned empty string." >&2
-        echo "       expected /dev/disk/by-uuid/<uuid> for fileSystems.\"/\".device" >&2
-        abort_revert
-    fi
-    # findmnt's default SOURCE output annotates btrfs subvolumes as
-    # "/dev/foo[/subvol]". --nofsroot strips the bracketed part so
-    # blkid gets a bare device path. Without this, blkid gets handed
-    # "/dev/nvme0n1p2[/root]", returns empty + exit 2, set -e fires,
-    # script dies silently mid-substitution.
-    mnt_dev=$(findmnt --nofsroot -no SOURCE /mnt)
-    if [[ -z "$mnt_dev" ]]; then
-        echo "error: findmnt --nofsroot -no SOURCE /mnt returned empty" >&2
-        abort_revert
-    fi
-    mnt_uuid=$(blkid -s UUID -o value "$mnt_dev" 2>/dev/null || true)
-    if [[ -z "$mnt_uuid" ]]; then
-        echo "error: blkid could not read UUID from $mnt_dev" >&2
-        echo "       (does the device have a recognised filesystem signature?)" >&2
-        abort_revert
-    fi
-    # Strip the "/dev/disk/by-uuid/" prefix if present, so we can
-    # compare bare UUIDs.
-    nix_root_uuid="${nix_root_dev#/dev/disk/by-uuid/}"
+    echo "  disko script: $disko_script"
 
-    echo "  nix says root device: $nix_root_dev"
-    echo "  /mnt is backed by:    $mnt_dev (UUID $mnt_uuid)"
-    if [[ "$nix_root_uuid" != "$mnt_uuid" ]]; then
-        echo
-        echo "error: UUID mismatch between Nix's view and the actual /mnt." >&2
-        echo "       Nix would install a system that boots looking for" >&2
-        echo "       UUID $nix_root_uuid, but /mnt is $mnt_uuid." >&2
-        echo "       The regenerated hardware-config didn't reach Nix." >&2
-        echo "       Common causes:" >&2
-        echo "         - git add silently failed (re-run, check git status)." >&2
-        echo "         - flake source cache served stale content (we used" >&2
-        echo "           --refresh to bust it; if you still see this, try" >&2
-        echo "           rm -rf /root/.cache/nix and retry)." >&2
-        abort_revert
+    # 7. Final confirmation.
+    cat <<EOF
+
+*** DESTRUCTIVE OPERATION ***
+
+About to:
+  1. Execute the host's disko script, which will wipe $DISK,
+     write a fresh partition table, create filesystems, and mount
+     the layout under /mnt.
+  2. Run nixos-install --root /mnt --flake $flake_root#$HOSTNAME.
+EOF
+    if (( CLONE_SOURCES )); then
+        echo "  3. Clone https://github.com/dc0d32/nixos into each HM user's ~/nixos."
     fi
-    echo "  ✓ root UUIDs match."
+    if (( INSTALL_HM_AUTO )); then
+        echo "  4. Trigger home-manager bootstrap for each HM-enabled user."
+    fi
+    cat <<EOF
 
-    # 7b. boot.resumeDevice verification used to live here. It's
-    # gone now: battery.nix defaults `resumeDevice` to
-    # `config.fileSystems."/".device`, which step 7 above already
-    # verified matches the real /mnt UUID. A second eval of
-    # `boot.resumeDevice` would just round-trip the same value.
-    echo
+Anything currently on $DISK will be lost beyond recovery.
 
-    # 8. Confirm and run.
-    echo "About to: nixos-install --root /mnt --flake $flake_root#$HOSTNAME"
+EOF
     read -r -p "Type YES (uppercase) to proceed, anything else to abort: " confirm
     if [[ "$confirm" != "YES" ]]; then
         abort_revert
     fi
 
+    # 8. Execute disko. The script ends with everything mounted at
+    # /mnt — / on the root subvol, /mnt/boot on the ESP, /mnt/nix,
+    # /mnt/home, /mnt/swap, /mnt/.snapshots (bare-metal) or /mnt
+    # + /mnt/boot (vm).
     echo
+    echo ">> executing disko script …"
+    "$disko_script"
+
+    echo
+    echo ">> disko complete; /mnt state:"
+    findmnt -R /mnt || true
+    echo
+
+    # 9. nixos-install. extra-experimental-features keeps things
+    # working on a stock installer ISO without nix-command/flakes
+    # enabled (see flake-modules/nix-settings.nix — that only lands
+    # on the installed system). niri.cachix.org keeps niri's Rust
+    # crates off crates.io (slow / rate-limited / fails on 4-core
+    # T480 builds).
     echo ">> running nixos-install …"
-    # nixos-install passes --option <key> <value> through to its
-    # internal nix invocations. extra-experimental-features takes a
-    # space-separated list. Without this, nixos-install fails the
-    # same way nix eval did on a stock installer ISO. Substituter
-    # options similarly extend the live env's defaults — they make
-    # niri.cachix.org reachable so niri's Rust crates don't get
-    # source-fetched + built (the failure mode that crashed earlier
-    # t480 install attempts when crates.io was unreachable).
     nixos-install --root /mnt --flake "$flake_root#$HOSTNAME" \
         --option extra-experimental-features "nix-command flakes" \
         --option extra-substituters "https://niri.cachix.org" \
         --option extra-trusted-public-keys \
             "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
 
-    # 9. Swapfile provisioning + resume_offset capture.
-    # Skipped automatically for hosts that don't use hibernate (i.e.
-    # don't import battery.nix and therefore don't have a
-    # `resume_offset=` in boot.kernelParams). Hosts that do use
-    # hibernate get their swapfile created here and their host
-    # bridge patched with the real resume_offset, then nixos-install
-    # is re-invoked to bake the new cmdline into the bootloader
-    # entries — eliminating the "first boot has wrong cmdline,
-    # journal-grep, edit, rebuild, reboot" round trip.
-    provision_swap_and_offset
-
-    # 10. Cleanup + post-install message.
+    # 10. Post-install: HM bootstrap + source clone + next-steps text.
     do_install_post
 }
 
-# Helper called from do_install only. Decoupled because it has its
-# own diagnostics and abort path. Exits via abort_revert on hard
-# failure; returns normally (no error) when the host doesn't use
-# hibernate (no resume_offset in kernelParams).
-provision_swap_and_offset() {
-    echo
-    echo ">> checking if host uses hibernate (boot.kernelParams resume_offset)…"
-
-    # Read kernelParams as a JSON list, look for any entry starting
-    # with `resume_offset=`. If absent, this host doesn't hibernate;
-    # silently skip swap provisioning.
-    local kparams_json has_resume_offset cur_resume_offset swap_size_mib
-    set +e
-    kparams_json=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --impure --json \
-        "$flake_root#nixosConfigurations.$HOSTNAME.config.boot.kernelParams")
-    local rc=$?
-    set -e
-    if (( rc != 0 )); then
-        echo "warn: could not read boot.kernelParams (exit $rc); skipping swap provisioning." >&2
-        return 0
-    fi
-
-    # Match any entry of the form `resume_offset=<digits>`. We use a
-    # tiny inline jq via nix run to keep this dependency-free on the
-    # installer ISO; if jq isn't around, fall back to grep on the
-    # JSON text (good enough for our well-formed string list).
-    has_resume_offset=$(printf '%s' "$kparams_json" \
-        | grep -oE '"resume_offset=[0-9]+"' | head -1 || true)
-    if [[ -z "$has_resume_offset" ]]; then
-        echo "  host has no resume_offset in kernelParams — not a hibernate host."
-        echo "  skipping swapfile provisioning."
-        return 0
-    fi
-    cur_resume_offset=$(printf '%s' "$has_resume_offset" \
-        | sed -E 's/^"resume_offset=([0-9]+)"$/\1/')
-    echo "  host uses hibernate; current kernelParams resume_offset=$cur_resume_offset"
-
-    # Read swap size from the host config so we don't hardcode 32.
-    set +e
-    swap_size_mib=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --impure --raw \
-        --apply 'devs: toString ((builtins.head devs).size)' \
-        "$flake_root#nixosConfigurations.$HOSTNAME.config.swapDevices")
-    rc=$?
-    set -e
-    if (( rc != 0 )) || [[ -z "$swap_size_mib" ]]; then
-        echo "error: could not read swapDevices[0].size from $HOSTNAME config." >&2
-        echo "       (size is in MiB; expected an integer)" >&2
-        abort_revert
-    fi
-    echo "  swap size from config: ${swap_size_mib} MiB"
-
-    # 1. Create /mnt/swap dir and the swapfile if missing. We
-    # mirror NixOS's mkswap-swap-swapfile.service btrfs path
-    # exactly (`btrfs filesystem mkswapfile --size NM --uuid clear`)
-    # so first-boot's mkswap service finds the file already at the
-    # right size and is a no-op. Idempotent: skip if file exists at
-    # the right size.
-    local swap_path=/mnt/swap/swapfile
-    mkdir -p /mnt/swap
-
-    local need_create=1
-    if [[ -f "$swap_path" ]]; then
-        local cur_size_mib
-        cur_size_mib=$(( $(stat -c %s "$swap_path") / 1024 / 1024 ))
-        if (( cur_size_mib == swap_size_mib )); then
-            echo "  /swap/swapfile already exists at ${cur_size_mib} MiB (matches config) — reusing."
-            need_create=0
-        else
-            echo "  /swap/swapfile exists at ${cur_size_mib} MiB but config wants ${swap_size_mib} MiB — recreating."
-            rm -f "$swap_path"
-        fi
-    fi
-
-    if (( need_create )); then
-        echo ">> creating /swap/swapfile (${swap_size_mib} MiB) via btrfs filesystem mkswapfile …"
-        # `--uuid clear` matches NixOS's invocation; without it the
-        # file gets a random UUID that mismatches the kernel's
-        # expectation in some kernel versions. The size flag accepts
-        # M / MiB / G / GiB suffixes; we pass MiB explicitly.
-        btrfs filesystem mkswapfile --size "${swap_size_mib}M" --uuid clear "$swap_path"
-    fi
-
-    # 2. Capture resume_offset.
-    local offset
-    set +e
-    offset=$(btrfs inspect-internal map-swapfile -r "$swap_path")
-    rc=$?
-    set -e
-    if (( rc != 0 )) || [[ -z "$offset" ]]; then
-        echo "error: btrfs inspect-internal map-swapfile failed for $swap_path." >&2
-        abort_revert
-    fi
-    echo "  resume_offset captured: $offset"
-
-    # 3. If the host bridge already has the right offset, we're
-    # done — no patch needed, no rebuild needed.
-    if [[ "$cur_resume_offset" == "$offset" ]]; then
-        echo "  ✓ host bridge already has correct resume_offset=$offset; no patch needed."
-        return 0
-    fi
-
-    echo ">> patching resume_offset in $host_bridge: $cur_resume_offset → $offset"
-    # Back up the host bridge before any in-place edit so the abort
-    # path (and our verify-and-restore on sed-failure below) can
-    # roll it back. `had_resume_line` is initialised to 0 in step 4b
-    # of do_install; we promote it here because the resume_offset
-    # path is now the only thing that touches the host bridge.
-    if (( ! had_resume_line )); then
-        cp "$host_bridge" "$hostbridge_backup"
-        had_resume_line=1
-    fi
-
-    # Two paths depending on whether the host bridge already has an
-    # override line for resume_offset:
-    #
-    #   (a) Override present (literal `"resume_offset=N"` somewhere in
-    #       the file, typically inside `boot.kernelParams = [ ... ];`):
-    #       in-place sed replaces the digits. Cheap and obvious.
-    #
-    #   (b) No override: the host inherits battery.nix's default of
-    #       `boot.kernelParams = [ "resume_offset=0" ];`. We INSERT a
-    #       `boot.kernelParams = lib.mkForce [ "resume_offset=NNN" ];`
-    #       line into the NixOS module block, anchored to the closing
-    #       `};` of the host's `battery = { ... };` block (every
-    #       battery.nix consumer has one — battery.resumeDevice is a
-    #       required option, so the assignment must exist somewhere
-    #       in the host bridge).
-    #
-    # Path (b) is what newer hosts hit: keeping the kernelParams
-    # override out of every host bridge file means there's no manual
-    # placeholder to forget. The insert is idempotent because path (a)
-    # takes over on the next run.
-    #
-    # The replacement is anchored on `resume_offset=` inside the
-    # kernelParams list. Matches `"resume_offset=N"` (with quotes)
-    # since that's how Nix string literals appear in source. We use
-    # | as the sed delimiter to avoid colliding with the value.
-    sed -i -E \
-        "s|\"resume_offset=[0-9]+\"|\"resume_offset=${offset}\"|" \
-        "$host_bridge"
-
-    if ! grep -qF "\"resume_offset=${offset}\"" "$host_bridge"; then
-        # Path (b): no override line existed. Insert one after the
-        # `battery = { ... };` block. Match the indentation of the
-        # `battery =` line so the inserted line sits at the same
-        # nesting level. awk does the matching+insert in one pass:
-        # it tracks brace depth inside the battery block (starting
-        # at 1 when the opening `{` on the same line is seen) and
-        # emits the new line right after the matching `};` is
-        # printed.
-        echo "  no \"resume_offset=N\" literal in host bridge; inserting an override line."
-        local awk_status
-        set +e
-        awk -v off="$offset" '
-            BEGIN { state = 0; depth = 0; indent = "" }
-            # state 0 = looking for the battery block opener.
-            state == 0 {
-                # Match `<indent>battery = {` (with optional spaces).
-                # Capture indent without gawk-specific match() array
-                # form: extract leading whitespace via sub() on a copy.
-                if ($0 ~ /^[[:space:]]*battery[[:space:]]*=[[:space:]]*\{/) {
-                    indent = $0
-                    sub(/[^[:space:]].*$/, "", indent)
-                    state = 1
-                    depth = 1
-                    print
-                    next
-                }
-                print
-                next
-            }
-            # state 1 = inside battery block; track brace depth.
-            state == 1 {
-                # Count {} on this line. gsub returns the substitution
-                # count even when the replacement equals the match —
-                # we use it as a brace counter. (Naive: no string- or
-                # comment-literal handling, but battery blocks in our
-                # bridges are plain attrset literals with no braces
-                # inside strings.)
-                line = $0
-                opens = gsub(/\{/, "{", line)
-                closes = gsub(/\}/, "}", line)
-                depth += opens - closes
-                print
-                if (depth <= 0) {
-                    # Just printed the closing `};` of the battery
-                    # block. Emit the kernelParams override at the
-                    # same indent.
-                    printf "\n%sboot.kernelParams = lib.mkForce [ \"resume_offset=%s\" ];\n", indent, off
-                    state = 2
-                }
-                next
-            }
-            # state 2 = past insertion point; pass through.
-            { print }
-        ' "$host_bridge" > "${host_bridge}.tmp"
-        awk_status=$?
-        set -e
-        if (( awk_status != 0 )); then
-            echo "error: awk insertion of resume_offset failed (exit $awk_status)." >&2
-            rm -f "${host_bridge}.tmp"
-            cp "$hostbridge_backup" "$host_bridge"
-            abort_revert
-        fi
-        mv "${host_bridge}.tmp" "$host_bridge"
-    fi
-
-    if ! grep -qF "\"resume_offset=${offset}\"" "$host_bridge"; then
-        echo "error: failed to inject resume_offset=${offset} into $host_bridge." >&2
-        echo "       expected either an existing kernelParams override:" >&2
-        echo "         boot.kernelParams = [ \"resume_offset=N\" ];" >&2
-        echo "       or a battery = { ... }; block to anchor the insert on." >&2
-        cp "$hostbridge_backup" "$host_bridge"
-        abort_revert
-    fi
-
-    # 4. Stage the patched host bridge (it's already backed up;
-    # the existing abort_revert handles rollback).
-    echo ">> git add $host_bridge"
-    git -C "$flake_root" add "flake-modules/hosts/$HOSTNAME.nix"
-
-    # 5. Verify Nix sees the new offset.
-    echo ">> verifying boot.kernelParams via nix eval --refresh …"
-    local kparams_after rc2
-    set +e
-    kparams_after=$(nix "${NIX_EXTRA_OPTS[@]}" "${NIX_SUBSTITUTER_OPTS[@]}" eval --refresh --impure --json \
-        "$flake_root#nixosConfigurations.$HOSTNAME.config.boot.kernelParams")
-    rc2=$?
-    set -e
-    if (( rc2 != 0 )); then
-        echo "error: nix eval (post-patch) failed (exit $rc2)." >&2
-        abort_revert
-    fi
-    if ! printf '%s' "$kparams_after" | grep -qE "\"resume_offset=${offset}\""; then
-        echo
-        echo "error: boot.kernelParams still doesn't contain resume_offset=$offset." >&2
-        echo "       resolved kernelParams: $kparams_after" >&2
-        abort_revert
-    fi
-    echo "  ✓ Nix sees resume_offset=$offset"
-
-    # 6. Re-run nixos-install to bake the new cmdline into the
-    # bootloader entries. Cheap because the store is already
-    # populated; only the new system closure (with the patched
-    # cmdline) and the bootloader entries get rebuilt + written.
-    echo
-    echo ">> re-running nixos-install to update bootloader cmdline …"
-    nixos-install --root /mnt --flake "$flake_root#$HOSTNAME" --no-root-passwd \
-        --option extra-experimental-features "nix-command flakes" \
-        --option extra-substituters "https://niri.cachix.org" \
-        --option extra-trusted-public-keys \
-            "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
-    echo "  ✓ bootloader updated; first boot will resume correctly from hibernate."
-}
 
 do_install_post() {
     # On success, drop the backup. We leave the working-tree change
@@ -1252,9 +718,8 @@ do_install_post() {
         clone_step_text="\
        - ~/nixos was cloned during install for each HM user. The
          PRIMARY user's clone has the regenerated
-         hardware-configuration.nix (and any resume_offset patch)
-         already in its working tree, so the first commit-and-push
-         on the new host is just:
+         hardware-configuration.nix already in its working tree, so
+         the first commit-and-push on the new host is just:
            cd ~/nixos
            git status                                  # review
            git diff                                    # review changes
@@ -1263,10 +728,9 @@ do_install_post() {
            git push"
     else
         clone_step_text="\
-       - The hwconfig (with the real root UUID) and any
-         resume_offset kernelParams override are in the working tree
-         of THIS checkout (auto-staged by --install). To land it
-         upstream from this machine before unmount:
+       - The hwconfig (with the real-hardware kernel modules) is in
+         the working tree of THIS checkout (auto-staged by --install).
+         To land it upstream from this machine before unmount:
            git status                                  # review
            git diff --cached                           # review staged
            git commit -m \"<host>: real hardware config\"
@@ -1299,11 +763,18 @@ ${hm_step_text}
   4. After first boot:
 
 ${clone_step_text}
-       - Hibernate-resume is already wired correctly. Test by
-         triggering a manual hibernate ('systemctl hibernate') and
-         confirming wake restores the session. If resume fails,
-         re-run sudo $0 --install <hostname> to re-capture the
-         offset (rare; only needed if the swapfile got recreated).
+       - Hibernate-resume (laptops only): the kernel cmdline ships
+         with resume_offset=0 until the first post-install rebuild,
+         so the very first hibernate-resume attempt will silently
+         fail and the kernel will boot fresh. The
+         battery-resume-offset.service unit logs the correct offset
+         to dmesg on every boot when there's a mismatch; copy that
+         value into the host bridge's boot.kernelParams override and
+         rebuild. This is a one-time wart per host. The swapfile
+         itself is created automatically by NixOS's
+         mkswap-swap-swapfile.service on first boot — the disko
+         layout already provisioned the /swap subvol with nodatacow,
+         so no \`chattr +C\` dance is needed.
 
 EOF
 }
@@ -1445,15 +916,21 @@ do_clone_sources() {
             fi
 
             # Always cp the host bridge too — if the install-time
-            # working tree has a resume_offset patch (or any other
-            # unstaged edit), this picks it up. If the file is
-            # unchanged from origin, the cp is a no-op as far as
-            # `git diff` in the clone is concerned.
-            if [[ -f "$src_bridge" && -f "$dst_bridge" ]]; then
+            # working tree has any unstaged edit, this picks it up.
+            # If the file is unchanged from origin, the cp is a
+            # no-op as far as `git diff` in the clone is concerned.
+            # For brand-new hosts (e.g. egghead-created) the bridge
+            # won't exist in origin/main yet, so dst_bridge may not
+            # exist — copy unconditionally as long as src_bridge does.
+            if [[ -f "$src_bridge" ]]; then
+                nixos-enter --root "$sysroot" -- \
+                    runuser -u "$user" -- \
+                    mkdir -p "$home/nixos/flake-modules/hosts"
                 cp -f "$src_bridge" "$dst_bridge"
                 nixos-enter --root "$sysroot" -- \
-                    chown "$user:users" "$home/nixos/flake-modules/hosts/$HOSTNAME.nix"
-                echo "   ✓ refreshed $dst_bridge in $user's clone (carries any resume_offset patch)"
+                    chown "$user:users" "$home/nixos/flake-modules/hosts/$HOSTNAME.nix" \
+                          "$home/nixos/flake-modules/hosts"
+                echo "   ✓ refreshed $dst_bridge in $user's clone"
             fi
         fi
     done
@@ -1926,11 +1403,9 @@ do_hm_switch() {
 
 # ── dispatch ──────────────────────────────────────────────────────
 case "$MODE" in
-    mount)       do_mount ;;
-    unmount)     do_unmount ;;
-    partition)   do_partition ;;
-    install)     do_install ;;
-    install-hm)  do_install_hm ;;
+    unmount)        do_unmount ;;
+    install)        do_install ;;
+    install-hm)     do_install_hm ;;
     audio-discover) do_audio_discover ;;
-    hm-switch)   do_hm_switch ;;
+    hm-switch)      do_hm_switch ;;
 esac

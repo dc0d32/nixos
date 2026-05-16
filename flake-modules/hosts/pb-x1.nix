@@ -80,6 +80,16 @@ in
     module = {
       imports = [
         ../../hosts/pb-x1/hardware-configuration.nix
+        # Disko: declarative disk layout. Provides config.fileSystems.*
+        # (root/nix/home/swap/.snapshots subvols, /boot ESP) from the
+        # shared bare-metal layout factory; flake.modules.nixos.disko
+        # imports inputs.disko.nixosModules.disko which actually
+        # synthesizes the fileSystems entries from disko.devices.
+        # /dev/nvme0n1 — single onboard NVMe on this Lenovo X1 Yoga.
+        config.flake.modules.nixos.disko
+        (config.flake.lib.diskoLayouts.bare-metal {
+          disk = "/dev/nvme0n1";
+        })
         # Migrated dendritic feature modules (NixOS side).
         config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.gpu
