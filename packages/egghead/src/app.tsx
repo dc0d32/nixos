@@ -93,7 +93,12 @@ export const App: React.FC<AppProps> = ({ onDone }) => {
             <Text color="gray">  ({activeStep.help})</Text>
           ) : null}
         </Text>
-        <StepInput step={activeStep} answers={answers} onSubmit={submit} />
+        <StepInput
+          key={activeStep.key}
+          step={activeStep}
+          answers={answers}
+          onSubmit={submit}
+        />
         {error ? <Text color="red">  ✘ {error}</Text> : null}
       </Box>
     </Box>
