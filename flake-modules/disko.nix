@@ -10,9 +10,9 @@
 #       no longer need to maintain `fileSystems.*` blocks in
 #       `hardware-configuration.nix` by hand.
 #   * flake.lib.diskoLayouts.bare-metal
-#       Factory: `{ disk }: <module attrset>` producing the shared
-#       layout used by every bare-metal host in the repo (pb-x1,
-#       pb-t480, m-pc):
+#       Factory: `{ disk, luks ? false }: <module attrset>` producing
+#       the shared layout used by every bare-metal host in the repo
+#       (pb-x1, pb-t480, m-pc):
 #         p1: 1 MiB bios-boot (ef02)
 #         p2: 1 GiB vfat ESP                       → /boot
 #         p3: rest  btrfs                          partlabel=nixos
@@ -32,8 +32,19 @@
 #       snapper/btrfs-snapshot wiring; it's empty until that lands.
 #       Subvol names are bare (no `@` prefix) to match the convention
 #       already in the running pb-x1 / pb-t480 installs.
+#
+#       With luks=true, p3 is LUKS2-encrypted and btrfs goes on top of
+#       /dev/mapper/cryptroot. The disko script prompts for the
+#       passphrase interactively at install time (no passphrase or
+#       keyfile is ever materialized in the nix store). At boot, the
+#       generated `boot.initrd.luks.devices.cryptroot` entry prompts
+#       the same way. Hibernate-resume still works: swap lives inside
+#       the encrypted btrfs, so the resume image is encrypted at rest
+#       and the kernel unlocks the volume during early initrd before
+#       trying to read the resume_offset block.
 #   * flake.lib.diskoLayouts.vm
-#       Factory: `{ disk }: <module attrset>` for VM hosts (ah-1):
+#       Factory: `{ disk, luks ? false }: <module attrset>` for VM
+#       hosts (ah-1):
 #         p1: 1 GiB vfat ESP                       → /boot
 #         p2: rest  ext4                           → /
 #       UEFI only (OVMF). ext4 — Proxmox storage is NFS-mounted from
@@ -43,6 +54,12 @@
 #       trips on metadata-CoW operations the lower stack already
 #       handles end-to-end. Guest ext4 is the right thin linear-write
 #       layer for this substrate.
+#
+#       luks=true is supported here too but rarely useful: the
+#       hypervisor (or the underlying ZFS pool) usually owns
+#       encryption for guest images. Available so that "encrypt
+#       everything" remains a one-flag toggle in egghead even for
+#       VM-class hosts.
 #
 # Why factories rather than fixed modules:
 #   The `disk` device path is the only per-host knob (everything else
@@ -81,118 +98,163 @@
   };
 
   flake.lib.diskoLayouts = {
-    # Bare-metal: bios-boot + ESP + btrfs with subvols.
-    bare-metal = { disk }: {
-      disko.devices.disk.main = {
-        type = "disk";
-        device = disk;
-        content = {
-          type = "gpt";
-          partitions = {
-            # 1 MiB BIOS-boot partition. Required for grub on BIOS
-            # firmware; ignored by systemd-boot on UEFI. Costs nothing
-            # and lets every bare-metal host share one layout module
-            # regardless of firmware mode.
-            BIOS = {
-              size = "1M";
-              type = "EF02";
-              priority = 1;
+    # Bare-metal: bios-boot + ESP + btrfs with subvols. Optional LUKS
+    # wrap around the btrfs partition.
+    bare-metal = { disk, luks ? false }:
+      let
+        # The btrfs content block is the same regardless of whether
+        # it lives directly on the partition or inside a LUKS mapper.
+        btrfsContent = {
+          type = "btrfs";
+          # `-f` forces overwrite of any existing signature on
+          # the partition — disko's --mode disko/destroy is
+          # already destructive, this just suppresses the
+          # interactive confirmation. `-L nixos` sets a
+          # filesystem label matching the partition label so
+          # `btrfs filesystem show` reads naturally.
+          extraArgs = [ "-L" "nixos" "-f" ];
+          subvolumes = {
+            "root" = {
+              mountpoint = "/";
+              mountOptions = [ "compress=zstd:1" "noatime" ];
             };
-            ESP = {
-              size = "1G";
-              type = "EF00";
-              content = {
-                type = "filesystem";
-                format = "vfat";
-                mountpoint = "/boot";
-                mountOptions = [ "fmask=0022" "dmask=0022" ];
+            "nix" = {
+              mountpoint = "/nix";
+              mountOptions = [ "compress=zstd:1" "noatime" ];
+            };
+            "home" = {
+              mountpoint = "/home";
+              mountOptions = [ "compress=zstd:1" "noatime" ];
+            };
+            # CoW disabled on this subvol via `nodatacow` mount
+            # option. battery.nix's swapDevices entry creates
+            # /swap/swapfile here; the kernel requires
+            # swapfiles on btrfs to be on a CoW-disabled,
+            # non-snapshotted subvol with a single contiguous
+            # extent. Mounting nodatacow at format-time means
+            # any file created here inherits the
+            # no-data-checksum + no-CoW attributes without an
+            # explicit `chattr +C` step.
+            "swap" = {
+              mountpoint = "/swap";
+              mountOptions = [ "nodatacow" "noatime" ];
+            };
+            # Empty slot for future snapper / btrfs-snapshot
+            # wiring (snapper conventionally places snapshots
+            # under /.snapshots). Not referenced by anything
+            # today; remove this subvol from the factory if you
+            # decide snapshots aren't worth the metadata
+            # footprint.
+            "snapshots" = {
+              mountpoint = "/.snapshots";
+              mountOptions = [ "compress=zstd:1" "noatime" ];
+            };
+          };
+        };
+        # When luks=true, wrap btrfs in a LUKS2 container. Without a
+        # passwordFile, disko calls cryptsetup luksFormat against the
+        # operator's TTY at install time and the passphrase never
+        # reaches the nix store. allowDiscards passes TRIM through to
+        # the underlying SSD (small information-leak trade-off for
+        # wear-levelling and GC performance — same recommendation as
+        # upstream NixOS docs). bypassWorkqueues skips the read/write
+        # workqueues for a measurable perf win on NVMe. The mapper
+        # name `cryptroot` is referenced by the disko-generated
+        # `boot.initrd.luks.devices.cryptroot` entry at boot.
+        nixosPartContent =
+          if luks then {
+            type = "luks";
+            name = "cryptroot";
+            settings = {
+              allowDiscards = true;
+              bypassWorkqueues = true;
+            };
+            content = btrfsContent;
+          } else
+            btrfsContent;
+      in
+      {
+        disko.devices.disk.main = {
+          type = "disk";
+          device = disk;
+          content = {
+            type = "gpt";
+            partitions = {
+              # 1 MiB BIOS-boot partition. Required for grub on BIOS
+              # firmware; ignored by systemd-boot on UEFI. Costs nothing
+              # and lets every bare-metal host share one layout module
+              # regardless of firmware mode.
+              BIOS = {
+                size = "1M";
+                type = "EF02";
+                priority = 1;
               };
-            };
-            nixos = {
-              size = "100%";
-              content = {
-                type = "btrfs";
-                # `-f` forces overwrite of any existing signature on
-                # the partition — disko's --mode disko/destroy is
-                # already destructive, this just suppresses the
-                # interactive confirmation. `-L nixos` sets a
-                # filesystem label matching the partition label so
-                # `btrfs filesystem show` reads naturally.
-                extraArgs = [ "-L" "nixos" "-f" ];
-                subvolumes = {
-                  "root" = {
-                    mountpoint = "/";
-                    mountOptions = [ "compress=zstd:1" "noatime" ];
-                  };
-                  "nix" = {
-                    mountpoint = "/nix";
-                    mountOptions = [ "compress=zstd:1" "noatime" ];
-                  };
-                  "home" = {
-                    mountpoint = "/home";
-                    mountOptions = [ "compress=zstd:1" "noatime" ];
-                  };
-                  # CoW disabled on this subvol via `nodatacow` mount
-                  # option. battery.nix's swapDevices entry creates
-                  # /swap/swapfile here; the kernel requires
-                  # swapfiles on btrfs to be on a CoW-disabled,
-                  # non-snapshotted subvol with a single contiguous
-                  # extent. Mounting nodatacow at format-time means
-                  # any file created here inherits the
-                  # no-data-checksum + no-CoW attributes without an
-                  # explicit `chattr +C` step.
-                  "swap" = {
-                    mountpoint = "/swap";
-                    mountOptions = [ "nodatacow" "noatime" ];
-                  };
-                  # Empty slot for future snapper / btrfs-snapshot
-                  # wiring (snapper conventionally places snapshots
-                  # under /.snapshots). Not referenced by anything
-                  # today; remove this subvol from the factory if you
-                  # decide snapshots aren't worth the metadata
-                  # footprint.
-                  "snapshots" = {
-                    mountpoint = "/.snapshots";
-                    mountOptions = [ "compress=zstd:1" "noatime" ];
-                  };
+              ESP = {
+                size = "1G";
+                type = "EF00";
+                content = {
+                  type = "filesystem";
+                  format = "vfat";
+                  mountpoint = "/boot";
+                  mountOptions = [ "fmask=0022" "dmask=0022" ];
                 };
               };
+              nixos = {
+                size = "100%";
+                content = nixosPartContent;
+              };
             };
           };
         };
       };
-    };
 
-    # VM: ESP + ext4 (no swap, no bios-boot, no subvols).
-    vm = { disk }: {
-      disko.devices.disk.main = {
-        type = "disk";
-        device = disk;
-        content = {
-          type = "gpt";
-          partitions = {
-            ESP = {
-              size = "1G";
-              type = "EF00";
-              content = {
-                type = "filesystem";
-                format = "vfat";
-                mountpoint = "/boot";
-                mountOptions = [ "fmask=0022" "dmask=0022" ];
-              };
+    # VM: ESP + ext4 (no swap, no bios-boot, no subvols). Optional
+    # LUKS wrap; usually unnecessary because the hypervisor / ZFS
+    # pool already encrypts the backing store.
+    vm = { disk, luks ? false }:
+      let
+        ext4Content = {
+          type = "filesystem";
+          format = "ext4";
+          mountpoint = "/";
+          extraArgs = [ "-L" "nixos" ];
+        };
+        nixosPartContent =
+          if luks then {
+            type = "luks";
+            name = "cryptroot";
+            settings = {
+              allowDiscards = true;
+              bypassWorkqueues = true;
             };
-            nixos = {
-              size = "100%";
-              content = {
-                type = "filesystem";
-                format = "ext4";
-                mountpoint = "/";
-                extraArgs = [ "-L" "nixos" ];
+            content = ext4Content;
+          } else
+            ext4Content;
+      in
+      {
+        disko.devices.disk.main = {
+          type = "disk";
+          device = disk;
+          content = {
+            type = "gpt";
+            partitions = {
+              ESP = {
+                size = "1G";
+                type = "EF00";
+                content = {
+                  type = "filesystem";
+                  format = "vfat";
+                  mountpoint = "/boot";
+                  mountOptions = [ "fmask=0022" "dmask=0022" ];
+                };
+              };
+              nixos = {
+                size = "100%";
+                content = nixosPartContent;
               };
             };
           };
         };
       };
-    };
   };
 }
