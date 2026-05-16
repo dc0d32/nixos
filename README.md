@@ -116,10 +116,11 @@ modeled after `pb-x1.nix` (full desktop laptop) or `wsl.nix` (headless
 nix run github:dc0d32/nixos#egghead
 ```
 
-and answer prompts for hostname, role template
+and the TypeScript+Ink TUI walks through hostname, role template
 (`bare-metal-laptop` / `bare-metal-desktop` / `vm-headless` /
-`vm-desktop`), target disk, users, feature toggles, and locale.
-The wizard writes `flake-modules/hosts/<name>.nix` +
+`vm-desktop`), target disk, users, feature toggles, optional LUKS
+root encryption, and locale. The wizard writes
+`flake-modules/hosts/<name>.nix` +
 `hosts/<name>/hardware-configuration.nix` into a fresh checkout of
 the flake, commits them, then hands off to `scripts/host-setup.sh
 --install`. On first boot, a one-shot `egghead-amend.service`
@@ -128,8 +129,10 @@ commits any divergence in the primary user's `~/nixos` clone.
 
 For non-interactive runs (tests, golden-master) every prompt is
 also accepted from a matching `EGGHEAD_<NAME>` env var; pass
-`--non-interactive` to fail-fast instead of prompting. See
-`nix run .#egghead -- --help` for the full surface.
+`--non-interactive` to skip the TUI entirely. The bash engine
+underneath ships separately as `nix run .#egghead-sh` for
+environments where the Node closure is too heavy or stdin isn't a
+TTY. See `nix run .#egghead -- --help` for the full surface.
 
 ### Adding a hand-rolled host
 

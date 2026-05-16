@@ -3,8 +3,10 @@
 # Two contributions:
 #
 #   1. packages.<system>.egghead — `nix run github:dc0d32/nixos#egghead`
-#      runs scripts/egghead.sh under writeShellApplication, with the
-#      required runtime tools (git, coreutils, util-linux, etc.) on PATH.
+#      runs the TypeScript+Ink TUI front-end (packages/egghead/) which
+#      gathers wizard answers then execs the bash engine
+#      (scripts/egghead.sh, also exposed as packages.<system>.egghead-sh
+#      for slim/headless environments) with EGGHEAD_* env vars set.
 #      Used from the official NixOS installer ISO to bring up a new
 #      host without hand-editing flake-modules/hosts/<name>.nix.
 #
@@ -20,8 +22,10 @@
 # on real hardware), and the surface area is small enough that splitting
 # would be premature.
 #
-# Phase 1 (this file): shell-stub. Phase 3 plan: rewrite the wizard UI
-# layer in TypeScript + Ink, keep the systemd surface identical.
+# Phase 3 status: the TUI is the default `egghead` package; the bash
+# script is still the single source of truth for what gets written to
+# disk and is shipped as `egghead-sh` for environments where the Node
+# closure is too heavy or stdin isn't a TTY.
 #
 # Retire when: the flake stops being a "private opinionated distro" and
 # moves to hand-rolled host bridges only, OR the wizard graduates to a
@@ -30,22 +34,27 @@
 {
   perSystem = { pkgs, system, ... }:
     let
-      egghead = pkgs.writeShellApplication {
-        name = "egghead";
-        runtimeInputs = with pkgs; [
-          bash
-          coreutils
-          util-linux
-          git
-          gnused
-          gnugrep
-          gawk
-          # nix is needed to invoke `nix run`-style helpers downstream;
-          # nixos-install / nixos-generate-config come from the live
-          # installer ISO, not from this package's closure (the package
-          # is tiny on purpose so `nix run` from the installer is fast).
-          nix
-        ];
+      # Runtime PATH for the bash engine. Shared between egghead-sh
+      # (when invoked directly) and the TUI wrapper (which prepends
+      # this to PATH before exec'ing bash).
+      bashRuntimeInputs = with pkgs; [
+        bash
+        coreutils
+        util-linux
+        git
+        gnused
+        gnugrep
+        gawk
+        # nix is needed to invoke `nix run`-style helpers downstream;
+        # nixos-install / nixos-generate-config come from the live
+        # installer ISO, not from this package's closure (the package
+        # is tiny on purpose so `nix run` from the installer is fast).
+        nix
+      ];
+
+      egghead-sh = pkgs.writeShellApplication {
+        name = "egghead-sh";
+        runtimeInputs = bashRuntimeInputs;
         # SC2034 and SC2153: shellcheck can't see indirect variable
         # references (we look up role_<x>_<y> via `${!key}` in
         # role_lookup() and set wizard outputs via `printf -v VAR`).
@@ -54,9 +63,20 @@
         excludeShellChecks = [ "SC2034" "SC2153" "SC2317" "SC2155" ];
         text = builtins.readFile ../scripts/egghead.sh;
       };
+
+      # In-store path to the bash entry point. The TUI wrapper sets
+      # EGGHEAD_BASH_SCRIPT to this; bash sees `/nix/store/.../bin/
+      # egghead-sh` and execs into it under the wrapper's PATH.
+      eggheadBashPath = "${egghead-sh}/bin/egghead-sh";
+
+      egghead = pkgs.callPackage ../packages/egghead {
+        bashScript = eggheadBashPath;
+        runtimeInputs = bashRuntimeInputs;
+      };
     in
     {
       packages.egghead = egghead;
+      packages.egghead-sh = egghead-sh;
     };
 
   # First-boot hwconfig amend service. Opt-in per host: the generated

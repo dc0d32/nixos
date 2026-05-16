@@ -1,0 +1,31 @@
+{
+  "name": "egghead-tui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript + Ink TUI front-end for the egghead installer wizard. Walks the same questions scripts/egghead.sh asks, then execs the bash script with EGGHEAD_* env vars set so it skips all prompts and proceeds straight to bridge generation + install.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "egghead-tui": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ink": "5.0.1",
+    "ink-select-input": "6.0.0",
+    "ink-text-input": "6.0.0",
+    "meow": "13.2.0",
+    "react": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.5",
+    "@types/react": "18.3.11",
+    "typescript": "5.6.3"
+  }
+}
+

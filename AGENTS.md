@@ -181,10 +181,11 @@ official NixOS installer ISO and run
 nix run github:dc0d32/nixos#egghead
 ```
 
-The wizard asks for hostname, role (`bare-metal-laptop` /
+A TypeScript+Ink TUI asks for hostname, role (`bare-metal-laptop` /
 `bare-metal-desktop` / `vm-headless` / `vm-desktop`), target disk,
 users (with HM profiles), feature toggles (presets driven by role),
-locale, and timezone. It writes `flake-modules/hosts/<name>.nix` +
+optional LUKS root encryption, locale, and timezone. It writes
+`flake-modules/hosts/<name>.nix` +
 `hosts/<name>/hardware-configuration.nix` into a fresh checkout,
 commits, and execs `scripts/host-setup.sh --install <name>
 --no-regen-hwconfig`. First-boot `egghead-amend.service` reruns
@@ -192,8 +193,10 @@ commits, and execs `scripts/host-setup.sh --install <name>
 any divergence in the primary user's `~/nixos` clone.
 
 Non-interactive use (tests / golden masters): every prompt is
-backed by an `EGGHEAD_<NAME>` env var; pass `--non-interactive`
-to fail-fast instead of prompting. See `nix run .#egghead -- --help`.
+backed by an `EGGHEAD_<NAME>` env var; pass `--non-interactive` to
+skip the TUI entirely (caller must supply all `EGGHEAD_*`). The
+bash engine ships separately as `nix run .#egghead-sh` for
+headless / no-Node environments. See `nix run .#egghead -- --help`.
 
 **Hand-rolled (advanced):**
 
