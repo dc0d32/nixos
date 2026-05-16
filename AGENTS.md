@@ -175,16 +175,20 @@ audio.easyeffects = {
 Two paths:
 
 **Wizard (preferred for fresh hosts) — `egghead`:** boot the
-official NixOS installer ISO and run
+official NixOS installer ISO, bring networking up (USB-ethernet
+preferred; or `iwctl` / `nmtui` for WiFi), then run
 
 ```sh
-nix run github:dc0d32/nixos#egghead
+sudo nix --extra-experimental-features 'nix-command flakes' \
+    run github:dc0d32/nixos/disko-and-egghead#egghead
 ```
 
 A TypeScript+Ink TUI asks for hostname, role (`bare-metal-laptop` /
 `bare-metal-desktop` / `vm-headless` / `vm-desktop`), target disk,
 users (with HM profiles), feature toggles (presets driven by role),
-optional LUKS root encryption, locale, and timezone. It writes
+optional LUKS root encryption, optional root recovery password
+(default `recovery` — see "SL3 install safety guardrails" below),
+locale, and timezone. It writes
 `flake-modules/hosts/<name>.nix` +
 `hosts/<name>/hardware-configuration.nix` into a fresh checkout,
 commits, and execs `scripts/host-setup.sh --install <name>
@@ -192,11 +196,55 @@ commits, and execs `scripts/host-setup.sh --install <name>
 `nixos-generate-config` against the installed kernel and commits
 any divergence in the primary user's `~/nixos` clone.
 
+Pre-flight on bare metal:
+
+- **Secure Boot must be OFF in UEFI.** NixOS doesn't ship a
+  shim-signed kernel; this includes Microsoft Surface, most OEM
+  laptops, and any board with secure boot enabled out of the box.
+- **For Microsoft Surface devices** append `surface` to the
+  features list when the wizard asks. That imports
+  `flake.modules.nixos.surface` (wraps nixos-hardware's
+  `microsoft-surface-pro-intel` bundle — patched linux-surface
+  kernel, iptsd, thermald, surface-control). Without it
+  touchscreen/pen/suspend will be flaky on every Surface device.
+- Bridge emits `boot.kernelPackages = lib.mkDefault
+  linuxPackages_latest;` so hardware modules that ship their own
+  kernel (`microsoft-surface-*`, `lenovo-thinkpad-*`, etc.) can
+  override without `mkForce`.
+
 Non-interactive use (tests / golden masters): every prompt is
 backed by an `EGGHEAD_<NAME>` env var; pass `--non-interactive` to
 skip the TUI entirely (caller must supply all `EGGHEAD_*`). The
 bash engine ships separately as `nix run .#egghead-sh` for
 headless / no-Node environments. See `nix run .#egghead -- --help`.
+
+## SL3 install safety guardrails
+
+`host-setup.sh --install` runs `guard_disk_safety` before disko's
+destructive partition wipe:
+
+- Refuses if the target disk is the live ISO's source
+  (parent device of `/`, `/nix`, `/nix/store`, `/iso`,
+  `/run/installer`, etc.).
+- Refuses if the disk is smaller than 16 GiB.
+- Refuses if any partition on the disk is currently mounted.
+- Requires the operator to retype the disk's MODEL and SIZE
+  (whitespace + case ignored) instead of the old "type YES" prompt.
+
+`--force-disk` (env `FORCE_DISK=1`) bypasses every check and the
+typed-back confirmation — ONLY for automated smoke tests; a typo
+under it destroys data.
+
+Wizard-generated bridges emit a recovery posture when the operator
+sets a non-empty `EGGHEAD_ROOT_PASSWORD` (default `recovery`):
+`users.users.root.initialPassword`, plus
+`services.openssh.settings { PasswordAuthentication=true;
+PermitRootLogin="yes"; }`. The point: if first boot's display
+manager / HM activation breaks, `ssh root@<host-ip>` from another
+LAN machine still works. Operator's first action post-boot should
+be `passwd root` to rotate the plain-text password. The
+post-`nixos-install` summary printed by `host-setup.sh` echoes the
+configured password and the ssh recipe.
 
 **Hand-rolled (advanced):**
 

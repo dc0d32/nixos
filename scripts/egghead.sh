@@ -80,6 +80,11 @@ INTERACTIVE PROMPTS:
      11. keymap               (EGGHEAD_KEYMAP, default us)
      12. LUKS full-disk       (EGGHEAD_LUKS: yes|no, default no)
                                 encryption
+     13. root password        (EGGHEAD_ROOT_PASSWORD; default
+                                'recovery'. Empty = no root login.
+                                Plain text; rotate on first boot.
+                                Acts as console + SSH recovery if
+                                graphics break.)
 
     HM profiles per user: base | dev | desktop | kid (maps to bundles
     in flake-modules/bundles/).
@@ -367,6 +372,18 @@ BATEOF
       gpu.driver = \"$GPU_DRIVER\";"
     fi
 
+    # Recovery: root password only. Set in the bridge as
+    # `users.users.root.initialPassword`. Skipped entirely if the
+    # operator left it empty.
+    local root_block=""
+    if [[ -n "$ROOT_PASSWORD" ]]; then
+        local _rp=${ROOT_PASSWORD//\\/\\\\}
+        _rp=${_rp//\"/\\\"}
+        root_block="        root = {"$'\n'
+        root_block+="          initialPassword = \"$_rp\";"$'\n'
+        root_block+="        };"$'\n'
+    fi
+
     # Build users.users attrset entries.
     local users_block=""
     users_block+="        $PRIMARY_USER = {"$'\n'
@@ -376,6 +393,7 @@ BATEOF
     users_block+="          shell = hmPkgs.zsh;"$'\n'
     users_block+="          initialPassword = \"changeme\";"$'\n'
     users_block+="        };"$'\n'
+    users_block+="$root_block"
 
     # HM configurations: primary always present.
     local hm_block=""
@@ -418,6 +436,20 @@ BATEOF
             hm_block+="    };"$'\n'
             hm_block+="  };"$'\n'
         done
+    fi
+
+    # SSH recovery posture. Only when a root password is set:
+    # allow PasswordAuthentication + root login so the operator can
+    # `ssh root@host` from the LAN when X/HM is broken. Override
+    # post-install if you want a stricter policy.
+    local ssh_recovery_block=""
+    if [[ -n "$ROOT_PASSWORD" ]]; then
+        ssh_recovery_block=$'\n'"      # SSH recovery posture emitted by egghead. Tighten"$'\n'
+        ssh_recovery_block+="      # post-install once the host is healthy."$'\n'
+        ssh_recovery_block+="      services.openssh.settings = {"$'\n'
+        ssh_recovery_block+="        PasswordAuthentication = true;"$'\n'
+        ssh_recovery_block+="        PermitRootLogin = \"yes\";"$'\n'
+        ssh_recovery_block+="      };"$'\n'
     fi
 
     mkdir -p "$(dirname "$out")"
@@ -471,8 +503,11 @@ $imports_block      ];
       console.keyMap = "$KEYMAP";
 $gpu_block
 $battery_block
-
-      boot.kernelPackages = hmPkgs.linuxPackages_latest;
+$ssh_recovery_block
+      # mkDefault so hardware modules (nixos-hardware microsoft-
+      # surface-*, lenovo-thinkpad-*, etc.) that ship their own
+      # patched kernel can override without an mkForce.
+      boot.kernelPackages = lib.mkDefault hmPkgs.linuxPackages_latest;
 
       users.users = {
 $users_block      };
@@ -680,6 +715,15 @@ EOF
     # — TPM unlock and other niceties are out of scope for v1.
     ask_yesno LUKS "encrypt root partition with LUKS (passphrase prompt at install + boot)?" "no"
 
+    # Recovery shell: a known root password from day one means a
+    # broken X / display manager / HM activation never leaves you
+    # locked out — drop to a TTY, or `ssh root@host` from another
+    # box on the LAN. Plain text; rotate on first login.
+    echo
+    echo "Recovery: root password (plain text; rotate on first boot)."
+    echo "  Empty = no root login (use only if you have other recovery)."
+    ask ROOT_PASSWORD "root initial password" "recovery"
+
     ask_yesno UNATTENDED "unattended host (auto-upgrade + nixos-clone + hm-auto-upgrade)?" "$ROLE_UNATT"
 
     echo
@@ -693,6 +737,11 @@ EOF
     echo "  features     : $COMMON_FEATURES + $FEATURES"
     echo "  unattended   : $UNATTENDED"
     echo "  LUKS         : $LUKS"
+    if [[ -n "$ROOT_PASSWORD" ]]; then
+        echo "  root pw      : (set)"
+    else
+        echo "  root pw      : (unset — no root login)"
+    fi
     echo "  gpu          : $GPU_DRIVER"
     echo "  timezone     : $TZ"
     echo "  locale       : $LOCALE"

@@ -155,9 +155,47 @@ TTY. See `nix run .#egghead -- --help` for the full surface.
 ## Installing on real hardware
 
 For first-time installs onto bare metal or a fresh VM, boot a NixOS
-live USB / ISO. The fully-automated path is `egghead` (see above);
-for an existing hand-rolled host (already committed in this repo)
-clone the flake and run:
+live USB / ISO and run:
+
+```sh
+# enable flakes for this shell, then run egghead
+sudo nix --extra-experimental-features 'nix-command flakes' \
+    run github:dc0d32/nixos/disko-and-egghead#egghead
+```
+
+`egghead` is the interactive installer wizard: it asks for hostname,
+role, target disk, primary user, optional LUKS, optional root
+recovery password, etc., clones this repo into `/tmp/nixos-egghead`,
+generates a host bridge + `hardware-configuration.nix`, commits
+both, then hands off to `host-setup.sh` to partition (via disko),
+install, and bootstrap home-manager.
+
+Before booting the installer:
+
+- **Secure Boot must be OFF in UEFI.** NixOS' default kernel isn't
+  shim-signed. Microsoft Surface and most OEM laptops ship with it
+  enabled. Re-enable it post-install only if you've enrolled a
+  custom key.
+- **Networking must come up on the installer.** USB-ethernet is
+  simplest; for WiFi use `iwctl` (iwd) or `nmtui` from the installer
+  shell. `egghead` clones from GitHub and downloads nixpkgs over
+  the network — if the network is down it will fail loudly before
+  any disk is touched.
+- **For Microsoft Surface devices** (Laptop 3/4/5, Pro 7+), append
+  `surface` to the feature list when the wizard asks. That wires in
+  the linux-surface patched kernel via
+  `flake-modules/surface.nix` — touchscreen, pen, suspend, audio,
+  and Wi-Fi quirks all work without it taking only the second of
+  those.
+
+`egghead` writes a root recovery password into the generated bridge
+(default `recovery`). On first boot, if the display manager or HM
+activation explodes, ssh in from another machine on the LAN with
+`ssh root@<host-ip>`, fix the bridge, `nixos-rebuild switch`, and
+rotate the password with `passwd root`.
+
+For an existing hand-rolled host (already committed in this repo,
+e.g. `pb-x1`), skip the wizard and run `host-setup.sh` directly:
 
 ```sh
 sudo ./scripts/host-setup.sh --install <hostname>
@@ -168,7 +206,8 @@ This builds the host's disko script
 mount /mnt, regenerates hardware-configuration.nix from the live
 installer kernel, runs `nixos-install`, then bootstraps each
 HM-enabled user's home-manager profile and seeds `~/nixos` from the
-canonical remote. `--help` documents every flag.
+canonical remote. `--help` documents every flag, including
+`--force-disk` (CI-only; bypasses every disk-safety guard).
 
 ## Module conventions
 

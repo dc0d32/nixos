@@ -28,6 +28,7 @@ export interface Answers {
   KEYMAP: string;
   STATE_VERSION: string;
   LUKS: string;
+  ROOT_PASSWORD: string;
   UNATTENDED: string;
 }
 
@@ -159,6 +160,13 @@ export const STEPS: StepDef[] = [
     prompt: "encrypt root partition with LUKS?",
     help: "Passphrase prompt at install + every boot. No TPM unlock in v1.",
     defaultFrom: () => envOr("LUKS", "no"),
+  },
+  {
+    key: "ROOT_PASSWORD",
+    kind: "text",
+    prompt: "root initial password (empty = no root login)",
+    help: "Plain text; rotate on first boot. Console + SSH recovery if X breaks. Default 'recovery' is fine for a freshly-installed host.",
+    defaultFrom: () => envOr("ROOT_PASSWORD", "recovery"),
   },
   {
     key: "UNATTENDED",

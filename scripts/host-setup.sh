@@ -22,6 +22,10 @@
 #                  on the new host is a single step.
 #                    Opt out of the chain steps with --no-regen-hwconfig
 #                  / --no-clone-sources / --no-install-hm.
+#                    --force-disk bypasses every guard_disk_safety check
+#                  (live-ISO-source, min size, mounted partitions,
+#                  typed-back confirmation). ONLY use for automated
+#                  smoke tests; a typo destroys data.
 #   --unmount      Recursively unmount everything under /mnt and
 #                  remove the empty mountpoint dirs disko created.
 #                  Idempotent.
@@ -90,11 +94,16 @@
 #
 # Safety:
 #   - Refuses to run as non-root (mount/mkfs/wipefs/nixos-install need it).
-#   - --install demands the literal word YES (uppercase) at an
-#     interactive prompt and echoes the disk identity (model/size/
-#     serial via lsblk) first. The disko script itself is destructive
-#     and wipes the partition table — there is no recovery once YES
-#     is typed.
+#   - --install runs guard_disk_safety BEFORE the destructive disko
+#     script: refuses if the target disk is the live ISO's source,
+#     is < 16 GiB, or has any currently-mounted partition. Final
+#     confirmation requires the operator to retype the disk's MODEL
+#     and SIZE (case + whitespace ignored) — far harder to fat-finger
+#     than the old "type YES" prompt. Pass --force-disk to skip all
+#     four checks (only for automated smoke tests; a typo destroys
+#     data). The disko script itself is destructive and wipes the
+#     partition table — there is no recovery once confirmation
+#     passes.
 #   - --unmount only walks /mnt and below; it does not touch anything
 #     outside that subtree.
 #
@@ -131,6 +140,7 @@ SHOW_HELP=0
 INSTALL_HM_AUTO=1     # toggled by --no-install-hm
 CLONE_SOURCES=1       # toggled by --no-clone-sources
 REGEN_HWCONFIG=1      # toggled by --no-regen-hwconfig
+FORCE_DISK=0          # toggled by --force-disk (skips guard_disk_safety checks)
 
 # Repo URL used to seed each user's ~/nixos at install time. HTTPS so
 # the clone works without per-user SSH credentials being deployed
@@ -206,6 +216,14 @@ while [[ $# -gt 0 ]]; do
             # Opt out of regenerating hardware-configuration.nix
             # post-install. Has no effect on other modes.
             REGEN_HWCONFIG=0
+            shift
+            ;;
+        --force-disk)
+            # Skip every guard_disk_safety check (live-ISO source,
+            # min size, mounted partitions, typed-back confirmation).
+            # ONLY for automated smoke tests. A typo here destroys
+            # data. See guard_disk_safety in this file.
+            FORCE_DISK=1
             shift
             ;;
         --audio-discover)
@@ -347,6 +365,150 @@ show_disk() {
     echo "Target disk: $DISK"
     lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT,MODEL,SERIAL "$DISK" || true
     echo
+}
+
+# ── helper: parent block device for a given mount source ──────────
+# Given e.g. "/dev/sda2" prints "/dev/sda"; given "/dev/loop0" prints
+# "/dev/loop0" unchanged; given "" or a non-block source prints "".
+# Used by guard_disk_safety to detect when the operator is about to
+# wipe the device the live ISO booted from.
+parent_block_device() {
+    local src="$1"
+    [[ -z "$src" || ! -b "$src" ]] && return 0
+    local pk
+    pk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -1 | tr -d '[:space:]')
+    if [[ -n "$pk" ]]; then
+        printf "/dev/%s\n" "$pk"
+    else
+        # No parent → src is itself a whole-disk node (or a loop).
+        printf "%s\n" "$src"
+    fi
+}
+
+# ── helper: gather all parent block devices currently hosting the
+# live installer environment ──────────────────────────────────────
+# Returns a deduplicated list of /dev/* whole-disk paths. We check
+# the obvious mountpoints (/, /nix/store, /iso, /run/initramfs/live)
+# plus anything findmnt reports under /run/iso-style locations.
+# A read-only nix store (/nix/.ro-store) backed by a squashfs on the
+# ISO is what most modern installer ISOs use; we want to catch that.
+live_iso_parents() {
+    local seen=" "
+    local mp src parent
+    for mp in / /nix /nix/store /nix/.ro-store /iso /run/iso \
+              /run/initramfs/live /run/installer; do
+        src=$(findmnt -n -o SOURCE --target "$mp" 2>/dev/null | head -1)
+        parent=$(parent_block_device "$src")
+        if [[ -n "$parent" && "$seen" != *" $parent "* ]]; then
+            seen+="$parent "
+            printf "%s\n" "$parent"
+        fi
+    done
+}
+
+# ── pre-install disk safety ───────────────────────────────────────
+# Fails fast (via abort_revert) when:
+#   1. $DISK is one of the parent block devices currently hosting
+#      the live installer environment (would wipe our own ISO/USB).
+#   2. $DISK is smaller than MIN_DISK_BYTES (default 16 GiB) — too
+#      small to install a usable system, almost always points at a
+#      USB key the operator confused with the target.
+#   3. Any partition on $DISK is currently mounted somewhere other
+#      than /mnt — would silently destroy whatever is using it.
+#   4. The operator fails the typed-back confirmation. The prompt
+#      shows MODEL and SIZE; the operator must retype them (without
+#      whitespace, case-insensitive) — much harder to fat-finger
+#      than the old "YES" prompt.
+# All four checks can be silenced with --force-disk for automated
+# tests (egghead's --non-interactive smoke runs).
+MIN_DISK_BYTES=$((16 * 1024 * 1024 * 1024))
+
+guard_disk_safety() {
+    local disk="$1"
+
+    # 1. Live ISO source check.
+    local iso
+    while IFS= read -r iso; do
+        [[ -z "$iso" ]] && continue
+        if [[ "$iso" == "$disk" ]]; then
+            echo "error: refusing to wipe $disk — it is the live installer source." >&2
+            echo "       (something is mounted from $disk under /, /nix/store, or /iso)" >&2
+            echo "       Use a different --disk, or pass --force-disk to override." >&2
+            (( FORCE_DISK )) || abort_revert
+            echo "warning: --force-disk supplied; ignoring live-ISO-source check." >&2
+            break
+        fi
+    done < <(live_iso_parents)
+
+    # 2. Minimum size.
+    local size_bytes
+    size_bytes=$(lsblk -bndo SIZE "$disk" 2>/dev/null | head -1 | tr -d '[:space:]')
+    if [[ -z "$size_bytes" ]] || (( size_bytes < MIN_DISK_BYTES )); then
+        echo "error: $disk is ${size_bytes:-?} bytes; refusing to install on anything < $MIN_DISK_BYTES bytes (16 GiB)." >&2
+        echo "       Probably wrong disk path. Pass --force-disk if you really mean it." >&2
+        if ! (( FORCE_DISK )); then abort_revert; fi
+        echo "warning: --force-disk supplied; ignoring small-disk check." >&2
+    fi
+
+    # 3. Already-mounted partition check. We don't allow ANY part of
+    # the target disk to be currently mounted, even at /mnt — disko
+    # is about to wipe the partition table, and mounted partitions
+    # would either lose data or refuse to unmount.
+    local mounted
+    mounted=$(lsblk -nrpo NAME,MOUNTPOINT "$disk" 2>/dev/null \
+        | awk '$2 != "" { print $1 " → " $2 }')
+    if [[ -n "$mounted" ]]; then
+        echo "error: refusing to wipe $disk — partitions are currently mounted:" >&2
+        echo "$mounted" >&2
+        echo "       Unmount them (sudo $0 --unmount) and retry." >&2
+        if ! (( FORCE_DISK )); then abort_revert; fi
+        echo "warning: --force-disk supplied; ignoring mounted-partition check." >&2
+    fi
+
+    # 4. Typed-back confirmation. Skipped under --force-disk so CI /
+    # non-interactive smoke runs don't have to script a stdin reply.
+    if (( FORCE_DISK )); then
+        echo ">> --force-disk: skipping typed-back model+size confirmation."
+        return 0
+    fi
+    prompt_disk_confirm "$disk"
+}
+
+# ── helper: typed-back model+size confirmation ────────────────────
+# Replaces the blunt "type YES" prompt with one that shows the disk
+# identity (MODEL + SIZE) and requires the operator to retype them.
+# Whitespace and case are ignored; everything else (including the
+# trailing G/T suffix on size) must match.
+prompt_disk_confirm() {
+    local disk="$1"
+    local model size expected got
+    model=$(lsblk -ndo MODEL "$disk" 2>/dev/null | tr -d '\n' | awk '{$1=$1};1')
+    size=$(lsblk -ndo SIZE "$disk" 2>/dev/null | tr -d '[:space:]')
+    [[ -z "$model" ]] && model="(no-model)"
+
+    # Normalize: lowercase, strip whitespace.
+    expected=$(printf "%s %s" "$model" "$size" \
+        | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
+    cat <<EOF
+
+*** DESTRUCTIVE CONFIRMATION ***
+
+To prevent fat-finger disk wipes, retype the target's MODEL and SIZE
+exactly as shown below (whitespace + case ignored):
+
+  Disk : $disk
+  Model: $model
+  Size : $size
+
+EOF
+    read -r -p "Type 'MODEL SIZE' to proceed, anything else aborts: " got
+    got=$(printf "%s" "$got" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    if [[ "$got" != "$expected" ]]; then
+        echo "error: confirmation mismatch. Expected '$model $size' (modulo case/space)." >&2
+        abort_revert
+    fi
+    echo ">> disk identity confirmed."
 }
 
 # ── --unmount mode: release /mnt tree cleanly ─────────────────────
@@ -542,6 +704,7 @@ do_install() {
         abort_revert
     fi
     show_disk
+    guard_disk_safety "$DISK"
 
     # 5. Refuse if anything under /mnt is currently mounted. The
     # disko script will mount its own layout at /mnt; pre-existing
@@ -581,33 +744,26 @@ do_install() {
     fi
     echo "  disko script: $disko_script"
 
-    # 7. Final confirmation.
+    # 7. Final summary. The destructive YES/MODEL+SIZE prompt
+    # already ran inside guard_disk_safety (step 4.5). This block is
+    # informational only — by the time we get here, the operator has
+    # explicitly confirmed.
     cat <<EOF
 
-*** DESTRUCTIVE OPERATION ***
+>> proceeding with destructive install (confirmation passed earlier).
 
-About to:
-  1. Execute the host's disko script, which will wipe $DISK,
-     write a fresh partition table, create filesystems, and mount
-     the layout under /mnt.
-  2. Run nixos-install --root /mnt --flake $flake_root#$HOSTNAME.
+   Plan:
+     1. Execute the host's disko script — wipes $DISK, writes a
+        fresh partition table, creates filesystems, mounts /mnt.
+     2. Run nixos-install --root /mnt --flake $flake_root#$HOSTNAME.
 EOF
     if (( CLONE_SOURCES )); then
-        echo "  3. Clone https://github.com/dc0d32/nixos into each HM user's ~/nixos."
+        echo "     3. Clone https://github.com/dc0d32/nixos into each HM user's ~/nixos."
     fi
     if (( INSTALL_HM_AUTO )); then
-        echo "  4. Trigger home-manager bootstrap for each HM-enabled user."
+        echo "     4. Trigger home-manager bootstrap for each HM-enabled user."
     fi
-    cat <<EOF
-
-Anything currently on $DISK will be lost beyond recovery.
-
-EOF
-    read -r -p "Type YES (uppercase) to proceed, anything else to abort: " confirm
-    if [[ "$confirm" != "YES" ]]; then
-        abort_revert
-    fi
-
+    echo
     # 8. Execute disko. The script ends with everything mounted at
     # /mnt — / on the root subvol, /mnt/boot on the ESP, /mnt/nix,
     # /mnt/home, /mnt/swap, /mnt/.snapshots (bare-metal) or /mnt
@@ -740,6 +896,38 @@ do_install_post() {
          home for them to push from after first boot."
     fi
 
+    # Extract the root initialPassword from the bridge (if any). The
+    # wizard emits `users.users.root.initialPassword = "...";` only
+    # when EGGHEAD_ROOT_PASSWORD was set. Hand-rolled hosts may not
+    # have one — in that case we tell the operator they have no
+    # recovery path beyond the live USB.
+    local bridge_file="$flake_root/flake-modules/hosts/$HOSTNAME.nix"
+    local root_pw=""
+    if [[ -f "$bridge_file" ]]; then
+        root_pw=$(sed -nE '/root = \{/,/\};/{s/^[[:space:]]*initialPassword = "(.*)";.*$/\1/p;}' "$bridge_file" \
+            | head -1)
+    fi
+    local recovery_text=""
+    if [[ -n "$root_pw" ]]; then
+        recovery_text="\
+  1a. RECOVERY ACCESS (write this down before reboot):
+
+       Root password: $root_pw
+       SSH from LAN : ssh root@<host-ip>
+                      Find <host-ip> in your router admin UI, or
+                      run \`ip a\` on a TTY (Ctrl-Alt-F2 if X breaks).
+       Console      : log in as root on any TTY.
+       FIRST THING after reboot: \`passwd root\` to rotate this
+       password. It is in plain text inside the host bridge file."
+    else
+        recovery_text="\
+  1a. RECOVERY ACCESS: none configured in this host's bridge.
+       If first boot breaks the display manager / HM, your only
+       option is to re-boot the install USB and chroot into /mnt.
+       Re-run egghead with a non-empty root password to fix this
+       on the next host."
+    fi
+
     cat <<EOF
 
 >> nixos-install finished.
@@ -752,6 +940,8 @@ Next steps (in order):
        nixos-enter --root /mnt -c 'passwd p'
        nixos-enter --root /mnt -c 'passwd m'    # if applicable
        nixos-enter --root /mnt -c 'passwd s'    # if applicable
+
+${recovery_text}
 
 ${hm_step_text}
 
