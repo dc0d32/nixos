@@ -95,21 +95,44 @@ if (cli.flags.nonInteractive || !process.stdin.isTTY) {
   process.exit(code);
 }
 
+// Capture the final answers from App.onDone; we cannot spawn bash
+// from inside the callback because Ink unmounts asynchronously and
+// the spawn would inherit a stdin still in raw mode (Ink uses raw
+// stdin to capture per-key events). With bash's `read -r` reading
+// from a raw-mode fd, prompts like host-setup.sh's "MODEL SIZE"
+// confirmation look frozen — every keystroke goes through one byte
+// at a time with no echo and no newline delivery. Waiting on
+// waitUntilExit() guarantees Ink has restored cooked mode before we
+// hand the TTY off to bash.
+type AppResult = { answers: Answers; proceed: boolean };
+const captured: { result: AppResult | null } = { result: null };
+
 const { waitUntilExit } = render(
   <App
-    onDone={({ answers, proceed }) => {
-      if (!proceed) {
-        process.stderr.write("\nabort: nothing written.\n");
-        process.exit(1);
-      }
-      const { code } = execBashWizard(answers, {
-        scriptPath,
-        forwardedArgs: forwarded,
-        forceProceed: true,
-      });
-      process.exit(code);
+    onDone={(r) => {
+      captured.result = r;
     }}
   />,
 );
 
 await waitUntilExit();
+
+const finalResult = captured.result;
+if (!finalResult || !finalResult.proceed) {
+  process.stderr.write("\nabort: nothing written.\n");
+  process.exit(1);
+}
+
+// Belt-and-braces: even after waitUntilExit() resolves, force the
+// stdin fd back to cooked mode in case any future Ink upgrade
+// changes the unmount-time cleanup behaviour.
+if (process.stdin.isTTY) {
+  process.stdin.setRawMode(false);
+}
+
+const { code } = execBashWizard(finalResult.answers, {
+  scriptPath,
+  forwardedArgs: forwarded,
+  forceProceed: true,
+});
+process.exit(code);
