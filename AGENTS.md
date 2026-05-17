@@ -271,6 +271,32 @@ configured password and the ssh recipe.
    (formats + mounts /mnt), regenerates hwconfig, runs nixos-install,
    then bootstraps each user's home-manager profile.
 
+## Migrating a pre-disko host
+
+Hosts that existed before the disko switchover (commit `c24521a`) have
+GPT partitions without `disk-main-<role>` partlabels, a stale btrfs FS
+label, and fewer subvols than the disko factory expects. A
+`nixos-rebuild switch` against the new bridge hangs at initrd because
+the synthesized `fileSystems.*` set references partlabels / subvols
+that don't exist on disk yet.
+
+Use `scripts/disko-migrate.sh <hostname>` on the affected host:
+
+```sh
+sudo ./scripts/disko-migrate.sh <hostname>            # dry-run / plan
+sudo ./scripts/disko-migrate.sh <hostname> --yes      # execute
+sudo nixos-rebuild boot --flake .#<hostname>          # NOT switch
+sudo reboot
+# After first boot, capture resume_offset and pin it in the bridge:
+journalctl -u battery-resume-offset.service -b
+```
+
+The script is idempotent (detects what's already correct and skips
+it), refuses LUKS and multi-disk hosts, refuses to run on a machine
+whose `hostname` differs from the arg. Full procedure (plus the
+hand-rolled fallback for cases the script declines) lives in
+`docs/sessions/2026-05-17-disko-in-place-migration.md`.
+
 ## Session log
 
 After a substantive session (new subsystem, migration, architectural
