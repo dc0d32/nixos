@@ -94,8 +94,11 @@ INTERACTIVE PROMPTS:
     in flake-modules/bundles/).
 
 EXAMPLES:
-    # Fully interactive from the installer ISO
-    nix run github:dc0d32/nixos#egghead
+    # Fully interactive from the installer ISO. The official NixOS
+    # ISO ships without nix-command/flakes enabled, so pass them
+    # inline:
+    sudo nix --extra-experimental-features 'nix-command flakes' \\
+        run github:dc0d32/nixos#egghead
 
     # Dry-run with overrides for hostname + role
     EGGHEAD_HOSTNAME=test-host EGGHEAD_ROLE=vm-desktop \\

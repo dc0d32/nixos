@@ -113,10 +113,17 @@ modeled after `pb-x1.nix` (full desktop laptop) or `wsl.nix` (headless
 **Wizard (`egghead`):** from the official NixOS installer ISO, run
 
 ```sh
-nix run github:dc0d32/nixos#egghead
+# enable flakes for this shell, then run the wizard
+sudo nix --extra-experimental-features 'nix-command flakes' \
+    run github:dc0d32/nixos#egghead
 ```
 
-and the TypeScript+Ink TUI walks through hostname, role template
+(The `--extra-experimental-features` flags are required because the
+official NixOS ISO ships without `nix-command` / `flakes` enabled by
+default. Once egghead finishes and the new system boots, both
+features are turned on globally by `flake-modules/nix-settings.nix`.)
+
+The TypeScript+Ink TUI walks through hostname, role template
 (`bare-metal-laptop` / `bare-metal-desktop` / `vm-headless` /
 `vm-desktop`), target disk, users, feature toggles, optional LUKS
 root encryption, and locale. The wizard writes
@@ -160,7 +167,7 @@ live USB / ISO and run:
 ```sh
 # enable flakes for this shell, then run egghead
 sudo nix --extra-experimental-features 'nix-command flakes' \
-    run github:dc0d32/nixos/disko-and-egghead#egghead
+    run github:dc0d32/nixos#egghead
 ```
 
 `egghead` is the interactive installer wizard: it asks for hostname,

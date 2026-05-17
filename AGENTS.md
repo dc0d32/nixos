@@ -180,7 +180,7 @@ preferred; or `iwctl` / `nmtui` for WiFi), then run
 
 ```sh
 sudo nix --extra-experimental-features 'nix-command flakes' \
-    run github:dc0d32/nixos/disko-and-egghead#egghead
+    run github:dc0d32/nixos#egghead
 ```
 
 A TypeScript+Ink TUI asks for hostname, role (`bare-metal-laptop` /
