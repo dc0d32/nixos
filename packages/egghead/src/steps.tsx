@@ -50,6 +50,24 @@ function detectSecureBoot(): "enabled" | "disabled" | "unknown" {
 }
 const secureBootState = detectSecureBoot();
 
+// Installed-RAM-rounded-up default for SWAP_SIZE. Hibernate needs
+// swap >= RAM; rounding UP to the next whole GiB clears that with no
+// margin disputes (a 31.2 GiB host gets "32G", a 7.6 GiB host gets
+// "8G"). Returns "" when /proc/meminfo is unreadable so the wizard
+// just asks the operator instead of guessing.
+function defaultSwapSize(): string {
+  try {
+    const meminfo = readFileSync("/proc/meminfo", "utf8");
+    const m = meminfo.match(/^MemTotal:\s+(\d+)\s+kB$/m);
+    if (!m) return "";
+    const kib = Number(m[1]);
+    const gib = Math.ceil(kib / 1048576);
+    return `${gib}G`;
+  } catch {
+    return "";
+  }
+}
+
 export interface ExtraUser {
   login: string;
   fullname: string;
@@ -61,6 +79,11 @@ export interface Answers {
   HOSTNAME: string;
   ROLE: string;
   DISK: string;
+  // Swap partition size in disko-friendly units ("32G", "12G", "")
+  // — empty / "0" / "none" means no swap partition (and no
+  // hibernate). Default is installed RAM rounded up to GiB so
+  // hibernate works out of the box on the install host.
+  SWAP_SIZE: string;
   PRIMARY_USER: string;
   PRIMARY_FULLNAME: string;
   PRIMARY_HM: string;
@@ -151,6 +174,25 @@ export const STEPS: StepDef[] = [
     defaultFrom: (p) => envOr("DISK", role(p)?.disk ?? "/dev/sda"),
     validate: (v) =>
       v.startsWith("/dev/") ? undefined : "must start with /dev/",
+  },
+  {
+    key: "SWAP_SIZE",
+    kind: "text",
+    prompt: "swap partition size",
+    help:
+      "disko-friendly size string (e.g. '32G', '12G'). Empty / '0' / 'none' = no swap partition (and no hibernate). " +
+      "Default is installed RAM rounded up to GiB so hibernate works out of the box.",
+    defaultFrom: () => envOr("SWAP_SIZE", defaultSwapSize()),
+    validate: (v) => {
+      const t = v.trim();
+      if (t === "" || t === "0" || t === "0G" || t === "none") return undefined;
+      // disko accepts sizes like 32G / 500M / 100%; we deliberately
+      // don't accept % here because hibernate needs a known absolute
+      // size. Bytes-suffix or empty only.
+      return /^[0-9]+(\.[0-9]+)?[KMGT]?$/i.test(t)
+        ? undefined
+        : "must be like 32G / 12G / '' / 'none'";
+    },
   },
   {
     key: "PRIMARY_USER",

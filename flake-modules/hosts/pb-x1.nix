@@ -81,14 +81,20 @@ in
       imports = [
         ../../hosts/pb-x1/hardware-configuration.nix
         # Disko: declarative disk layout. Provides config.fileSystems.*
-        # (root/nix/home/swap/.snapshots subvols, /boot ESP) from the
-        # shared bare-metal layout factory; flake.modules.nixos.disko
-        # imports inputs.disko.nixosModules.disko which actually
-        # synthesizes the fileSystems entries from disko.devices.
+        # (root/nix/home/.snapshots subvols, /boot ESP) plus a 32G
+        # swap partition from the shared bare-metal layout factory;
+        # flake.modules.nixos.disko imports inputs.disko.nixosModules.disko
+        # which actually synthesizes the fileSystems + swapDevices +
+        # resumeDevice entries from disko.devices.
         # /dev/nvme0n1 — single onboard NVMe on this Lenovo X1 Yoga.
         config.flake.modules.nixos.disko
         (config.flake.lib.diskoLayouts.bare-metal {
           disk = "/dev/nvme0n1";
+          # 32 GiB swap partition — RAM is 31 GiB so this clears the
+          # hibernate requirement (swap >= RAM) with a small margin.
+          # See flake-modules/disko.nix for why swap is its own
+          # partition rather than a btrfs swapfile.
+          swapSize = "32G";
         })
         # Migrated dendritic feature modules (NixOS side).
         config.flake.modules.nixos.hardware-hacking
@@ -157,10 +163,10 @@ in
       # lifespan substantially. Set to 100 (and recharge to full)
       # before flying or other long unplug.
       #
-      # battery.resumeDevice defaults to config.fileSystems."/".device
-      # (the btrfs root, captured in
-      # hosts/pb-x1/hardware-configuration.nix), so there's no
-      # per-instance UUID to manage here.
+      # Swap is provisioned by the disko factory above (swapSize =
+      # "32G") as its own GPT partition; resumeDevice + the rest of
+      # hibernate-resume wire themselves up via disko's swap content
+      # type. No per-host resume_offset to maintain.
       battery = {
         chargeStopThreshold = 80;
         chargeStartThreshold = 75;
@@ -174,11 +180,6 @@ in
         # Implemented by the UPower watcher inside the idled user
         # daemon.
         powerSaverPercent = 40;
-        # Swap file size (GiB). Hibernate needs swap >= RAM. 32 GiB
-        # matches this host's 31 GiB RAM with a margin. Created at
-        # /swap/swapfile on btrfs (CoW disabled per kernel
-        # requirement).
-        swapSizeGiB = 32;
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported
@@ -186,15 +187,6 @@ in
       # systemd-boot settings here with mkForce if this host needs to
       # diverge.
       boot.kernelPackages = hmPkgs.linuxPackages_latest;
-
-      # Hibernate-resume offset for /swap/swapfile. battery.nix's
-      # battery-resume-offset oneshot computes this via
-      # `btrfs inspect-internal map-swapfile` on first boot and nags
-      # in the journal when the value drifts. Captured here so the
-      # initrd's `resume=` arg lands at the right physical offset.
-      # Recompute and update if the swapfile is ever recreated (rare;
-      # battery-resume-offset will log the new value to the journal).
-      boot.kernelParams = [ "resume_offset=10162202" ];
 
       # Primary user.
       users.users.${user} = {

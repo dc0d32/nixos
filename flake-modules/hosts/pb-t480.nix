@@ -234,12 +234,17 @@ in
         ../../hosts/pb-t480/hardware-configuration.nix
 
         # Disko: declarative disk layout. Provides config.fileSystems.*
-        # (root/nix/home/swap/.snapshots subvols, /boot ESP) from the
-        # shared bare-metal layout factory. /dev/nvme0n1 — single
-        # onboard NVMe on this T480.
+        # (root/nix/home/.snapshots subvols, /boot ESP) plus a 32G
+        # swap partition from the shared bare-metal layout factory.
+        # /dev/nvme0n1 — single onboard NVMe on this T480.
         config.flake.modules.nixos.disko
         (config.flake.lib.diskoLayouts.bare-metal {
           disk = "/dev/nvme0n1";
+          # 32 GiB swap partition — T480 ships with 32 GiB RAM, this
+          # clears the hibernate requirement (swap >= RAM) with a
+          # small margin. See flake-modules/disko.nix for why swap is
+          # its own partition rather than a btrfs swapfile.
+          swapSize = "32G";
         })
 
         # Hardware-specific defaults from nixos-hardware (kernel
@@ -348,16 +353,10 @@ in
       # charge thresholds — capping BAT1 at 80% costs nothing and
       # extends its lifespan alongside BAT0.
       #
-      # battery.resumeDevice defaults to config.fileSystems."/".device
-      # (the btrfs root, captured in
-      # hosts/pb-t480/hardware-configuration.nix), so there's no
-      # per-instance UUID to manage here. The kernelParams
-      # `resume_offset` gets injected by `scripts/host-setup.sh
-      # --install` after it creates the swapfile and reads the offset
-      # via `btrfs inspect-internal map-swapfile`. battery.nix ships a
-      # `boot.kernelParams = [ "resume_offset=0" ]` default which the
-      # injected `lib.mkForce` line overrides; until --install runs,
-      # hibernate-resume will fail safely (kernel boots fresh).
+      # Swap is provisioned by the disko factory above (swapSize =
+      # "32G") as its own GPT partition; disko sets boot.resumeDevice
+      # to the swap partition automatically, so hibernate-resume works
+      # without any per-host resume_offset.
       battery = {
         batteries = [ "BAT0" "BAT1" ];
         chargeStopThreshold = 80;
@@ -365,7 +364,6 @@ in
         criticalPercent = 10;
         criticalAction = "Hibernate";
         powerSaverPercent = 40;
-        swapSizeGiB = 32;
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported

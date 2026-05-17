@@ -10,43 +10,58 @@
 #       no longer need to maintain `fileSystems.*` blocks in
 #       `hardware-configuration.nix` by hand.
 #   * flake.lib.diskoLayouts.bare-metal
-#       Factory: `{ disk, luks ? false }: <module attrset>` producing
-#       the shared layout used by every bare-metal host in the repo
-#       (pb-x1, pb-t480, m-pc):
+#       Factory: `{ disk, swapSize ? null, luks ? false }: <module attrset>`
+#       producing the shared layout used by every bare-metal host in
+#       the repo (pb-x1, pb-t480, m-pc):
 #         p1: 1 MiB bios-boot (ef02)
-#         p2: 1 GiB vfat ESP                       → /boot
-#         p3: rest  btrfs                          partlabel=nixos
-#               subvol=root                        → /
-#               subvol=nix                         → /nix
-#               subvol=home                        → /home
-#               subvol=swap          (nodatacow)   → /swap
-#               subvol=snapshots     (nodatacow)   → /.snapshots
+#         p2: 1 GiB vfat ESP                        → /boot
+#         p3: <swapSize> swap (8200, present only when swapSize != null)
+#                                                   partlabel=disk-main-swap
+#         p4: rest  btrfs                           partlabel=disk-main-nixos
+#               subvol=root                         → /
+#               subvol=nix                          → /nix
+#               subvol=home                         → /home
+#               subvol=snapshots                    → /.snapshots
 #       Hybrid bios-boot + ESP lets one layout boot on BIOS firmware
 #       (m-pc, Compaq SFF, via grub) and UEFI firmware (laptops, via
-#       systemd-boot) without per-host divergence. The `swap` subvol
-#       has CoW disabled via `nodatacow` mount option so battery.nix's
-#       `/swap/swapfile` lives on a CoW-free subvol without the
-#       chattr +C dance the previous install pattern required (the
-#       kernel refuses to use swap files on CoW-enabled btrfs subvols).
-#       The `snapshots` subvol is materialized now as a slot for future
-#       snapper/btrfs-snapshot wiring; it's empty until that lands.
-#       Subvol names are bare (no `@` prefix) to match the convention
-#       already in the running pb-x1 / pb-t480 installs.
+#       systemd-boot) without per-host divergence.
 #
-#       With luks=true, p3 is LUKS2-encrypted and btrfs goes on top of
-#       /dev/mapper/cryptroot. The disko script prompts for the
+#       Swap lives on its own GPT partition (type 8200) when
+#       `swapSize` is non-null. The disko swap content type sets
+#       `boot.resumeDevice` to /dev/disk/by-partlabel/disk-main-swap
+#       automatically, so hibernate-resume just works — no
+#       `resume_offset=` dance, no `btrfs inspect-internal map-swapfile`
+#       service, no per-host kernelParam pin. Trade-off: swap size is
+#       fixed at install time (resize means partition reshape +
+#       mkswap, see scripts/disko-migrate.sh / docs/sessions/…). For
+#       hibernate, size should be >= installed RAM. Set
+#       `swapSize = null` (the default) for hosts that don't need
+#       swap (e.g. servers with enough RAM, hosts that never
+#       hibernate).
+#
+#       The `snapshots` subvol is materialized now as a slot for
+#       future snapper/btrfs-snapshot wiring; it's empty until that
+#       lands. Subvol names are bare (no `@` prefix) to match the
+#       convention already in the running pb-x1 / pb-t480 installs.
+#
+#       With luks=true, p4 is LUKS2-encrypted and btrfs goes on top
+#       of /dev/mapper/cryptroot. The disko script prompts for the
 #       passphrase interactively at install time (no passphrase or
 #       keyfile is ever materialized in the nix store). At boot, the
 #       generated `boot.initrd.luks.devices.cryptroot` entry prompts
-#       the same way. Hibernate-resume still works: swap lives inside
-#       the encrypted btrfs, so the resume image is encrypted at rest
-#       and the kernel unlocks the volume during early initrd before
-#       trying to read the resume_offset block.
+#       the same way. The swap partition is NOT wrapped in LUKS;
+#       hibernate writes plaintext memory image to swap, which is a
+#       conscious trade-off — if you need encrypted hibernate, change
+#       this factory to wrap the swap partition in LUKS too (or move
+#       swap inside the encrypted btrfs, accepting the
+#       swapfile-resume-offset complexity that comes with it).
 #   * flake.lib.diskoLayouts.vm
-#       Factory: `{ disk, luks ? false }: <module attrset>` for VM
-#       hosts (ah-1):
-#         p1: 1 GiB vfat ESP                       → /boot
-#         p2: rest  ext4                           → /
+#       Factory: `{ disk, swapSize ? null, luks ? false }: <module attrset>`
+#       for VM hosts (ah-1):
+#         p1: 1 GiB vfat ESP                        → /boot
+#         p2: <swapSize> swap (present only when swapSize != null)
+#                                                   partlabel=disk-main-swap
+#         p3: rest  ext4                            → /
 #       UEFI only (OVMF). ext4 — Proxmox storage is NFS-mounted from
 #       TrueNAS ZFS; ZFS provides CoW, checksums, snapshots, and
 #       integrity at the bottom of the stack. Guest btrfs would be
@@ -62,14 +77,16 @@
 #       VM-class hosts.
 #
 # Why factories rather than fixed modules:
-#   The `disk` device path is the only per-host knob (everything else
-#   is uniform across the host class), so each host bridge writes:
+#   The `disk` device path + `swapSize` are the only per-host knobs
+#   (everything else is uniform across the host class), so each host
+#   bridge writes:
 #
-#     # hosts/<name>/disko.nix
-#     { config, ... }:
-#     config.flake.lib.diskoLayouts.bare-metal { disk = "/dev/nvme0n1"; }
+#     (config.flake.lib.diskoLayouts.bare-metal {
+#       disk = "/dev/nvme0n1";
+#       swapSize = "32G";
+#     })
 #
-#   Adding a new bare-metal host is a one-line call site. The factory
+#   Adding a new bare-metal host is a few-line call site. The factory
 #   pattern mirrors `flake.lib.mkPkgs` (mk-pkgs.nix) and
 #   `flake.lib.bundles.homeManager.*` (bundles/).
 #
@@ -91,7 +108,7 @@
 #     model cleanly, OR
 #   * NixOS gains a first-class declarative partitioning system that
 #     supersedes disko (no concrete proposal as of this writing).
-{ inputs, ... }:
+{ inputs, lib, ... }:
 let
   # Impure side channel for the install-time LUKS passphrase. When
   # egghead is enrolling a TPM2 keyslot it needs disko to format +
@@ -121,20 +138,19 @@ in
   };
 
   flake.lib.diskoLayouts = {
-    # Bare-metal: bios-boot + ESP + btrfs with subvols. Optional LUKS
-    # wrap around the btrfs partition.
-    bare-metal = { disk, luks ? false }:
+    # Bare-metal: bios-boot + ESP + optional swap + btrfs with subvols.
+    # Optional LUKS wrap around the btrfs partition only (NOT swap —
+    # see the header for the trade-off).
+    bare-metal = { disk, swapSize ? null, luks ? false }:
       let
         # The btrfs content block is the same regardless of whether
         # it lives directly on the partition or inside a LUKS mapper.
+        # No `swap` subvol any more — swap is its own partition
+        # (when swapSize != null) rather than a swapfile in a no-CoW
+        # subvol. That's what eliminates the resume_offset song and
+        # dance the older layout required.
         btrfsContent = {
           type = "btrfs";
-          # `-f` forces overwrite of any existing signature on
-          # the partition — disko's --mode disko/destroy is
-          # already destructive, this just suppresses the
-          # interactive confirmation. `-L nixos` sets a
-          # filesystem label matching the partition label so
-          # `btrfs filesystem show` reads naturally.
           extraArgs = [ "-L" "nixos" "-f" ];
           subvolumes = {
             "root" = {
@@ -149,45 +165,17 @@ in
               mountpoint = "/home";
               mountOptions = [ "compress=zstd:1" "noatime" ];
             };
-            # CoW disabled on this subvol via `nodatacow` mount
-            # option. battery.nix's swapDevices entry creates
-            # /swap/swapfile here; the kernel requires
-            # swapfiles on btrfs to be on a CoW-disabled,
-            # non-snapshotted subvol with a single contiguous
-            # extent. Mounting nodatacow at format-time means
-            # any file created here inherits the
-            # no-data-checksum + no-CoW attributes without an
-            # explicit `chattr +C` step.
-            "swap" = {
-              mountpoint = "/swap";
-              mountOptions = [ "nodatacow" "noatime" ];
-            };
-            # Empty slot for future snapper / btrfs-snapshot
-            # wiring (snapper conventionally places snapshots
-            # under /.snapshots). Not referenced by anything
-            # today; remove this subvol from the factory if you
-            # decide snapshots aren't worth the metadata
-            # footprint.
+            # Empty slot for future snapper / btrfs-snapshot wiring
+            # (snapper conventionally places snapshots under
+            # /.snapshots). Not referenced by anything today; remove
+            # this subvol from the factory if you decide snapshots
+            # aren't worth the metadata footprint.
             "snapshots" = {
               mountpoint = "/.snapshots";
               mountOptions = [ "compress=zstd:1" "noatime" ];
             };
           };
         };
-        # When luks=true, wrap btrfs in a LUKS2 container. By default
-        # disko calls cryptsetup luksFormat against the operator's TTY
-        # at install time and the passphrase never reaches the nix
-        # store. When the egghead wizard wants to enroll a TPM2
-        # keyslot it sets EGGHEAD_LUKS_PASSWORD_FILE pointing at a
-        # tmpfs file containing the passphrase, and `withPasswordFile`
-        # routes that into disko so the format + open run
-        # non-interactively. allowDiscards passes TRIM through to
-        # the underlying SSD (small information-leak trade-off for
-        # wear-levelling and GC performance — same recommendation as
-        # upstream NixOS docs). bypassWorkqueues skips the read/write
-        # workqueues for a measurable perf win on NVMe. The mapper
-        # name `cryptroot` is referenced by the disko-generated
-        # `boot.initrd.luks.devices.cryptroot` entry at boot.
         nixosPartContent =
           if luks then
             withPasswordFile
@@ -202,6 +190,38 @@ in
               }
           else
             btrfsContent;
+
+        # priority=1 puts BIOS-boot first, then ESP, then (optional)
+        # swap, then nixos catching the rest. Explicit priorities
+        # because nix attrset order is alphabetical, which would
+        # otherwise interleave wrong (e.g. ESP < BIOS < nixos < swap).
+        # Disko sorts partitions within a gpt content by `priority`
+        # ascending; the 100% size on nixos still slots it last
+        # regardless, but the explicit ordering keeps disko's parted
+        # invocations deterministic.
+        swapPartition = lib.optionalAttrs (swapSize != null) {
+          swap = {
+            size = swapSize;
+            # 8200 = Linux swap GPT GUID. Sets the partition type so
+            # systemd-gpt-auto-generator (if ever enabled) and other
+            # auto-discovery tools recognise it as swap.
+            type = "8200";
+            priority = 3;
+            content = {
+              type = "swap";
+              # Disko sets boot.resumeDevice to
+              # /dev/disk/by-partlabel/disk-main-swap when this is
+              # true. That's what makes hibernate-resume work without
+              # any per-host kernelParam.
+              resumeDevice = true;
+              # No randomEncryption: a random key per-boot would break
+              # hibernate-resume (the kernel can't decrypt the suspend
+              # image with a new key). If you don't want plaintext
+              # swap, switch luks=true on the whole disk — but see the
+              # factory header for why swap isn't LUKS-wrapped here.
+            };
+          };
+        };
       in
       {
         disko.devices.disk.main = {
@@ -222,6 +242,7 @@ in
               ESP = {
                 size = "1G";
                 type = "EF00";
+                priority = 2;
                 content = {
                   type = "filesystem";
                   format = "vfat";
@@ -231,17 +252,18 @@ in
               };
               nixos = {
                 size = "100%";
+                priority = 4;
                 content = nixosPartContent;
               };
-            };
+            } // swapPartition;
           };
         };
       };
 
-    # VM: ESP + ext4 (no swap, no bios-boot, no subvols). Optional
-    # LUKS wrap; usually unnecessary because the hypervisor / ZFS
-    # pool already encrypts the backing store.
-    vm = { disk, luks ? false }:
+    # VM: ESP + optional swap + ext4 (no bios-boot, no subvols).
+    # Optional LUKS wrap; usually unnecessary because the hypervisor /
+    # ZFS pool already encrypts the backing store.
+    vm = { disk, swapSize ? null, luks ? false }:
       let
         ext4Content = {
           type = "filesystem";
@@ -263,6 +285,17 @@ in
               }
           else
             ext4Content;
+        swapPartition = lib.optionalAttrs (swapSize != null) {
+          swap = {
+            size = swapSize;
+            type = "8200";
+            priority = 2;
+            content = {
+              type = "swap";
+              resumeDevice = true;
+            };
+          };
+        };
       in
       {
         disko.devices.disk.main = {
@@ -274,6 +307,7 @@ in
               ESP = {
                 size = "1G";
                 type = "EF00";
+                priority = 1;
                 content = {
                   type = "filesystem";
                   format = "vfat";
@@ -283,9 +317,10 @@ in
               };
               nixos = {
                 size = "100%";
+                priority = 3;
                 content = nixosPartContent;
               };
-            };
+            } // swapPartition;
           };
         };
       };

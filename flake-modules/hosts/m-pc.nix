@@ -59,11 +59,12 @@
 #   Unusual but explicitly requested. battery.nix is imported (the
 #   charge-threshold writes are harmless `tmpfiles w+` no-ops on a
 #   battery-less host because the sysfs files don't exist), giving us
-#   the swapfile + resume-offset machinery. UPower's
-#   PercentageCritical action also wires up but never fires (no
-#   battery to drain), so hibernate on m-pc is purely user-initiated
-#   via `systemctl hibernate`. swapSizeGiB is 12 (RAM is 8 GiB; the
-#   default of 32 is wasteful here).
+#   the UPower hibernate-on-critical wiring. The actual swap area
+#   comes from the disko factory's `swapSize = "12G"` (RAM is 8 GiB,
+#   12 GiB clears the swap >= RAM requirement with margin). UPower's
+#   PercentageCritical action wires up but never fires (no battery to
+#   drain), so hibernate on m-pc is purely user-initiated via
+#   `systemctl hibernate`.
 #
 # To rebuild on the actual hardware (after regenerating
 # hardware-configuration.nix):
@@ -160,7 +161,7 @@ in
 
   # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
   # below, NOT here — see the same note in pb-x1.nix. Even though this is
-  # a desktop, we import battery.nix for its swapfile + hibernate
+  # a desktop, we import battery.nix for the UPower hibernate-on-critical
   # plumbing (the battery-specific tmpfiles are harmless no-ops on a
   # battery-less host).
 
@@ -236,6 +237,10 @@ in
         config.flake.modules.nixos.disko
         (config.flake.lib.diskoLayouts.bare-metal {
           disk = "/dev/sda";
+          # 12 GiB swap partition — m-pc has 8 GiB RAM; 12 GiB clears
+          # the hibernate requirement (swap >= RAM) with margin for
+          # zswap-style compression headroom.
+          swapSize = "12G";
         })
 
         # Feature modules. Subset of pb-t480 with biometrics +
@@ -250,10 +255,11 @@ in
         config.flake.modules.nixos.fonts
         config.flake.modules.nixos.locale
         # battery.nix imported even on this desktop — it provides the
-        # swapfile + hibernate plumbing we want, and the
-        # battery-threshold writes are harmless no-ops where /sys/
-        # class/power_supply/BAT0 doesn't exist (`tmpfiles w+` ignores
-        # ENOENT).
+        # UPower hibernate-on-critical wiring we want. The
+        # battery-threshold writes are harmless no-ops where
+        # /sys/class/power_supply/BAT0 doesn't exist (tmpfiles `w+`
+        # ignores ENOENT). The swap partition is provisioned by the
+        # disko factory above.
         config.flake.modules.nixos.battery
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.bluetooth
@@ -309,20 +315,16 @@ in
       # services.xserver.videoDrivers = [ "amdgpu" ].
       gpu.driver = "amd";
 
-      # battery.nix imported even though this is a desktop — we use it
-      # for the swapfile + hibernate plumbing. battery.resumeDevice
-      # defaults to config.fileSystems."/".device (the btrfs root,
-      # captured in hosts/m-pc/hardware-configuration.nix), so there's
-      # no per-instance UUID to manage here.
-      #
-      # swapSizeGiB lowered to 12 (vs the 32 default) — RAM is 8 GiB
-      # so 12 gives hibernate enough headroom (RAM + a margin) without
-      # wasting disk on a small SFF SSD. The desktop-irrelevant
-      # battery knobs (chargeStop/Start/criticalPercent) keep their
-      # module defaults; they no-op on this host.
-      battery = {
-        swapSizeGiB = 12;
-      };
+      # battery.nix imported even though this is a desktop — we use
+      # it for the UPower hibernate-on-critical wiring. Swap is
+      # provisioned by the disko factory above (swapSize = "12G");
+      # disko sets boot.resumeDevice to the swap partition
+      # automatically. The desktop-irrelevant battery knobs
+      # (chargeStop/Start/criticalPercent) keep their module
+      # defaults; they no-op on this host because there are no
+      # battery sysfs files to write to.
+      # battery = { ... }; — module defaults are fine here, nothing
+      # to override per-host.
 
       # Bootloader policy lives in flake-modules/boot.nix (imported
       # above as config.flake.modules.nixos.boot). The Compaq 4300 SFF

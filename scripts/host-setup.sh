@@ -107,17 +107,14 @@
 #   - --unmount only walks /mnt and below; it does not touch anything
 #     outside that subtree.
 #
-# Hibernate-resume first-boot caveat:
-#   battery.nix's swapfile is created on first boot (via the
-#   mkswap-swap-swapfile.service unit NixOS generates from
-#   swapDevices). The kernel cmdline ships `resume_offset=0` until
-#   the first post-install rebuild, so the very first hibernate-
-#   resume attempt after a fresh install will silently fail and the
-#   kernel will boot fresh. The battery-resume-offset.service unit
-#   prints the right value in dmesg; copy it into the host bridge's
-#   `boot.kernelParams` override, `nixos-rebuild switch`, reboot, and
-#   hibernate-resume works from then on. This is a one-time per-host
-#   wart; not worth automating.
+# Hibernate-resume:
+#   Swap lives on its own GPT partition (provisioned by the disko
+#   factory's `swapSize` arg). The disko swap content type sets
+#   `boot.resumeDevice` to /dev/disk/by-partlabel/disk-main-swap
+#   automatically — no `resume_offset=` to maintain, no first-boot
+#   wart. Hosts that don't pass `swapSize` get no swap and can't
+#   hibernate; that's the right answer for servers / VMs that don't
+#   need it.
 #
 # Retire when: disko publishes a turnkey installer for this exact
 #   "disko + nixos-install + per-user HM bootstrap + clone seeding"
@@ -1040,18 +1037,10 @@ ${hm_step_text}
   4. After first boot:
 
 ${clone_step_text}
-       - Hibernate-resume (laptops only): the kernel cmdline ships
-         with resume_offset=0 until the first post-install rebuild,
-         so the very first hibernate-resume attempt will silently
-         fail and the kernel will boot fresh. The
-         battery-resume-offset.service unit logs the correct offset
-         to dmesg on every boot when there's a mismatch; copy that
-         value into the host bridge's boot.kernelParams override and
-         rebuild. This is a one-time wart per host. The swapfile
-         itself is created automatically by NixOS's
-         mkswap-swap-swapfile.service on first boot — the disko
-         layout already provisioned the /swap subvol with nodatacow,
-         so no \`chattr +C\` dance is needed.
+       - Hibernate-resume (any host with swap): the disko factory
+         provisioned a swap partition at /dev/disk/by-partlabel/disk-
+         main-swap and the disko module sets boot.resumeDevice to
+         that path automatically. No first-boot kernelParam wart.
 
 EOF
 }

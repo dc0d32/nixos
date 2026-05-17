@@ -255,7 +255,8 @@ configured password and the ssh recipe.
    `config.flake.lib.diskoLayouts.{bare-metal,vm}` with the target
    disk path. Bare-metal hosts use `bare-metal` (hybrid BIOS+UEFI,
    btrfs subvols); Proxmox/NFS-backed VMs use `vm` (UEFI-only, ext4,
-   no swap, no subvols).
+   no subvols). Both factories accept an optional `swapSize` arg
+   (e.g. `"32G"`); omit it (or pass `null`) for no swap partition.
 2. Generate `hosts/<name>/hardware-configuration.nix` via
    `sudo nixos-generate-config --no-filesystems --show-hardware-config`.
    The `--no-filesystems` flag is mandatory — disko owns
@@ -275,10 +276,10 @@ configured password and the ssh recipe.
 
 Hosts that existed before the disko switchover (commit `c24521a`) have
 GPT partitions without `disk-main-<role>` partlabels, a stale btrfs FS
-label, and fewer subvols than the disko factory expects. A
-`nixos-rebuild switch` against the new bridge hangs at initrd because
-the synthesized `fileSystems.*` set references partlabels / subvols
-that don't exist on disk yet.
+label, fewer subvols than the disko factory expects, and no dedicated
+swap partition. A `nixos-rebuild switch` against the new bridge hangs
+at initrd because the synthesized `fileSystems.*` / `swapDevices` set
+references partlabels / subvols that don't exist on disk yet.
 
 Use `scripts/disko-migrate.sh <hostname>` on the affected host:
 
@@ -287,14 +288,18 @@ sudo ./scripts/disko-migrate.sh <hostname>            # dry-run / plan
 sudo ./scripts/disko-migrate.sh <hostname> --yes      # execute
 sudo nixos-rebuild boot --flake .#<hostname>          # NOT switch
 sudo reboot
-# After first boot, capture resume_offset and pin it in the bridge:
-journalctl -u battery-resume-offset.service -b
 ```
 
 The script is idempotent (detects what's already correct and skips
 it), refuses LUKS and multi-disk hosts, refuses to run on a machine
-whose `hostname` differs from the arg. Full procedure (plus the
-hand-rolled fallback for cases the script declines) lives in
+whose `hostname` differs from the arg. If a swap-partition reshape is
+needed (shrink btrfs → shrink nixos partition → add swap partition at
+end), the `--yes` run prompts the operator to type back the target
+disk's MODEL and SIZE before touching anything. No `resume_offset`
+capture or follow-up rebuild needed — disko's swap content type pins
+`boot.resumeDevice` to `/dev/disk/by-partlabel/disk-main-swap` at eval
+time. Full procedure (plus the hand-rolled fallback for cases the
+script declines) lives in
 `docs/sessions/2026-05-17-disko-in-place-migration.md`.
 
 ## Session log
