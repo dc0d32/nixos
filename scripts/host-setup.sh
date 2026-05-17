@@ -777,8 +777,15 @@ EOF
     # on the installed system). niri.cachix.org keeps niri's Rust
     # crates off crates.io (slow / rate-limited / fails on 4-core
     # T480 builds).
+    # --no-root-passwd: the wizard always emits a
+    # `users.users.root.initialHashedPassword` into the bridge (default
+    # "recovery", overridable per-host, "" = no-login). nixos-install's
+    # own end-of-run interactive root-password prompt would either ask
+    # for something we've already declared declaratively, or block
+    # forever on a non-interactive install. Skip it unconditionally.
     echo ">> running nixos-install …"
     nixos-install --root /mnt --flake "$flake_root#$HOSTNAME" \
+        --no-root-passwd \
         --option extra-experimental-features "nix-command flakes" \
         --option extra-substituters "https://niri.cachix.org" \
         --option extra-trusted-public-keys \
