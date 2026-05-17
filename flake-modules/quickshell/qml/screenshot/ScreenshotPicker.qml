@@ -60,7 +60,9 @@ Scope {
       WlrLayershell.layer: WlrLayershell.Overlay
       anchors { top: true; bottom: true; left: true; right: true }
       exclusiveZone: -1
-      WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+      WlrLayershell.keyboardFocus: root.shown
+        ? WlrKeyboardFocus.Exclusive
+        : WlrKeyboardFocus.None
 
       MouseArea {
         anchors.fill: parent

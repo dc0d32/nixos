@@ -77,7 +77,13 @@ Scope {
       WlrLayershell.layer: WlrLayershell.Overlay
       anchors { top: true; bottom: true; left: true; right: true }
       exclusiveZone: -1
-      WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+      // Same focus-grab-release dance as AppLauncher.qml — flip to
+      // None on hide so wlroots doesn't keep honoring an exclusive
+      // grab on a hidden surface (Variants keeps the PanelWindow
+      // alive across show/hide cycles).
+      WlrLayershell.keyboardFocus: root.shown
+        ? WlrKeyboardFocus.Exclusive
+        : WlrKeyboardFocus.None
 
       MouseArea {
         anchors.fill: parent

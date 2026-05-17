@@ -36,8 +36,17 @@ Scope {
       anchors { top: true; bottom: true; left: true; right: true }
       exclusiveZone: -1
       // Take exclusive keyboard focus while open so typing goes here, not the
-      // window underneath.
-      WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+      // window underneath. Bind to `root.shown` so the focus grab is
+      // *released* the moment we close — when the panel is hidden via
+      // `visible: false` the layer-shell surface remains alive (Variants
+      // keeps it as a child object), and wlroots will happily keep
+      // honoring a stale `Exclusive` grab on a hidden surface, with
+      // visible symptom: clicks and keystrokes fall into a black hole
+      // after the launcher closes. Flipping to `None` on hide releases
+      // the grab back to the compositor.
+      WlrLayershell.keyboardFocus: root.shown
+        ? WlrKeyboardFocus.Exclusive
+        : WlrKeyboardFocus.None
 
       // dim backdrop + click-to-dismiss
       MouseArea {
