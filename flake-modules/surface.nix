@@ -61,32 +61,86 @@
         '';
       };
 
-      config = {
-        # nixos-hardware's microsoft-surface-common sets
-        # `boot.kernelPackages` as a plain assignment (priority 100).
-        # When useKernel=false, force-override it back to the latest
-        # mainline so we don't trigger the multi-hour patched-kernel
-        # build on every install.
-        boot.kernelPackages =
-          lib.mkIf (!config.surface.useKernel)
-            (lib.mkForce pkgs.linuxPackages_latest);
+      config =
+        let
+          luksOn = config.boot.initrd.luks.devices or { } != { };
 
-        # When the host enables LUKS, the wired keyboard on Surface
-        # devices reaches the LUKS unlock prompt only if the Surface
-        # Aggregator Module's HID glue is loaded in initrd. Stock
-        # mainline (post-5.13) has the modules; nixos-generate-config
-        # doesn't auto-detect them. Harmless if a module isn't
-        # actually present in the running kernel — initrd just skips
-        # missing ones.
-        boot.initrd.kernelModules =
-          lib.mkIf (config.boot.initrd.luks.devices or { } != { }) [
+          # The full keyboard chain on Surface Laptop 3 (10th-gen
+          # Ice Lake, SAM-attached HID keyboard):
+          #
+          #   8250_dw                 ──> DesignWare UART (the bus
+          #                                SAM rides on)
+          #   pinctrl_icelake         ──> SoC pinctrl driver, owns the
+          #                                GPIO IRQ lines SAM uses
+          #   surface_aggregator      ──> SAM core (ACPI-matched)
+          #   surface_aggregator_registry,
+          #   surface_aggregator_hub  ──> enumerate SAM child devices
+          #   surface_hid_core,
+          #   surface_hid             ──> HID-over-SAM glue producing
+          #                                /dev/input/eventN
+          #   hid, hid_generic        ──> generic HID core (usually
+          #                                built-in but listing in
+          #                                availableKernelModules is
+          #                                harmless and explicit)
+          #   evdev                   ──> input layer cryptsetup reads
+          #                                from to grab keypresses
+          #
+          # Without ALL of these chained correctly, the LUKS prompt
+          # gets no keystrokes. Listing in availableKernelModules
+          # is what actually makes things work in systemd-stage-1:
+          # udev matches the modalias of each newly-enumerated device
+          # and autoloads the right driver. Listing in kernelModules
+          # too is belt-and-suspenders for the script-stage-1 path
+          # (still used on non-LUKS hosts; harmless on
+          # systemd-stage-1).
+          surfaceKbdModules = [
+            "8250_dw"
+            "pinctrl_icelake"
             "surface_aggregator"
             "surface_aggregator_registry"
             "surface_aggregator_hub"
+            "surface_hid_core"
             "surface_hid"
-            "8250_dw"
+            "hid"
+            "hid_generic"
+            "evdev"
           ];
-      };
+        in
+        {
+          # nixos-hardware's microsoft-surface-common sets
+          # `boot.kernelPackages` as a plain assignment (priority 100).
+          # When useKernel=false, force-override it back to the latest
+          # mainline so we don't trigger the multi-hour patched-kernel
+          # build on every install.
+          boot.kernelPackages =
+            lib.mkIf (!config.surface.useKernel)
+              (lib.mkForce pkgs.linuxPackages_latest);
+
+          # systemd-stage-1 is the load-bearing fix for the keyboard
+          # problem. The script-based initrd (NixOS default) does NOT
+          # run a udev loop during the LUKS prompt — it just calls
+          # cryptsetup luksOpen and blocks on its TTY read. That
+          # leaves SAM platform devices unbound to their drivers even
+          # if the modules are force-loaded, because nothing fires
+          # the ACPI modalias match. systemd-stage-1 runs a proper
+          # udev, brings up the full input stack the same way the
+          # booted system does, and the keyboard actually works.
+          #
+          # mkIf-gated on LUKS being in use because hosts without
+          # encryption never see a prompt in initrd and don't need
+          # the larger systemd-stage-1 footprint.
+          boot.initrd.systemd.enable = lib.mkIf luksOn true;
+
+          # When LUKS is on, expose the Surface keyboard chain to
+          # both initrd module-resolution paths. availableKernelModules
+          # is what udev matches against; kernelModules force-loads
+          # them in case something in the chain isn't tagged with
+          # the right modalias.
+          boot.initrd.availableKernelModules =
+            lib.mkIf luksOn surfaceKbdModules;
+          boot.initrd.kernelModules =
+            lib.mkIf luksOn surfaceKbdModules;
+        };
     };
 
   # Opt-in: brings back the patched linux-surface kernel by flipping
