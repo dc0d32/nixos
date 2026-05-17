@@ -84,6 +84,16 @@ INTERACTIVE PROMPTS:
      12. keymap               (EGGHEAD_KEYMAP, default us)
      13. LUKS full-disk       (EGGHEAD_LUKS: yes|no, default no)
                                 encryption
+     13a. LUKS passphrase     (EGGHEAD_LUKS_PASSPHRASE plain; only
+                                if LUKS=yes. Required for TPM
+                                enrollment. Stays in tmpfs, never
+                                committed.)
+     13b. TPM auto-unlock     (EGGHEAD_LUKS_TPM: yes|no; only if
+                                LUKS=yes. Defaults yes when
+                                /dev/tpmrm0 exists. Enrolls
+                                systemd-cryptenroll TPM2 keyslot
+                                bound to PCR 7; LUKS passphrase
+                                remains as fallback keyslot.)
      14. root password        (EGGHEAD_ROOT_PASSWORD plain or
                                 EGGHEAD_ROOT_HASHED_PASSWORD;
                                 default 'recovery'. Empty = no
@@ -312,6 +322,63 @@ ask_password() {
     done
 }
 
+# detect_secure_boot prints "enabled" | "disabled" | "unknown" to stdout.
+# The EFI_GLOBAL_VARIABLE "SecureBoot" GUID is fixed by the UEFI spec.
+# The efivar file's last byte is the boolean (preceded by 4 bytes of
+# EFI attribute header). Used by the LUKS_TPM prompt to warn when SB
+# is off — PCR 7 binding still works in that case but the threat model
+# collapses to "encryption at rest against an SSD-only thief".
+detect_secure_boot() {
+    local f="/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+    if [[ ! -e "$f" ]]; then
+        echo "unknown"
+        return 0
+    fi
+    local last_byte
+    last_byte=$(od -An -t u1 "$f" 2>/dev/null | awk '{print $NF}')
+    case "$last_byte" in
+        1) echo "enabled" ;;
+        0) echo "disabled" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# ask_luks_passphrase OUTVAR "prompt"
+#   Like ask_password, but does NOT hash the result — the LUKS
+#   passphrase needs to be handed verbatim to disko (for luksFormat)
+#   and to systemd-cryptenroll (for TPM enrollment). Reads
+#   EGGHEAD_LUKS_PASSPHRASE if present; otherwise prompts twice with
+#   no echo. --non-interactive without the env var hard-fails.
+ask_luks_passphrase() {
+    local __out="$1" prompt="$2"
+    local env_plain="EGGHEAD_LUKS_PASSPHRASE"
+    if [[ -n "${!env_plain+x}" ]]; then
+        printf -v "$__out" '%s' "${!env_plain}"
+        echo ">> $prompt: (from \$$env_plain)" >&2
+        return 0
+    fi
+    if (( NONINTERACTIVE )); then
+        echo "error: --non-interactive requires \$$env_plain when LUKS=yes" >&2
+        exit 2
+    fi
+    local p1 p2
+    while true; do
+        read -r -s -p "$prompt: " p1
+        echo
+        if [[ -z "$p1" ]]; then
+            echo "  passphrase cannot be empty for LUKS"
+            continue
+        fi
+        read -r -s -p "  retype to confirm: " p2
+        echo
+        if [[ "$p1" == "$p2" ]]; then
+            printf -v "$__out" '%s' "$p1"
+            return 0
+        fi
+        echo "  passphrases differ; try again."
+    done
+}
+
 # ─── role table ─────────────────────────────────────────────────
 # Each role presets:
 #   layout: bare-metal | vm
@@ -498,6 +565,25 @@ BATEOF
       gpu.driver = \"$GPU_DRIVER\";"
     fi
 
+    # LUKS+TPM auto-unlock block — only when both LUKS and TPM are
+    # enabled. systemd-stage-1 initrd is required by systemd-cryptsetup's
+    # TPM2 unlock path; it also tends to enumerate Surface Aggregator /
+    # modern HID better than the legacy script-stage-1, which matters
+    # for the keyboard-in-initrd story on Surface laptops if you ever
+    # need to fall back to typing the passphrase. The passphrase keyslot
+    # remains as a fallback in case PCR 7 changes (Secure Boot toggled,
+    # firmware re-keyed, etc.); host-setup.sh enrolled the TPM2 keyslot
+    # at install time bound to PCR 7.
+    local luks_tpm_block=""
+    if [[ "$LUKS_TPM" == "yes" ]]; then
+        luks_tpm_block=$(cat <<'TPMEOF'
+
+      boot.initrd.systemd.enable = true;
+      boot.initrd.luks.devices.cryptroot.crypttabExtraOpts = [ "tpm2-device=auto" ];
+TPMEOF
+)
+    fi
+
     # Recovery: root account. Hashed password lives in
     # `users.users.root.initialHashedPassword` (safe to commit).
     # Skipped entirely if the operator left the root password empty.
@@ -666,7 +752,7 @@ $imports_block      ];
       console.keyMap = "$KEYMAP";
 $gpu_block
 $battery_block
-$ssh_recovery_block
+$ssh_recovery_block$luks_tpm_block
       # mkDefault so hardware modules (nixos-hardware microsoft-
       # surface-*, lenovo-thinkpad-*, etc.) that ship their own
       # patched kernel can override without an mkForce.
@@ -791,9 +877,28 @@ do_install() {
         echo "error: $setup is missing or not executable" >&2
         exit 3
     fi
+
+    # If LUKS is enabled, materialize the passphrase as a tmpfs key
+    # file so disko (formats + opens non-interactively) and, when
+    # TPM=yes, systemd-cryptenroll (seeds the TPM2 keyslot) can both
+    # read it without re-prompting the operator. /run is tmpfs on the
+    # live ISO so nothing touches disk. host-setup.sh installs an
+    # EXIT trap that shreds the file even on abort. Both EGGHEAD_LUKS_*
+    # envs are added to sudo's --preserve-env list so the elevated
+    # child sees them.
+    local preserve_env="NIX_EXTRA_OPTS,NIX_SUBSTITUTER_OPTS"
+    if [[ "$LUKS" == "yes" ]]; then
+        local keyfile="/run/egghead-luks.key"
+        install -m 600 /dev/null "$keyfile"
+        printf '%s' "$LUKS_PASSPHRASE" > "$keyfile"
+        export EGGHEAD_LUKS_PASSWORD_FILE="$keyfile"
+        export EGGHEAD_LUKS_TPM
+        preserve_env+=",EGGHEAD_LUKS_PASSWORD_FILE,EGGHEAD_LUKS_TPM"
+    fi
+
     echo
     echo ">> handing off to: sudo $setup --install $HOSTNAME --no-regen-hwconfig --disk $DISK"
-    exec sudo --preserve-env=NIX_EXTRA_OPTS,NIX_SUBSTITUTER_OPTS \
+    exec sudo --preserve-env="$preserve_env" \
         "$setup" --install "$HOSTNAME" --no-regen-hwconfig --disk "$DISK"
 }
 
@@ -983,11 +1088,41 @@ EOF
     ask KEYMAP "console keymap" "us"
     ask STATE_VERSION "system.stateVersion" "$EGGHEAD_DEFAULT_STATE_VERSION"
     # LUKS full-disk encryption: wraps the root partition in a LUKS2
-    # container. disko's install-time askpass prompts the operator for
-    # the passphrase interactively; no key material reaches the nix
-    # store. The boot loader prompt at every boot is plain cryptsetup
-    # — TPM unlock and other niceties are out of scope for v1.
-    ask_yesno LUKS "encrypt root partition with LUKS (passphrase prompt at install + boot)?" "no"
+    # container. When LUKS=yes the wizard also collects a passphrase
+    # (kept in tmpfs only) and offers TPM2 auto-unlock if /dev/tpmrm0
+    # is present on the live ISO. host-setup.sh feeds the passphrase
+    # to disko via a tmpfs key file and (when TPM=yes) enrolls a TPM2
+    # keyslot bound to PCR 7 via systemd-cryptenroll right after disko
+    # opens the container.
+    ask_yesno LUKS "encrypt root partition with LUKS?" "no"
+    if [[ "$LUKS" == "yes" ]]; then
+        ask_luks_passphrase LUKS_PASSPHRASE "LUKS passphrase"
+        local tpm_default="no"
+        [[ -e /dev/tpmrm0 ]] && tpm_default="yes"
+        local sb_state
+        sb_state=$(detect_secure_boot)
+        if [[ "$sb_state" == "disabled" ]]; then
+            cat >&2 <<'WARNEOF'
+
+  ⚠  Secure Boot is DISABLED on this host.
+     TPM2 + PCR 7 unlock still works, but the security model is
+     reduced to "encryption at rest against an SSD-only thief".
+     An attacker who steals the whole laptop can boot any kernel
+     and the TPM will release the disk key (PCR 7 measures
+     SB-disabled state regardless of what OS boots).
+     Acceptable for convenience; NOT acceptable if your threat
+     model includes laptop theft.
+
+WARNEOF
+        elif [[ "$sb_state" == "unknown" ]]; then
+            echo >&2
+            echo "  note: could not read Secure Boot EFI variable; assuming UEFI defaults." >&2
+        fi
+        ask_yesno LUKS_TPM "auto-unlock with TPM2 at boot (passphrase remains as fallback)?" "$tpm_default"
+    else
+        LUKS_PASSPHRASE=""
+        LUKS_TPM="no"
+    fi
 
     # Recovery shell: a known root password from day one means a
     # broken X / display manager / HM activation never leaves you
@@ -1029,6 +1164,10 @@ EOF
     echo "  features     : $COMMON_FEATURES + $FEATURES"
     echo "  unattended   : $UNATTENDED"
     echo "  LUKS         : $LUKS"
+    if [[ "$LUKS" == "yes" ]]; then
+        echo "  LUKS passphrase : (set, kept in tmpfs only)"
+        echo "  LUKS TPM unlock : $LUKS_TPM"
+    fi
     if [[ -n "$ROOT_HASHED_PASSWORD" ]]; then
         echo "  root pw      : (set)"
     else

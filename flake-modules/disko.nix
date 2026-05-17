@@ -92,6 +92,29 @@
 #   * NixOS gains a first-class declarative partitioning system that
 #     supersedes disko (no concrete proposal as of this writing).
 { inputs, ... }:
+let
+  # Impure side channel for the install-time LUKS passphrase. When
+  # egghead is enrolling a TPM2 keyslot it needs disko to format +
+  # open the LUKS container non-interactively (so the passphrase can
+  # be fed to `systemd-cryptenroll --unlock-key-file=…` right after).
+  # The wizard writes the passphrase to a tmpfs file, exports its
+  # path here, and shreds it post-install.
+  #
+  # Reads:
+  #   EGGHEAD_LUKS_PASSWORD_FILE  absolute path to a 0600 tmpfs file
+  #                               containing the raw passphrase.
+  #   When unset/empty (the default), disko falls back to its TTY
+  #   askpass — same UX hosts have always had. Requires the disko
+  #   build to be `--impure`, which scripts/host-setup.sh already is.
+  luksPasswordFile =
+    let f = builtins.getEnv "EGGHEAD_LUKS_PASSWORD_FILE";
+    in if f == "" then null else f;
+
+  withPasswordFile = luksContent:
+    if luksPasswordFile == null
+    then luksContent
+    else luksContent // { passwordFile = luksPasswordFile; };
+in
 {
   flake.modules.nixos.disko = {
     imports = [ inputs.disko.nixosModules.disko ];
@@ -151,10 +174,14 @@
             };
           };
         };
-        # When luks=true, wrap btrfs in a LUKS2 container. Without a
-        # passwordFile, disko calls cryptsetup luksFormat against the
-        # operator's TTY at install time and the passphrase never
-        # reaches the nix store. allowDiscards passes TRIM through to
+        # When luks=true, wrap btrfs in a LUKS2 container. By default
+        # disko calls cryptsetup luksFormat against the operator's TTY
+        # at install time and the passphrase never reaches the nix
+        # store. When the egghead wizard wants to enroll a TPM2
+        # keyslot it sets EGGHEAD_LUKS_PASSWORD_FILE pointing at a
+        # tmpfs file containing the passphrase, and `withPasswordFile`
+        # routes that into disko so the format + open run
+        # non-interactively. allowDiscards passes TRIM through to
         # the underlying SSD (small information-leak trade-off for
         # wear-levelling and GC performance — same recommendation as
         # upstream NixOS docs). bypassWorkqueues skips the read/write
@@ -162,15 +189,18 @@
         # name `cryptroot` is referenced by the disko-generated
         # `boot.initrd.luks.devices.cryptroot` entry at boot.
         nixosPartContent =
-          if luks then {
-            type = "luks";
-            name = "cryptroot";
-            settings = {
-              allowDiscards = true;
-              bypassWorkqueues = true;
-            };
-            content = btrfsContent;
-          } else
+          if luks then
+            withPasswordFile
+              {
+                type = "luks";
+                name = "cryptroot";
+                settings = {
+                  allowDiscards = true;
+                  bypassWorkqueues = true;
+                };
+                content = btrfsContent;
+              }
+          else
             btrfsContent;
       in
       {
@@ -220,15 +250,18 @@
           extraArgs = [ "-L" "nixos" ];
         };
         nixosPartContent =
-          if luks then {
-            type = "luks";
-            name = "cryptroot";
-            settings = {
-              allowDiscards = true;
-              bypassWorkqueues = true;
-            };
-            content = ext4Content;
-          } else
+          if luks then
+            withPasswordFile
+              {
+                type = "luks";
+                name = "cryptroot";
+                settings = {
+                  allowDiscards = true;
+                  bypassWorkqueues = true;
+                };
+                content = ext4Content;
+              }
+          else
             ext4Content;
       in
       {

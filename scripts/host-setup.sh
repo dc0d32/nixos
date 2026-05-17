@@ -312,6 +312,14 @@ case "$MODE" in
         require_tool git
         require_tool nix
         require_tool nixos-install
+        # TPM2 LUKS enrollment uses these. cryptsetup is always
+        # available on a live ISO (initrd needs it); systemd-cryptenroll
+        # ships as part of systemd. Both are required only when
+        # EGGHEAD_LUKS_TPM=yes, but checking unconditionally keeps the
+        # failure surface in one place at script start instead of
+        # halfway through a destructive install.
+        require_tool cryptsetup
+        require_tool systemd-cryptenroll
         # nixos-generate-config is invoked only when REGEN_HWCONFIG=1;
         # check there rather than failing here.
         ;;
@@ -578,6 +586,21 @@ do_install() {
     fi
     echo ">> flake root: $flake_root"
 
+    # 1a. Shred-on-exit for the LUKS passphrase tmpfs file, if egghead
+    # handed one in. Set up the trap BEFORE anything destructive runs
+    # so an abort partway through still scrubs the passphrase from
+    # tmpfs. shred has no effect on tmpfs (it's RAM-backed and
+    # overwrites are observable only by the kernel), but it's a no-op
+    # warning at worst; the rm is the load-bearing step. We also clear
+    # EGGHEAD_LUKS_PASSWORD_FILE from the env so any child process
+    # spawned after this point can't resurrect the path.
+    if [[ -n "${EGGHEAD_LUKS_PASSWORD_FILE:-}" ]] && \
+       [[ -f "$EGGHEAD_LUKS_PASSWORD_FILE" ]]; then
+        local _luks_keyfile="$EGGHEAD_LUKS_PASSWORD_FILE"
+        # shellcheck disable=SC2064  # we want $_luks_keyfile expanded NOW
+        trap "shred -u '$_luks_keyfile' 2>/dev/null || rm -f '$_luks_keyfile'" EXIT
+    fi
+
     # 2. Verify the host bridge file exists. This is also a sanity
     # check on the hostname argument.
     local host_dir="$flake_root/hosts/$HOSTNAME"
@@ -770,6 +793,69 @@ EOF
     echo ">> disko complete; /mnt state:"
     findmnt -R /mnt || true
     echo
+
+    # 8a. TPM2 enrollment (optional). When the wizard set LUKS_TPM=yes,
+    # the LUKS container is already open at /dev/mapper/cryptroot and
+    # the passphrase that disko used to format/open it sits in the
+    # tmpfs key file referenced by EGGHEAD_LUKS_PASSWORD_FILE. Enroll
+    # a TPM2 keyslot bound to PCR 7 so the disk auto-unlocks at boot.
+    # The passphrase keyslot stays in place as a fallback for the case
+    # where PCR 7 changes (Secure Boot toggled, firmware re-keyed,
+    # etc.). Skip silently when not requested or when /dev/tpmrm0 is
+    # absent — the installed system will keep using the passphrase
+    # path the existing host bridge emits.
+    if [[ "${EGGHEAD_LUKS_TPM:-no}" == "yes" ]] && \
+       [[ -n "${EGGHEAD_LUKS_PASSWORD_FILE:-}" ]] && \
+       [[ -f "$EGGHEAD_LUKS_PASSWORD_FILE" ]]; then
+        if [[ ! -e /dev/tpmrm0 ]]; then
+            echo "warn: EGGHEAD_LUKS_TPM=yes but /dev/tpmrm0 missing;" >&2
+            echo "      skipping TPM2 enrollment (boot will prompt for passphrase)." >&2
+        else
+            # Surface SB state in the install log. PCR 7 seals against
+            # whatever value SB has at enrollment time; the wizard
+            # already warned the operator if SB is off. We re-log it
+            # here so the install transcript records what was sealed.
+            local sb_efivar="/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+            local sb_state="unknown"
+            if [[ -e "$sb_efivar" ]]; then
+                case "$(od -An -t u1 "$sb_efivar" 2>/dev/null | awk '{print $NF}')" in
+                    1) sb_state="enabled" ;;
+                    0) sb_state="disabled" ;;
+                esac
+            fi
+            echo "  Secure Boot state at enrollment: $sb_state"
+            if [[ "$sb_state" == "disabled" ]]; then
+                echo "  (PCR 7 will bind to the SB-disabled state; this protects only"
+                echo "   against SSD-only theft, not against booting a foreign kernel"
+                echo "   on this laptop.)"
+            fi
+            # Resolve the underlying LUKS partition from the open mapper.
+            # `cryptsetup status` prints `device:  /dev/<part>` for the
+            # backing block device. Whitespace varies between cryptsetup
+            # builds, so use awk for robustness.
+            local luks_dev
+            luks_dev=$(cryptsetup status cryptroot 2>/dev/null \
+                | awk '/^[[:space:]]*device:/ {print $2}')
+            if [[ -z "$luks_dev" || ! -b "$luks_dev" ]]; then
+                echo "warn: could not resolve cryptroot's backing device;" >&2
+                echo "      skipping TPM2 enrollment. Run systemd-cryptenroll" >&2
+                echo "      manually after first boot." >&2
+            else
+                echo
+                echo ">> enrolling TPM2 keyslot on $luks_dev (PCR 7) …"
+                if systemd-cryptenroll \
+                    --tpm2-device=auto \
+                    --tpm2-pcrs=7 \
+                    --unlock-key-file="$EGGHEAD_LUKS_PASSWORD_FILE" \
+                    "$luks_dev"; then
+                    echo "  TPM2 keyslot enrolled; passphrase keyslot retained as fallback."
+                else
+                    echo "warn: systemd-cryptenroll failed (see output above);" >&2
+                    echo "      install will continue using the passphrase keyslot only." >&2
+                fi
+            fi
+        fi
+    fi
 
     # 9. nixos-install. extra-experimental-features keeps things
     # working on a stock installer ISO without nix-command/flakes
