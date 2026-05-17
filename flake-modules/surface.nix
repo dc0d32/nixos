@@ -140,6 +140,19 @@
             lib.mkIf luksOn surfaceKbdModules;
           boot.initrd.kernelModules =
             lib.mkIf luksOn surfaceKbdModules;
+
+          # Power button quirk: on Surface laptops the same physical
+          # key wakes the machine AND emits a KEY_POWER event after
+          # resume — logind sees the event with HandlePowerKey="suspend"
+          # and immediately re-suspends within a couple of seconds of
+          # waking up. Symptom: power-button-to-wake shows the
+          # lockscreen briefly then puts the laptop back to sleep.
+          # Setting "ignore" here means the *only* way to suspend is
+          # the lid switch, the quickshell power menu (which calls
+          # `systemctl suspend` directly), or idled. That's an
+          # acceptable trade on a Surface, since the power button
+          # was never reliable as an explicit-suspend trigger anyway.
+          services.logind.settings.Login.HandlePowerKey = "ignore";
         };
     };
 

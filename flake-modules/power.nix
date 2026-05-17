@@ -25,16 +25,16 @@
     # this check, which is the behavior we want — no extra config
     # needed.
     services.logind.settings.Login = {
-      HandleLidSwitch = "suspend";
-      HandleLidSwitchExternalPower = "suspend";
-      HandleLidSwitchDocked = "ignore";
-      HandlePowerKey = "suspend";
-      HandlePowerKeyLongPress = "poweroff";
-      HandleSuspendKey = "suspend";
-      HandleHibernateKey = "ignore";
+      HandleLidSwitch = lib.mkDefault "suspend";
+      HandleLidSwitchExternalPower = lib.mkDefault "suspend";
+      HandleLidSwitchDocked = lib.mkDefault "ignore";
+      HandlePowerKey = lib.mkDefault "suspend";
+      HandlePowerKeyLongPress = lib.mkDefault "poweroff";
+      HandleSuspendKey = lib.mkDefault "suspend";
+      HandleHibernateKey = lib.mkDefault "ignore";
       # We let idled (kernel-input idle daemon) drive idle-suspend
       # timing rather than logind, so don't double up here.
-      IdleAction = "ignore";
+      IdleAction = lib.mkDefault "ignore";
     };
 
     # Power management: tlp if laptop, otherwise auto-cpufreq is fine
