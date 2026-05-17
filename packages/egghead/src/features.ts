@@ -30,13 +30,17 @@ export const AVAILABLE_FEATURES: FeatureSpec[] = [
   { key: "bluetooth", description: "bluez stack + applets" },
   { key: "battery", description: "charge thresholds, hibernate-resume" },
   { key: "power", description: "power profiles, suspend tuning" },
-  { key: "biometrics", description: "fingerprint reader / face unlock" },
+  { key: "biometrics", description: "fingerprint reader (baseline biometric stack)" },
+  { key: "face-unlock", description: "howdy face unlock add-on (requires biometrics; ~1.2 GiB DL — NOT WORKING on Surface Laptop 3, see flake-modules/face-unlock.nix)" },
   { key: "hardware-hacking", description: "openocd, st-link, jlink, etc." },
   { key: "surface", description: "linux-surface kernel + iptsd for Surface devices" },
 
   // Apps / runtimes
   { key: "steam", description: "Steam + Proton" },
   { key: "docker", description: "docker daemon" },
+  { key: "firefox", description: "Firefox browser (HM-side; ~380 MiB DL)" },
+  { key: "freecad", description: "FreeCAD + FusionLike preset (HM-side; ~1.3 GiB DL)" },
+  { key: "kicad", description: "KiCad EDA suite (HM-side; ~865 MiB DL)" },
 
   // Family / restricted-user features
   { key: "timekpr", description: "screen-time controls (kid accounts)" },

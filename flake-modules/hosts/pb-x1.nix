@@ -103,6 +103,11 @@ in
         config.flake.modules.nixos.battery
         config.flake.modules.nixos.audio
         config.flake.modules.nixos.biometrics
+        # Face unlock — howdy + IR emitter + camera autodetect.
+        # Opt-in companion to biometrics since 2026-05-16: howdy
+        # is ~1.2 GiB DL on its own, so hosts that want fingerprint
+        # only can omit this and skip the howdy closure.
+        config.flake.modules.nixos.face-unlock
         config.flake.modules.nixos.bluetooth
         config.flake.modules.nixos.boot
         config.flake.modules.nixos.file-manager
@@ -209,7 +214,16 @@ in
   configurations.homeManager."${user}@${hostName}" = {
     pkgs = hmPkgs;
     module = {
-      imports = config.flake.lib.bundles.homeManager.desktop;
+      imports = config.flake.lib.bundles.homeManager.desktop ++ [
+        # These three are opt-in per-host since 2026-05-16: the
+        # desktop bundle no longer carries them (so vm-desktop / new
+        # hosts don't pay the closures unless asked). pb-x1 does PCB
+        # work + CAD + uses firefox as the daily driver, so restore
+        # all three here.
+        config.flake.modules.homeManager.kicad
+        config.flake.modules.homeManager.freecad
+        config.flake.modules.homeManager.firefox
+      ];
 
       # HM manages itself.
       programs.home-manager.enable = true;

@@ -28,7 +28,7 @@ export const ROLES: Role[] = [
     name: "bare-metal-laptop",
     layout: "bare-metal",
     features:
-      "battery biometrics bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly",
+      "battery biometrics face-unlock bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly kicad freecad firefox",
     hm: "desktop",
     disk: "/dev/nvme0n1",
     unattended: "no",
@@ -37,7 +37,7 @@ export const ROLES: Role[] = [
     name: "bare-metal-desktop",
     layout: "bare-metal",
     features:
-      "bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly",
+      "bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly kicad freecad firefox",
     hm: "desktop",
     disk: "/dev/sda",
     unattended: "no",

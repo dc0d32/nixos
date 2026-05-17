@@ -174,6 +174,12 @@ list_enrolled_faces() {
 
 do_face() {
   echo "═══ Face enrollment ═══"
+  if ! command -v howdy >/dev/null 2>&1; then
+    echo "  howdy is not installed on this host (face unlock not enabled)."
+    echo "  Add the 'face-unlock' feature in the egghead wizard (or import"
+    echo "  flake-modules/face-unlock.nix on the host bridge) and rebuild."
+    return 0
+  fi
   # 1. IR emitter calibration. The configure step is
   # interactive and shows a live IR preview window — it
   # MUST be run from a Wayland/X session, not a plain
@@ -238,11 +244,15 @@ do_verify() {
     echo "  fingerprint: FAILED (or not enrolled)"
   fi
   echo
-  echo ">> howdy test (look at the camera, ~3s) …"
-  if sudo howdy -U "$USER" test; then
-    echo "  face: OK"
+  if command -v howdy >/dev/null 2>&1; then
+    echo ">> howdy test (look at the camera, ~3s) …"
+    if sudo howdy -U "$USER" test; then
+      echo "  face: OK"
+    else
+      echo "  face: FAILED (or not enrolled / IR emitter off)"
+    fi
   else
-    echo "  face: FAILED (or not enrolled / IR emitter off)"
+    echo "  face: SKIPPED (howdy not installed; face unlock not enabled)"
   fi
 }
 

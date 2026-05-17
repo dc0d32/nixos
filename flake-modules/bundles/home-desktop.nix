@@ -12,9 +12,22 @@
 #
 # = dev ++ [
 #     alacritty audio bitwarden bluetooth chrome desktop-extras
-#     file-manager firefox fonts freecad hardware-hacking idle
-#     kicad niri polkit-agent quickshell vscode wallpaper
+#     file-manager fonts hardware-hacking idle niri polkit-agent
+#     quickshell vscode wallpaper
 #   ]
+#
+# Modules intentionally NOT in this bundle (carved out as per-host
+# opt-ins via the egghead wizard's feature toggle, because each is
+# a fat download that not every desktop host wants):
+#
+#   - kicad     ~865 MiB DL / 2.9 GiB on disk (EDA)
+#   - freecad   ~1.3 GiB DL / 7.1 GiB on disk (CAD; biggest hitter)
+#   - firefox   ~382 MiB DL / 1.5 GiB on disk
+#
+# Hosts that want any of these append
+# `config.flake.modules.homeManager.<name>` to their HM imports
+# explicitly (see flake-modules/hosts/pb-x1.nix etc.). The egghead
+# wizard's feature toggles for these names emit exactly that append.
 #
 # Adding a new module that should appear on every adult desktop:
 # add it here.
@@ -34,12 +47,9 @@
       chrome
       desktop-extras
       file-manager
-      firefox
       fonts
-      freecad
       hardware-hacking
       idle
-      kicad
       niri
       polkit-agent
       quickshell

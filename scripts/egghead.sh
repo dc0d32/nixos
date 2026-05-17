@@ -68,23 +68,27 @@ INTERACTIVE PROMPTS:
       3. target disk          (EGGHEAD_DISK, e.g. /dev/nvme0n1)
       4. primary user         (EGGHEAD_PRIMARY_USER)
       5. primary full name    (EGGHEAD_PRIMARY_FULLNAME)
-      6. additional users     (EGGHEAD_EXTRA_USERS, semicolon-
-                                separated tuples
-                                "login:fullname:profile")
-      7. feature toggles      (EGGHEAD_FEATURES, space-separated
+      6. primary password     (EGGHEAD_PRIMARY_PASSWORD plain, OR
+                                EGGHEAD_PRIMARY_HASHED_PASSWORD
+                                pre-hashed yescrypt)
+      7. additional users     (EGGHEAD_EXTRA_USERS_JSON; JSON array
+                                of {login, fullname, profile,
+                                password|hashedPassword}; interactive
+                                flow loops "add another user?")
+      8. feature toggles      (EGGHEAD_FEATURES, space-separated
                                 module names; defaults from role)
-      8. gpu driver           (EGGHEAD_GPU_DRIVER: intel|amd|nvidia|
+      9. gpu driver           (EGGHEAD_GPU_DRIVER: intel|amd|nvidia|
                                 none)
-      9. timezone             (EGGHEAD_TZ, default America/Los_Angeles)
-     10. locale               (EGGHEAD_LOCALE, default en_US.UTF-8)
-     11. keymap               (EGGHEAD_KEYMAP, default us)
-     12. LUKS full-disk       (EGGHEAD_LUKS: yes|no, default no)
+     10. timezone             (EGGHEAD_TZ, default America/Los_Angeles)
+     11. locale               (EGGHEAD_LOCALE, default en_US.UTF-8)
+     12. keymap               (EGGHEAD_KEYMAP, default us)
+     13. LUKS full-disk       (EGGHEAD_LUKS: yes|no, default no)
                                 encryption
-     13. root password        (EGGHEAD_ROOT_PASSWORD; default
-                                'recovery'. Empty = no root login.
-                                Plain text; rotate on first boot.
-                                Acts as console + SSH recovery if
-                                graphics break.)
+     14. root password        (EGGHEAD_ROOT_PASSWORD plain or
+                                EGGHEAD_ROOT_HASHED_PASSWORD;
+                                default 'recovery'. Empty = no
+                                root login. Acts as console + SSH
+                                recovery if graphics break.)
 
     HM profiles per user: base | dev | desktop | kid (maps to bundles
     in flake-modules/bundles/).
@@ -216,6 +220,95 @@ ask_yesno() {
     done
 }
 
+# hash_password OUTVAR plain
+#   Hashes plain → yescrypt and assigns to OUTVAR. Empty plain → empty
+#   hash (caller treats as "no login"). mkpasswd reads from stdin with
+#   -s so the plaintext never appears on a command line / in argv /
+#   in `ps`.
+hash_password() {
+    local __out="$1" plain="$2"
+    if [[ -z "$plain" ]]; then
+        printf -v "$__out" '%s' ""
+        return 0
+    fi
+    # Distinct name (`__h`) to avoid clobbering a caller-local
+    # `hashed`: `printf -v "$__out"` resolves the name at runtime
+    # but `local` at function entry shadows any matching name in
+    # the caller's scope, so naming the internal temporary the
+    # same as a common caller-side variable silently breaks the
+    # write-back.
+    local __h
+    __h=$(printf '%s' "$plain" | mkpasswd -m yescrypt -s)
+    printf -v "$__out" '%s' "$__h"
+}
+
+# ask_password OUTVAR_HASH "prompt" "default-plain"
+#   Three input sources, in priority order:
+#     1. EGGHEAD_<basename>_HASHED_PASSWORD  → use verbatim
+#     2. EGGHEAD_<basename>_PASSWORD         → hash and use
+#     3. interactive                         → prompt twice with -s,
+#                                              then hash
+#   `basename` is OUTVAR_HASH with a trailing _HASHED_PASSWORD stripped
+#   (so a caller passing `PRIMARY_HASHED_PASSWORD` looks up
+#   `EGGHEAD_PRIMARY_HASHED_PASSWORD` then `EGGHEAD_PRIMARY_PASSWORD`).
+#   Default-plain is used when both env vars are unset AND we're
+#   --non-interactive; empty default in --non-interactive is allowed
+#   (= "no login").
+ask_password() {
+    local __out="$1" prompt="$2" default_plain="${3-}"
+    local base="${__out%_HASHED_PASSWORD}"
+    local env_hashed="EGGHEAD_${base}_HASHED_PASSWORD"
+    local env_plain="EGGHEAD_${base}_PASSWORD"
+
+    if [[ -n "${!env_hashed+x}" ]]; then
+        printf -v "$__out" '%s' "${!env_hashed}"
+        echo ">> $prompt: (hash from \$$env_hashed)" >&2
+        return 0
+    fi
+    if [[ -n "${!env_plain+x}" ]]; then
+        hash_password "$__out" "${!env_plain}"
+        echo ">> $prompt: (hashed from \$$env_plain)" >&2
+        return 0
+    fi
+    if (( NONINTERACTIVE )); then
+        hash_password "$__out" "$default_plain"
+        if [[ -z "$default_plain" ]]; then
+            echo ">> $prompt: (empty — no login, --non-interactive)" >&2
+        else
+            echo ">> $prompt: (default plain, --non-interactive)" >&2
+        fi
+        return 0
+    fi
+
+    local p1 p2
+    while true; do
+        if [[ -n "$default_plain" ]]; then
+            read -r -s -p "$prompt [press Enter to accept default]: " p1
+            echo
+            if [[ -z "$p1" ]]; then
+                hash_password "$__out" "$default_plain"
+                echo "  (default accepted)"
+                return 0
+            fi
+        else
+            read -r -s -p "$prompt (empty = no login): " p1
+            echo
+            if [[ -z "$p1" ]]; then
+                printf -v "$__out" '%s' ""
+                echo "  (empty — no login)"
+                return 0
+            fi
+        fi
+        read -r -s -p "  retype to confirm: " p2
+        echo
+        if [[ "$p1" == "$p2" ]]; then
+            hash_password "$__out" "$p1"
+            return 0
+        fi
+        echo "  passwords differ; try again."
+    done
+}
+
 # ─── role table ─────────────────────────────────────────────────
 # Each role presets:
 #   layout: bare-metal | vm
@@ -240,14 +333,21 @@ role_names="bare-metal-laptop bare-metal-desktop vm-headless vm-desktop"
 # loader policy, HM bootstrap-on-first-boot).
 COMMON_FEATURES="nix-settings networking openssh users system-utils locale fonts boot home-manager-bootstrap"
 
+# Feature names that live in `flake.modules.homeManager.*` instead
+# of `flake.modules.nixos.*`. Listed in the wizard's catalog so they
+# show up alongside the NixOS features, but emit_bridge routes them
+# into every user's HM `imports` list instead of the host's NixOS
+# imports list. Keep in sync with packages/egghead/src/features.ts.
+HM_ONLY_FEATURES="kicad freecad firefox"
+
 role_bare_metal_laptop_layout="bare-metal"
-role_bare_metal_laptop_features="battery biometrics bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly"
+role_bare_metal_laptop_features="battery biometrics face-unlock bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly kicad freecad firefox"
 role_bare_metal_laptop_hm="desktop"
 role_bare_metal_laptop_disk="/dev/nvme0n1"
 role_bare_metal_laptop_unattended="no"
 
 role_bare_metal_desktop_layout="bare-metal"
-role_bare_metal_desktop_features="bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly"
+role_bare_metal_desktop_features="bluetooth audio gpu power niri quickshell hardware-hacking file-manager login-ly kicad freecad firefox"
 role_bare_metal_desktop_hm="desktop"
 role_bare_metal_desktop_disk="/dev/sda"
 role_bare_metal_desktop_unattended="no"
@@ -317,7 +417,8 @@ do_clone() {
 
 # ─── bridge file generator ─────────────────────────────────────
 # Inputs (globals): HOSTNAME, PRIMARY_USER, PRIMARY_FULLNAME,
-#   EXTRA_USERS (raw semicolon-separated tuples), ROLE, DISKO_LAYOUT,
+#   EXTRA_USERS_JSON (jq-parseable array of {login, fullname,
+#     profile, hashedPassword}), ROLE, DISKO_LAYOUT,
 #   DISK, GPU_DRIVER, TZ, LOCALE, KEYMAP, FEATURES (space-separated),
 #   STATE_VERSION, UNATTENDED.
 #
@@ -337,9 +438,26 @@ emit_bridge() {
     # flake-modules/egghead.nix). Self-disables via sentinel; safe to
     # leave in long-term.
     imports_block+="        config.flake.modules.nixos.egghead-amend"$'\n'
-    # Role-driven add-ons.
+    # Role-driven add-ons. Skip any HM-class feature names — those
+    # are emitted as extra HM imports per-user below instead.
     for f in $FEATURES; do
+        case " $HM_ONLY_FEATURES " in
+            *" $f "*) continue ;;
+        esac
         imports_block+="        config.flake.modules.nixos.$f"$'\n'
+    done
+
+    # Per-user extra HM imports: append the HM-class features (kicad,
+    # …) to whichever bundle each user picks. Same set goes to every
+    # user on the host; if you want per-user differentiation, edit the
+    # bridge after install.
+    local hm_extras=""
+    for f in $FEATURES; do
+        case " $HM_ONLY_FEATURES " in
+            *" $f "*)
+                hm_extras+="        config.flake.modules.homeManager.$f"$'\n'
+                ;;
+        esac
     done
     # Unattended add-ons.
     if [[ "$UNATTENDED" == "yes" ]]; then
@@ -377,35 +495,75 @@ BATEOF
       gpu.driver = \"$GPU_DRIVER\";"
     fi
 
-    # Recovery: root password only. Set in the bridge as
-    # `users.users.root.initialPassword`. Skipped entirely if the
-    # operator left it empty.
+    # Recovery: root account. Hashed password lives in
+    # `users.users.root.initialHashedPassword` (safe to commit).
+    # Skipped entirely if the operator left the root password empty.
     local root_block=""
-    if [[ -n "$ROOT_PASSWORD" ]]; then
-        local _rp=${ROOT_PASSWORD//\\/\\\\}
-        _rp=${_rp//\"/\\\"}
+    if [[ -n "$ROOT_HASHED_PASSWORD" ]]; then
+        # Escape backslash + double-quote for the Nix string literal.
+        local _rh=${ROOT_HASHED_PASSWORD//\\/\\\\}
+        _rh=${_rh//\"/\\\"}
         root_block="        root = {"$'\n'
-        root_block+="          initialPassword = \"$_rp\";"$'\n'
+        root_block+="          initialHashedPassword = \"$_rh\";"$'\n'
         root_block+="        };"$'\n'
     fi
 
-    # Build users.users attrset entries.
+    # Helper: emit the `users.users.<login>` attr block. Captures the
+    # common fields once so primary + extras stay in lock-step.
+    emit_user_attr() {
+        local login="$1" fullname="$2" hashed="$3" extra_groups="$4"
+        local _h=${hashed//\\/\\\\}
+        _h=${_h//\"/\\\"}
+        local _f=${fullname//\\/\\\\}
+        _f=${_f//\"/\\\"}
+        local out=""
+        out+="        $login = {"$'\n'
+        out+="          isNormalUser = true;"$'\n'
+        out+="          description = \"$_f\";"$'\n'
+        out+="          extraGroups = [ $extra_groups ];"$'\n'
+        out+="          shell = hmPkgs.zsh;"$'\n'
+        if [[ -n "$_h" ]]; then
+            out+="          initialHashedPassword = \"$_h\";"$'\n'
+        else
+            out+="          # Empty initialHashedPassword = no login. Set a"$'\n'
+            out+="          # password manually (\`sudo passwd $login\`) before"$'\n'
+            out+="          # first use."$'\n'
+            out+="          initialHashedPassword = \"\";"$'\n'
+        fi
+        out+="        };"$'\n'
+        printf '%s' "$out"
+    }
+
+    # Build users.users attrset entries. Primary first, then extras
+    # parsed from EXTRA_USERS_JSON.
     local users_block=""
-    users_block+="        $PRIMARY_USER = {"$'\n'
-    users_block+="          isNormalUser = true;"$'\n'
-    users_block+="          description = \"$PRIMARY_FULLNAME\";"$'\n'
-    users_block+="          extraGroups = [ \"wheel\" \"networkmanager\" \"video\" \"audio\" \"input\" ];"$'\n'
-    users_block+="          shell = hmPkgs.zsh;"$'\n'
-    users_block+="          initialPassword = \"changeme\";"$'\n'
-    users_block+="        };"$'\n'
+    users_block+=$(emit_user_attr "$PRIMARY_USER" "$PRIMARY_FULLNAME" \
+        "$PRIMARY_HASHED_PASSWORD" \
+        '"wheel" "networkmanager" "video" "audio" "input"')
     users_block+="$root_block"
+
+    # Helper: build the `imports = …` line(s) for an HM user. The
+    # bundle is always the first list; HM-class features (hm_extras)
+    # are appended via `++ [ … ]` so the per-host opt-in stays
+    # visually grouped in the bridge file.
+    emit_hm_imports() {
+        local bundle="$1"
+        if [[ -n "$hm_extras" ]]; then
+            printf '      imports = config.flake.lib.bundles.homeManager.%s ++ [\n' "$bundle"
+            # hm_extras already has 8-space indent; HM block wants 8.
+            printf '%s' "$hm_extras"
+            printf '      ];\n'
+        else
+            printf '      imports = config.flake.lib.bundles.homeManager.%s;\n' "$bundle"
+        fi
+    }
 
     # HM configurations: primary always present.
     local hm_block=""
     hm_block+="  configurations.homeManager.\"${PRIMARY_USER}@${HOSTNAME}\" = {"$'\n'
     hm_block+="    pkgs = hmPkgs;"$'\n'
     hm_block+="    module = {"$'\n'
-    hm_block+="      imports = config.flake.lib.bundles.homeManager.$PRIMARY_HM;"$'\n'
+    hm_block+=$(emit_hm_imports "$PRIMARY_HM")$'\n'
     hm_block+="      programs.home-manager.enable = true;"$'\n'
     hm_block+="      home.username = \"$PRIMARY_USER\";"$'\n'
     hm_block+="      home.homeDirectory = \"/home/$PRIMARY_USER\";"$'\n'
@@ -414,41 +572,38 @@ BATEOF
     hm_block+="    };"$'\n'
     hm_block+="  };"$'\n'
 
-    # Extra users (each tuple "login:fullname:profile").
-    local raw u login fullname profile
-    if [[ -n "$EXTRA_USERS" ]]; then
-        IFS=';' read -r -a tuples <<< "$EXTRA_USERS"
-        for raw in "${tuples[@]}"; do
-            [[ -z "$raw" ]] && continue
-            login="${raw%%:*}"; rest="${raw#*:}"
-            fullname="${rest%%:*}"; profile="${rest##*:}"
-            users_block+="        $login = {"$'\n'
-            users_block+="          isNormalUser = true;"$'\n'
-            users_block+="          description = \"$fullname\";"$'\n'
-            users_block+="          extraGroups = [ \"video\" \"audio\" \"input\" \"networkmanager\" ];"$'\n'
-            users_block+="          shell = hmPkgs.zsh;"$'\n'
-            users_block+="          initialPassword = \"changeme\";"$'\n'
-            users_block+="        };"$'\n'
+    # Extra users from JSON. Each element must have login/fullname/
+    # profile/hashedPassword. `EXTRA_USERS_JSON` is populated by
+    # collect_extra_users() either from EGGHEAD_EXTRA_USERS_JSON,
+    # from an interactive loop, or as "[]".
+    local n i login fullname profile hashed
+    n=$(jq 'length' <<< "$EXTRA_USERS_JSON")
+    for (( i = 0; i < n; i++ )); do
+        login=$(jq -r ".[$i].login"           <<< "$EXTRA_USERS_JSON")
+        fullname=$(jq -r ".[$i].fullname"     <<< "$EXTRA_USERS_JSON")
+        profile=$(jq -r ".[$i].profile"       <<< "$EXTRA_USERS_JSON")
+        hashed=$(jq -r ".[$i].hashedPassword" <<< "$EXTRA_USERS_JSON")
+        users_block+=$(emit_user_attr "$login" "$fullname" "$hashed" \
+            '"video" "audio" "input" "networkmanager"')
 
-            hm_block+="  configurations.homeManager.\"${login}@${HOSTNAME}\" = {"$'\n'
-            hm_block+="    pkgs = hmPkgs;"$'\n'
-            hm_block+="    module = {"$'\n'
-            hm_block+="      imports = config.flake.lib.bundles.homeManager.$profile;"$'\n'
-            hm_block+="      programs.home-manager.enable = true;"$'\n'
-            hm_block+="      home.username = \"$login\";"$'\n'
-            hm_block+="      home.homeDirectory = \"/home/$login\";"$'\n'
-            hm_block+="      home.stateVersion = stateVersion;"$'\n'
-            hm_block+="    };"$'\n'
-            hm_block+="  };"$'\n'
-        done
-    fi
+        hm_block+="  configurations.homeManager.\"${login}@${HOSTNAME}\" = {"$'\n'
+        hm_block+="    pkgs = hmPkgs;"$'\n'
+        hm_block+="    module = {"$'\n'
+        hm_block+=$(emit_hm_imports "$profile")$'\n'
+        hm_block+="      programs.home-manager.enable = true;"$'\n'
+        hm_block+="      home.username = \"$login\";"$'\n'
+        hm_block+="      home.homeDirectory = \"/home/$login\";"$'\n'
+        hm_block+="      home.stateVersion = stateVersion;"$'\n'
+        hm_block+="    };"$'\n'
+        hm_block+="  };"$'\n'
+    done
 
     # SSH recovery posture. Only when a root password is set:
     # allow PasswordAuthentication + root login so the operator can
     # `ssh root@host` from the LAN when X/HM is broken. Override
     # post-install if you want a stricter policy.
     local ssh_recovery_block=""
-    if [[ -n "$ROOT_PASSWORD" ]]; then
+    if [[ -n "$ROOT_HASHED_PASSWORD" ]]; then
         ssh_recovery_block=$'\n'"      # SSH recovery posture emitted by egghead. Tighten"$'\n'
         ssh_recovery_block+="      # post-install once the host is healthy."$'\n'
         ssh_recovery_block+="      services.openssh.settings = {"$'\n'
@@ -639,6 +794,112 @@ do_install() {
         "$setup" --install "$HOSTNAME" --no-regen-hwconfig --disk "$DISK"
 }
 
+# ─── extras collector ──────────────────────────────────────────
+# Sets EXTRA_USERS_JSON (jq-parseable array of objects with
+# {login, fullname, profile, hashedPassword}). Sources, in order:
+#
+#   1. EGGHEAD_EXTRA_USERS_JSON env var (TUI fills it). Each entry
+#      may carry either `password` (plain) or `hashedPassword`
+#      (yescrypt). Plain passwords are hashed here so the rest of
+#      the script only ever sees hashes.
+#   2. --non-interactive without env => empty array.
+#   3. Interactive: loop "add another user?" until no. Per user,
+#      collect login, fullname, profile choice, password (no echo,
+#      twice). Empty password = no login (matches primary's behaviour).
+collect_extra_users() {
+    if [[ -n "${EGGHEAD_EXTRA_USERS_JSON+x}" ]]; then
+        local raw="${EGGHEAD_EXTRA_USERS_JSON}"
+        [[ -z "$raw" ]] && raw="[]"
+        if ! jq -e 'type == "array"' <<< "$raw" >/dev/null 2>&1; then
+            echo "error: \$EGGHEAD_EXTRA_USERS_JSON is not a JSON array" >&2
+            exit 2
+        fi
+        # Normalize: hash any plain `password` into `hashedPassword`,
+        # then drop the plain field so it never reaches a file.
+        local n i obj plain normalized="[]"
+        local hashed=""
+        n=$(jq 'length' <<< "$raw")
+        for (( i = 0; i < n; i++ )); do
+            obj=$(jq -c ".[$i]" <<< "$raw")
+            if jq -e 'has("hashedPassword")' <<< "$obj" >/dev/null; then
+                : # already hashed; pass through
+            elif jq -e 'has("password")' <<< "$obj" >/dev/null; then
+                plain=$(jq -r '.password' <<< "$obj")
+                hash_password hashed "$plain"
+                obj=$(jq -c --arg h "$hashed" \
+                    'del(.password) | .hashedPassword = $h' <<< "$obj")
+            else
+                obj=$(jq -c '.hashedPassword = ""' <<< "$obj")
+            fi
+            normalized=$(jq -c --argjson e "$obj" '. + [$e]' <<< "$normalized")
+        done
+        EXTRA_USERS_JSON="$normalized"
+        echo ">> extra users: $(jq 'length' <<< "$EXTRA_USERS_JSON") configured (from \$EGGHEAD_EXTRA_USERS_JSON)" >&2
+        return 0
+    fi
+
+    if (( NONINTERACTIVE )); then
+        EXTRA_USERS_JSON="[]"
+        return 0
+    fi
+
+    EXTRA_USERS_JSON="[]"
+    echo
+    echo "Extra users (besides $PRIMARY_USER). Each one gets a home"
+    echo "directory + HM bundle. You'll be asked per user; leave the"
+    echo "wizard's loop with 'n' when you're done."
+    local add_more login fullname profile hashed
+    while true; do
+        read -r -p "add another user? (y/n) [n]: " add_more
+        add_more="${add_more:-n}"
+        case "$add_more" in
+            n|N|no|NO) break ;;
+            y|Y|yes|YES) ;;
+            *) echo "  invalid: y or n"; continue ;;
+        esac
+
+        while true; do
+            read -r -p "  login: " login
+            if [[ "$login" =~ ^[a-z_][a-z0-9_-]*$ ]]; then break; fi
+            echo "    bad linux username '$login'; must match [a-z_][a-z0-9_-]*"
+        done
+        read -r -p "  full name [$login]: " fullname
+        fullname="${fullname:-$login}"
+        while true; do
+            read -r -p "  HM profile {base dev desktop kid} [kid]: " profile
+            profile="${profile:-kid}"
+            case "$profile" in
+                base|dev|desktop|kid) break ;;
+                *) echo "    invalid: must be one of base dev desktop kid" ;;
+            esac
+        done
+        # Same two-prompt no-echo flow as ask_password, but inline so
+        # we don't have to plumb a synthetic env-var name through.
+        local p1 p2
+        while true; do
+            read -r -s -p "  password (empty = no login): " p1
+            echo
+            if [[ -z "$p1" ]]; then hashed=""; break; fi
+            read -r -s -p "    retype to confirm: " p2
+            echo
+            if [[ "$p1" == "$p2" ]]; then
+                hash_password hashed "$p1"
+                break
+            fi
+            echo "    passwords differ; try again."
+        done
+
+        EXTRA_USERS_JSON=$(jq -c \
+            --arg login "$login" \
+            --arg fullname "$fullname" \
+            --arg profile "$profile" \
+            --arg hashed "$hashed" \
+            '. + [{login: $login, fullname: $fullname, profile: $profile, hashedPassword: $hashed}]' \
+            <<< "$EXTRA_USERS_JSON")
+        echo "  added: $login ($fullname, hm=$profile)"
+    done
+}
+
 # ─── main wizard ───────────────────────────────────────────────
 main() {
     cat <<'EOF'
@@ -699,12 +960,12 @@ EOF
     fi
     ask PRIMARY_FULLNAME "primary user full name" "$PRIMARY_USER"
     ask_choice PRIMARY_HM "primary HM profile" "$ROLE_HM" "base dev desktop kid"
+    ask_password PRIMARY_HASHED_PASSWORD "primary user password" ""
 
-    echo
-    echo "Extra users (semicolon-separated tuples \"login:fullname:profile\")."
-    echo "  profile ∈ { base, dev, desktop, kid }. Leave empty for none."
-    echo "  Example:  m:M:kid;s:S:kid"
-    ask EXTRA_USERS "extra users" ""
+    # Extras: prefer EGGHEAD_EXTRA_USERS_JSON (TUI fills this with
+    # already-hashed passwords). Otherwise, interactively loop
+    # add-another-user. --non-interactive with unset env = no extras.
+    collect_extra_users
 
     ask FEATURES "feature toggles (space-separated)" "$ROLE_FEATURES"
 
@@ -728,13 +989,16 @@ EOF
     # Recovery shell: a known root password from day one means a
     # broken X / display manager / HM activation never leaves you
     # locked out — drop to a TTY, or `ssh root@host` from another
-    # box on the LAN. Plain text; rotate on first login.
+    # box on the LAN. Stored hashed in the bridge.
     echo
-    echo "Recovery: root password (plain text; rotate on first boot)."
+    echo "Recovery: root password (hashed before commit; rotate on first boot)."
     echo "  Empty = no root login (use only if you have other recovery)."
-    ask ROOT_PASSWORD "root initial password" "recovery"
+    ask_password ROOT_HASHED_PASSWORD "root recovery password" "recovery"
 
     ask_yesno UNATTENDED "unattended host (auto-upgrade + nixos-clone + hm-auto-upgrade)?" "$ROLE_UNATT"
+
+    local extra_count
+    extra_count=$(jq 'length' <<< "$EXTRA_USERS_JSON")
 
     echo
     echo "═══ Summary ═══"
@@ -743,11 +1007,26 @@ EOF
     echo "  disko layout : $DISKO_LAYOUT"
     echo "  disk         : $DISK"
     echo "  primary user : $PRIMARY_USER ($PRIMARY_FULLNAME, hm=$PRIMARY_HM)"
-    echo "  extra users  : ${EXTRA_USERS:-(none)}"
+    if [[ -n "$PRIMARY_HASHED_PASSWORD" ]]; then
+        echo "  primary pw   : (set)"
+    else
+        echo "  primary pw   : (unset — no login)"
+    fi
+    if (( extra_count > 0 )); then
+        echo "  extra users  : $extra_count configured"
+        local _i _login _profile
+        for (( _i = 0; _i < extra_count; _i++ )); do
+            _login=$(jq -r ".[$_i].login"   <<< "$EXTRA_USERS_JSON")
+            _profile=$(jq -r ".[$_i].profile" <<< "$EXTRA_USERS_JSON")
+            echo "    - $_login (hm=$_profile)"
+        done
+    else
+        echo "  extra users  : (none)"
+    fi
     echo "  features     : $COMMON_FEATURES + $FEATURES"
     echo "  unattended   : $UNATTENDED"
     echo "  LUKS         : $LUKS"
-    if [[ -n "$ROOT_PASSWORD" ]]; then
+    if [[ -n "$ROOT_HASHED_PASSWORD" ]]; then
         echo "  root pw      : (set)"
     else
         echo "  root pw      : (unset — no root login)"

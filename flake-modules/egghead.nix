@@ -45,6 +45,12 @@
         gnused
         gnugrep
         gawk
+        # jq parses EGGHEAD_EXTRA_USERS_JSON (TUI hands users in as a
+        # structured array); mkpasswd hashes plain passwords into
+        # yescrypt-format `initialHashedPassword` strings safe to
+        # commit into the host bridge.
+        jq
+        mkpasswd
         # nix is needed to invoke `nix run`-style helpers downstream;
         # nixos-install / nixos-generate-config come from the live
         # installer ISO, not from this package's closure (the package
@@ -149,6 +155,22 @@
         script = ''
           set -euo pipefail
           clone="/home/${primary}/nixos"
+          # Self-heal: install-time `host-setup.sh do_clone_sources`
+          # is supposed to drop the flake at ~/<primary>/nixos, but a
+          # flaky live-ISO network or HM bootstrap race can leave it
+          # missing. If so, clone it ourselves so the primary user
+          # has a working checkout from first login. Best-effort: a
+          # truly offline first boot leaves $clone absent and we
+          # take the "not a git checkout; skipping" branch below.
+          if [[ ! -d "$clone/.git" ]]; then
+            echo "egghead-amend: $clone missing; attempting clone."
+            mkdir -p "/home/${primary}"
+            if git clone https://github.com/dc0d32/nixos "$clone"; then
+              chown -R ${primary}:users "$clone"
+            else
+              echo "egghead-amend: clone failed (network down?); skipping."
+            fi
+          fi
           if [[ ! -d "$clone/.git" ]]; then
             echo "egghead-amend: $clone is not a git checkout; skipping."
             mkdir -p "$(dirname "${sentinel}")"

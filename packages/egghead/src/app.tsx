@@ -7,7 +7,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import SelectInput from "ink-select-input";
-import { Answers, STEPS, normalizeAnswers, StepDef } from "./steps.js";
+import { Answers, STEPS, normalizeAnswers, StepDef, ExtraUser } from "./steps.js";
 import { listDisks } from "./lsblk.js";
 import { AVAILABLE_FEATURES } from "./features.js";
 
@@ -191,7 +191,17 @@ const Sidebar: React.FC<{
         const isActive = i === activeIdx;
         const prefix = isActive ? "▸" : answered ? "✓" : "·";
         const color = isActive ? "yellow" : answered ? "green" : "gray";
-        const shown = answered ? `: ${truncate(val!, 18)}` : "";
+        let shown = "";
+        if (answered) {
+          if (s.secret) {
+            shown = val ? ": (set)" : ": (unset)";
+          } else if (s.kind === "extras") {
+            const n = countExtras(val!);
+            shown = `: ${n} configured`;
+          } else {
+            shown = `: ${truncate(val!, 18)}`;
+          }
+        }
         return (
           <Text key={s.key} color={color} bold={isActive}>
             {prefix} {s.key}
@@ -202,6 +212,15 @@ const Sidebar: React.FC<{
     </Box>
   );
 };
+
+function countExtras(json: string): number {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.length : 0;
+  } catch {
+    return 0;
+  }
+}
 
 interface StepInputProps {
   step: StepDef;
@@ -218,6 +237,14 @@ const StepInput: React.FC<StepInputProps> = ({ step, answers, onSubmit }) => {
       return <DiskInput defaultValue={defaultValue} onSubmit={onSubmit} />;
     }
     return <TextStep defaultValue={defaultValue} onSubmit={onSubmit} />;
+  }
+
+  if (step.kind === "password") {
+    return <PasswordStep defaultValue={defaultValue} onSubmit={onSubmit} />;
+  }
+
+  if (step.kind === "extras") {
+    return <ExtrasStep defaultValue={defaultValue} onSubmit={onSubmit} />;
   }
 
   if (step.kind === "choice") {
@@ -326,6 +353,207 @@ const TextStep: React.FC<{
   );
 };
 
+const PasswordStep: React.FC<{
+  defaultValue: string;
+  onSubmit: (value: string) => void;
+}> = ({ defaultValue, onSubmit }) => {
+  const [value, setValue] = useState(defaultValue);
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">
+        {"  "}characters hidden. Enter submits. Empty = no login.
+      </Text>
+      <Box marginTop={1}>
+        <Text color="yellow">› </Text>
+        <TextInput
+          value={value}
+          onChange={setValue}
+          onSubmit={onSubmit}
+          mask="*"
+        />
+      </Box>
+    </Box>
+  );
+};
+
+// ExtrasStep: tiny multi-user sub-wizard. Cycles through
+// login → fullname → profile → password for each extra user, then
+// asks "add another?". Submits the accumulated array as a
+// JSON-encoded string so the bash side can ingest it via jq.
+type ExtrasPhase =
+  | "list"
+  | "login"
+  | "fullname"
+  | "profile"
+  | "password";
+
+const ExtrasStep: React.FC<{
+  defaultValue: string;
+  onSubmit: (value: string) => void;
+}> = ({ defaultValue, onSubmit }) => {
+  // Parse seed value (env-provided or previously-submitted JSON).
+  // Tolerate garbage by falling back to []; bash side validates again.
+  const initial = (() => {
+    try {
+      const parsed = JSON.parse(defaultValue);
+      if (Array.isArray(parsed)) return parsed as ExtraUser[];
+    } catch {
+      /* ignore */
+    }
+    return [];
+  })();
+  const [users, setUsers] = useState<ExtraUser[]>(initial);
+  const [phase, setPhase] = useState<ExtrasPhase>("list");
+  const [draft, setDraft] = useState<Partial<ExtraUser>>({});
+  const [error, setError] = useState<string | undefined>();
+
+  const finish = (final: ExtraUser[]) => {
+    onSubmit(JSON.stringify(final));
+  };
+
+  if (phase === "list") {
+    return (
+      <Box flexDirection="column">
+        {users.length === 0 ? (
+          <Text color="gray">{"  "}(no extra users yet)</Text>
+        ) : (
+          users.map((u, i) => (
+            <Text key={`${u.login}-${i}`} color="green">
+              {"  "}✓ {u.login} ({u.fullname}, hm={u.profile})
+            </Text>
+          ))
+        )}
+        <Box marginTop={1}>
+          <SelectInput
+            items={[
+              { label: "add another user", value: "add" },
+              { label: "done — continue wizard", value: "done" },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "add") {
+                setDraft({});
+                setError(undefined);
+                setPhase("login");
+              } else {
+                finish(users);
+              }
+            }}
+          />
+        </Box>
+      </Box>
+    );
+  }
+
+  if (phase === "login") {
+    return (
+      <Box flexDirection="column">
+        <Text color="cyan">new user · login</Text>
+        <Text color="gray">{"  "}must match [a-z_][a-z0-9_-]*</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">› </Text>
+          <DraftTextInput
+            initial=""
+            onSubmit={(v) => {
+              if (!/^[a-z_][a-z0-9_-]*$/.test(v)) {
+                setError("bad linux username");
+                return;
+              }
+              if (users.some((u) => u.login === v)) {
+                setError("login already used");
+                return;
+              }
+              setError(undefined);
+              setDraft({ login: v });
+              setPhase("fullname");
+            }}
+          />
+        </Box>
+        {error ? <Text color="red">{"  "}✘ {error}</Text> : null}
+      </Box>
+    );
+  }
+
+  if (phase === "fullname") {
+    return (
+      <Box flexDirection="column">
+        <Text color="cyan">new user · full name</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">› </Text>
+          <DraftTextInput
+            initial={draft.login ?? ""}
+            onSubmit={(v) => {
+              setDraft({ ...draft, fullname: v || (draft.login ?? "") });
+              setPhase("profile");
+            }}
+          />
+        </Box>
+      </Box>
+    );
+  }
+
+  if (phase === "profile") {
+    return (
+      <Box flexDirection="column">
+        <Text color="cyan">new user · HM profile</Text>
+        <SelectInput
+          items={[
+            { label: "kid     — locked-down browser kiosk", value: "kid" },
+            { label: "base    — minimal HM, no desktop", value: "base" },
+            { label: "dev     — full dev tooling", value: "dev" },
+            { label: "desktop — full daily-driver desktop", value: "desktop" },
+          ]}
+          onSelect={(item) => {
+            setDraft({ ...draft, profile: String(item.value) });
+            setPhase("password");
+          }}
+        />
+      </Box>
+    );
+  }
+
+  // password
+  return (
+    <Box flexDirection="column">
+      <Text color="cyan">new user · password</Text>
+      <Text color="gray">
+        {"  "}characters hidden. Empty = no login (set later via sudo passwd).
+      </Text>
+      <Box marginTop={1}>
+        <Text color="yellow">› </Text>
+        <DraftTextInput
+          initial=""
+          mask="*"
+          onSubmit={(v) => {
+            const u: ExtraUser = {
+              login: draft.login!,
+              fullname: draft.fullname!,
+              profile: draft.profile!,
+              password: v,
+            };
+            setUsers((prev) => [...prev, u]);
+            setDraft({});
+            setPhase("list");
+          }}
+        />
+      </Box>
+    </Box>
+  );
+};
+
+// Tiny stateful TextInput wrapper used inside ExtrasStep. Plain
+// TextStep is controlled by app.tsx's outer state; here each draft
+// substep needs its own input state that resets between phases.
+const DraftTextInput: React.FC<{
+  initial: string;
+  mask?: string;
+  onSubmit: (value: string) => void;
+}> = ({ initial, mask, onSubmit }) => {
+  const [v, setV] = useState(initial);
+  return (
+    <TextInput value={v} onChange={setV} onSubmit={onSubmit} mask={mask} />
+  );
+};
+
 const DiskInput: React.FC<{
   defaultValue: string;
   onSubmit: (value: string) => void;
@@ -357,6 +585,17 @@ const SummaryScreen: React.FC<{
   answers: Answers;
   onConfirm: (proceed: boolean) => void;
 }> = ({ answers, onConfirm }) => {
+  const secretKeys = new Set(
+    STEPS.filter((s) => s.secret).map((s) => s.key as string),
+  );
+  const formatValue = (k: string, v: string): string => {
+    if (secretKeys.has(k)) return v ? "(set)" : "(unset)";
+    if (k === "EXTRA_USERS_JSON") {
+      const n = countExtras(v);
+      return n === 0 ? "(none)" : `${n} configured`;
+    }
+    return v === "" ? "(empty)" : v;
+  };
   return (
     <Box flexDirection="column">
       <Text color="cyan" bold>═══ Summary ═══</Text>
@@ -365,7 +604,7 @@ const SummaryScreen: React.FC<{
           {"  "}
           <Text color="gray">{k.padEnd(18)}</Text>
           {": "}
-          <Text>{v === "" ? "(empty)" : v}</Text>
+          <Text>{formatValue(k, String(v))}</Text>
         </Text>
       ))}
       <Box marginTop={1}>

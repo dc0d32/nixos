@@ -103,11 +103,14 @@ let
   # compositor stack, no dev tooling, no admin apps. `username`
   # parameterises the home.* fields below.
   mkKidHmModule = username: {
-    imports = config.flake.lib.bundles.homeManager.kid;
+    imports = config.flake.lib.bundles.homeManager.kid ++ [
+      # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle
+      # no longer carries it. Kids on pb-t480 had it before, so
+      # preserve that here.
+      config.flake.modules.homeManager.freecad
+    ];
 
     programs.home-manager.enable = true;
-
-    # Auto-lock / DPMS / suspend timings (seconds). Tighter for kid
     # accounts — they leave sessions unattended more often. No
     # powerSaverPercent (default 0 = disabled): kids' charge
     # behavior isn't worth automating.
@@ -277,6 +280,10 @@ in
         # at boot by howdy-camera-autodetect; the static fallback
         # /dev/video2 only matters before that service runs.
         config.flake.modules.nixos.biometrics
+        # Face unlock — howdy + IR emitter + camera autodetect.
+        # Opt-in companion to biometrics since 2026-05-16; pb-t480
+        # has IR hardware and used face unlock historically.
+        config.flake.modules.nixos.face-unlock
         config.flake.modules.nixos.niri
         # Quickshell system-side wiring: security.pam.services.
         # quickshell-password (the lockscreen always offers a password
@@ -430,7 +437,14 @@ in
       "${primaryUser}@${hostName}" = {
         pkgs = hmPkgs;
         module = {
-          imports = config.flake.lib.bundles.homeManager.desktop;
+          imports = config.flake.lib.bundles.homeManager.desktop ++ [
+            # KiCad + FreeCAD + Firefox are opt-in per-host since
+            # 2026-05-16; preserve the previous behaviour for
+            # pb-t480's primary user.
+            config.flake.modules.homeManager.kicad
+            config.flake.modules.homeManager.freecad
+            config.flake.modules.homeManager.firefox
+          ];
 
           programs.home-manager.enable = true;
 

@@ -47,10 +47,6 @@
 #                                          MTP phones, extracts zips.
 #                                          Pairs with the NixOS half
 #                                          on pb-t480 (gvfs + udisks2).
-#   - freecad                              CAD with FusionLike preset
-#                                          pack + addons (Assembly4,
-#                                          Fasteners, SheetMetal,
-#                                          Defeaturing)
 #   - hardware-hacking                     serial/USB/flashing CLIs
 #                                          (esptool, picocom, dfu-util,
 #                                          flashrom, usbutils, screen).
@@ -67,6 +63,14 @@
 #                                          launcher only shows things
 #                                          kids actually use
 #   - zoom                                 school meetings
+#
+# NOT in this bundle (per-host opt-in via the egghead wizard's
+# feature toggles, to keep the kid-bundle closure lean):
+#
+#   - freecad   ~1.3 GiB DL — hosts that want CAD for kids append
+#                `config.flake.modules.homeManager.freecad` to the
+#                kid HM module (see flake-modules/hosts/m-pc.nix,
+#                pb-t480.nix).
 #
 # Retire when: the kids age out and their accounts get merged with
 #   the adult desktop bundle, OR the pb-t480 host is
@@ -85,7 +89,6 @@
     file-manager
     fish
     fonts
-    freecad
     hardware-hacking
     idle
     kid-launcher

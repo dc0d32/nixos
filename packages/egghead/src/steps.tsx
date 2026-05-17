@@ -1,17 +1,27 @@
 // Wizard answers + step definitions. Each step is one screen in the
-// TUI. The order here matches scripts/egghead.sh main() (lines
-// 622-704); any new question added there must also appear here so the
-// TUI keeps prompting for it.
+// TUI. The order here matches scripts/egghead.sh main(); any new
+// question added there must also appear here so the TUI keeps
+// prompting for it.
 //
 // "kind" determines which Ink primitive renders the step:
-//   - "text"   → ink-text-input
-//   - "choice" → ink-select-input
-//   - "yesno"  → ink-select-input over ["yes","no"]
+//   - "text"     → ink-text-input
+//   - "choice"   → ink-select-input
+//   - "yesno"    → ink-select-input over ["yes","no"]
+//   - "multi"    → custom checklist (features only)
+//   - "password" → ink-text-input with mask="*" (passwords)
+//   - "extras"   → multi-user sub-wizard (extras only)
 //
 // "defaultFrom" is a function so role-dependent defaults are evaluated
 // lazily (after the role is picked).
 import { envOr, defaultStateVersion } from "./env.js";
 import { Role, roleByName } from "./roles.js";
+
+export interface ExtraUser {
+  login: string;
+  fullname: string;
+  profile: string;
+  password: string;
+}
 
 export interface Answers {
   HOSTNAME: string;
@@ -20,7 +30,10 @@ export interface Answers {
   PRIMARY_USER: string;
   PRIMARY_FULLNAME: string;
   PRIMARY_HM: string;
-  EXTRA_USERS: string;
+  PRIMARY_PASSWORD: string;
+  // JSON-encoded array of {login, fullname, profile, password}.
+  // bash side hashes plain passwords via mkpasswd before emitting.
+  EXTRA_USERS_JSON: string;
   FEATURES: string;
   GPU_DRIVER: string;
   TZ: string;
@@ -32,7 +45,13 @@ export interface Answers {
   UNATTENDED: string;
 }
 
-export type StepKind = "text" | "choice" | "yesno" | "multi";
+export type StepKind =
+  | "text"
+  | "choice"
+  | "yesno"
+  | "multi"
+  | "password"
+  | "extras";
 
 export interface StepDef {
   key: keyof Answers;
@@ -46,6 +65,9 @@ export interface StepDef {
   validate?: (value: string, prior: Partial<Answers>) => string | undefined;
   // If false, skip this step entirely given the prior answers.
   shouldRun?: (prior: Partial<Answers>) => boolean;
+  // Hide the value in the sidebar (for passwords). Sidebar will show
+  // "(set)" / "(unset)" instead.
+  secret?: boolean;
 }
 
 const HOSTNAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -110,11 +132,19 @@ export const STEPS: StepDef[] = [
     defaultFrom: (p) => envOr("PRIMARY_HM", role(p)?.hm ?? "desktop"),
   },
   {
-    key: "EXTRA_USERS",
-    kind: "text",
-    prompt: "extra users",
-    help: 'semicolon tuples "login:fullname:profile". Empty for none. Example: m:M:kid;s:S:kid',
-    defaultFrom: () => envOr("EXTRA_USERS", ""),
+    key: "PRIMARY_PASSWORD",
+    kind: "password",
+    prompt: "primary user password",
+    help: "Hashed (yescrypt) before commit. Empty = no login (set later via `sudo passwd`).",
+    defaultFrom: () => envOr("PRIMARY_PASSWORD", ""),
+    secret: true,
+  },
+  {
+    key: "EXTRA_USERS_JSON",
+    kind: "extras",
+    prompt: "additional users",
+    help: "Optional: kids, a second admin, etc. Each gets a home dir + HM bundle. Enter loops 'add another?' until you stop.",
+    defaultFrom: () => envOr("EXTRA_USERS_JSON", "[]"),
   },
   {
     key: "FEATURES",
@@ -164,10 +194,11 @@ export const STEPS: StepDef[] = [
   },
   {
     key: "ROOT_PASSWORD",
-    kind: "text",
-    prompt: "root initial password (empty = no root login)",
-    help: "Plain text; rotate on first boot. Console + SSH recovery if X breaks. Default 'recovery' is fine for a freshly-installed host.",
+    kind: "password",
+    prompt: "root recovery password",
+    help: "Hashed before commit. Console + SSH recovery if X breaks. Default 'recovery' is fine for a freshly-installed host; rotate on first boot. Empty = no root login.",
     defaultFrom: () => envOr("ROOT_PASSWORD", "recovery"),
+    secret: true,
   },
   {
     key: "UNATTENDED",
@@ -180,11 +211,14 @@ export const STEPS: StepDef[] = [
 
 /**
  * GPU driver defaults to "none" when the gpu step is skipped — mirrors
- * the bash script's else-branch (egghead.sh line 669).
+ * the bash script's else-branch. Only fires once FEATURES has actually
+ * been answered: otherwise every prior step's submit would pre-tick
+ * the GPU sidebar entry with "none" (since `undefined` FEATURES
+ * trivially doesn't include "gpu").
  */
 export function normalizeAnswers(a: Partial<Answers>): Partial<Answers> {
   const out = { ...a };
-  if (!` ${out.FEATURES ?? ""} `.includes(" gpu ")) {
+  if (out.FEATURES !== undefined && !` ${out.FEATURES} `.includes(" gpu ")) {
     out.GPU_DRIVER = "none";
   }
   return out;

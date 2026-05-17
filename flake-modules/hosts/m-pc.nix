@@ -115,11 +115,14 @@ let
   # the same factory can produce more kid HM configs later without
   # change.
   mkKidHmModule = username: {
-    imports = config.flake.lib.bundles.homeManager.kid;
+    imports = config.flake.lib.bundles.homeManager.kid ++ [
+      # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle
+      # no longer carries it. Kids on m-pc had it before, so preserve
+      # that here.
+      config.flake.modules.homeManager.freecad
+    ];
 
     programs.home-manager.enable = true;
-
-    # Auto-lock / DPMS / suspend timings (seconds). Same values as
     # pb-t480 kids — m's muscle memory across the two hosts shouldn't
     # diverge. No powerSaverPercent: there's no battery to monitor.
     idle = {
@@ -376,7 +379,14 @@ in
       "${primaryUser}@${hostName}" = {
         pkgs = hmPkgs;
         module = {
-          imports = config.flake.lib.bundles.homeManager.desktop;
+          imports = config.flake.lib.bundles.homeManager.desktop ++ [
+            # KiCad + FreeCAD + Firefox are opt-in per-host since
+            # 2026-05-16; preserve the previous behaviour for
+            # m-pc's primary user.
+            config.flake.modules.homeManager.kicad
+            config.flake.modules.homeManager.freecad
+            config.flake.modules.homeManager.firefox
+          ];
 
           programs.home-manager.enable = true;
 
