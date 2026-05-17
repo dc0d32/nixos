@@ -187,6 +187,15 @@ in
       # diverge.
       boot.kernelPackages = hmPkgs.linuxPackages_latest;
 
+      # Hibernate-resume offset for /swap/swapfile. battery.nix's
+      # battery-resume-offset oneshot computes this via
+      # `btrfs inspect-internal map-swapfile` on first boot and nags
+      # in the journal when the value drifts. Captured here so the
+      # initrd's `resume=` arg lands at the right physical offset.
+      # Recompute and update if the swapfile is ever recreated (rare;
+      # battery-resume-offset will log the new value to the journal).
+      boot.kernelParams = [ "resume_offset=10162202" ];
+
       # Primary user.
       users.users.${user} = {
         isNormalUser = true;
