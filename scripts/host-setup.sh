@@ -468,47 +468,41 @@ guard_disk_safety() {
     # 4. Typed-back confirmation. Skipped under --force-disk so CI /
     # non-interactive smoke runs don't have to script a stdin reply.
     if (( FORCE_DISK )); then
-        echo ">> --force-disk: skipping typed-back model+size confirmation."
+        echo ">> --force-disk: skipping YES confirmation."
         return 0
     fi
     prompt_disk_confirm "$disk"
 }
 
-# ── helper: typed-back model+size confirmation ────────────────────
-# Replaces the blunt "type YES" prompt with one that shows the disk
-# identity (MODEL + SIZE) and requires the operator to retype them.
-# Whitespace and case are ignored; everything else (including the
-# trailing G/T suffix on size) must match.
+# ── helper: destructive-wipe confirmation ─────────────────────────
+# Shows the target's MODEL + SIZE so the operator can sanity-check
+# the disk identity, then requires a literal "YES" to proceed.
+# Anything else aborts. Case-sensitive on purpose — "yes" / "y" are
+# the kinds of replies a flow-state operator gives by reflex.
 prompt_disk_confirm() {
     local disk="$1"
-    local model size expected got
+    local model size got
     model=$(lsblk -ndo MODEL "$disk" 2>/dev/null | tr -d '\n' | awk '{$1=$1};1')
     size=$(lsblk -ndo SIZE "$disk" 2>/dev/null | tr -d '[:space:]')
     [[ -z "$model" ]] && model="(no-model)"
-
-    # Normalize: lowercase, strip whitespace.
-    expected=$(printf "%s %s" "$model" "$size" \
-        | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 
     cat <<EOF
 
 *** DESTRUCTIVE CONFIRMATION ***
 
-To prevent fat-finger disk wipes, retype the target's MODEL and SIZE
-exactly as shown below (whitespace + case ignored):
+About to wipe and re-partition:
 
   Disk : $disk
   Model: $model
   Size : $size
 
 EOF
-    read -r -p "Type 'MODEL SIZE' to proceed, anything else aborts: " got
-    got=$(printf "%s" "$got" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-    if [[ "$got" != "$expected" ]]; then
-        echo "error: confirmation mismatch. Expected '$model $size' (modulo case/space)." >&2
+    read -r -p "Type YES (in uppercase) to wipe this disk, anything else aborts: " got
+    if [[ "$got" != "YES" ]]; then
+        echo "error: confirmation not 'YES'; aborting." >&2
         abort_revert
     fi
-    echo ">> disk identity confirmed."
+    echo ">> wipe confirmed."
 }
 
 # ── --unmount mode: release /mnt tree cleanly ─────────────────────
