@@ -6,8 +6,8 @@
 // flow-controlled elsewhere):
 //   - nix-settings networking openssh users system-utils locale
 //     fonts boot home-manager-bootstrap   (substrate, always on)
-//   - egghead-amend disko                 (always on for wizard hosts)
-//   - auto-upgrade nixos-clone hm-auto-upgrade  (controlled by UNATTENDED)
+//   - egghead-amend disko nixos-clone     (always on for wizard hosts)
+//   - auto-upgrade hm-auto-upgrade        (controlled by UNATTENDED)
 //   - wsl                                 (different role flow entirely)
 //
 // Anything else in flake.modules.nixos.* that should be human-

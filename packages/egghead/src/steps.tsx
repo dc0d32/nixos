@@ -275,7 +275,7 @@ export const STEPS: StepDef[] = [
     key: "UNATTENDED",
     kind: "yesno",
     prompt: "unattended host?",
-    help: "Adds auto-upgrade + nixos-clone + hm-auto-upgrade.",
+    help: "Adds auto-upgrade + hm-auto-upgrade. (nixos-clone is always on.)",
     defaultFrom: (p) => envOr("UNATTENDED", role(p)?.unattended ?? "no"),
   },
 ];

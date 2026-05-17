@@ -159,16 +159,27 @@
           # is supposed to drop the flake at ~/<primary>/nixos, but a
           # flaky live-ISO network or HM bootstrap race can leave it
           # missing. If so, clone it ourselves so the primary user
-          # has a working checkout from first login. Best-effort: a
-          # truly offline first boot leaves $clone absent and we
-          # take the "not a git checkout; skipping" branch below.
+          # has a working checkout from first login.
+          #
+          # Important: do NOT write the sentinel on clone failure.
+          # The sentinel disarms this unit for the lifetime of the
+          # host, so a one-time first-boot network hiccup must not
+          # poison it permanently. The unit's ConditionPathExists
+          # gating means systemd skips this trivially on boots where
+          # the sentinel exists; leaving it absent means we get
+          # another shot on the next boot (typically when the user
+          # has working network), which is the desired self-heal.
+          # nixos-clone.service is the long-term retry mechanism;
+          # this branch is the immediate-first-boot fast path.
           if [[ ! -d "$clone/.git" ]]; then
             echo "egghead-amend: $clone missing; attempting clone."
             mkdir -p "/home/${primary}"
             if git clone https://github.com/dc0d32/nixos "$clone"; then
               chown -R ${primary}:users "$clone"
             else
-              echo "egghead-amend: clone failed (network down?); skipping."
+              echo "egghead-amend: clone failed (network down?); will retry on next boot."
+              # Bail without writing the sentinel — see comment above.
+              exit 0
             fi
           fi
           if [[ ! -d "$clone/.git" ]]; then

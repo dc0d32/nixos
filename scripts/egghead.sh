@@ -389,8 +389,8 @@ ask_luks_passphrase() {
 #   hm_profile: default HM bundle for the primary user (base | dev |
 #     desktop | kid).
 #   disk_hint: a sensible default disk path for the role.
-#   unattended: whether to bake in auto-upgrade + nixos-clone +
-#     hm-auto-upgrade (server-class hosts).
+#   unattended: whether to bake in auto-upgrade + hm-auto-upgrade
+#     (server-class hosts; nixos-clone is always on regardless).
 #
 # Adding a role: append to role_names + define a role_<name>_* set of
 # vars; mirror the case statement in emit_bridge().
@@ -508,6 +508,14 @@ emit_bridge() {
     # flake-modules/egghead.nix). Self-disables via sentinel; safe to
     # leave in long-term.
     imports_block+="        config.flake.modules.nixos.egghead-amend"$'\n'
+    # Per-user clone of this flake into /home/<user>/nixos. The
+    # unit's ConditionPathExists guards against re-cloning, so it's
+    # a no-op once each user has a checkout — safe on every host,
+    # not just unattended. egghead-amend's inline clone is the
+    # immediate-first-boot fast path; nixos-clone is the persistent
+    # retry mechanism (it re-arms on every boot until the clone
+    # exists).
+    imports_block+="        config.flake.modules.nixos.nixos-clone"$'\n'
     # Role-driven add-ons. Skip any HM-class feature names — those
     # are emitted as extra HM imports per-user below instead.
     for f in $FEATURES; do
@@ -532,7 +540,6 @@ emit_bridge() {
     # Unattended add-ons.
     if [[ "$UNATTENDED" == "yes" ]]; then
         imports_block+="        config.flake.modules.nixos.auto-upgrade"$'\n'
-        imports_block+="        config.flake.modules.nixos.nixos-clone"$'\n'
         imports_block+="        config.flake.modules.nixos.hm-auto-upgrade"$'\n'
     fi
 
@@ -1133,7 +1140,7 @@ WARNEOF
     echo "  Empty = no root login (use only if you have other recovery)."
     ask_password ROOT_HASHED_PASSWORD "root recovery password" "recovery"
 
-    ask_yesno UNATTENDED "unattended host (auto-upgrade + nixos-clone + hm-auto-upgrade)?" "$ROLE_UNATT"
+    ask_yesno UNATTENDED "unattended host (auto-upgrade + hm-auto-upgrade)?" "$ROLE_UNATT"
 
     local extra_count
     extra_count=$(jq 'length' <<< "$EXTRA_USERS_JSON")
