@@ -21,7 +21,9 @@
 #               subvol=root                         → /
 #               subvol=nix                          → /nix
 #               subvol=home                         → /home
+#               subvol=persist                      → /persist
 #               subvol=snapshots                    → /.snapshots
+#               (RO snapshot of empty root)         → root-blank
 #       Hybrid bios-boot + ESP lets one layout boot on BIOS firmware
 #       (m-pc, Compaq SFF, via grub) and UEFI firmware (laptops, via
 #       systemd-boot) without per-host divergence.
@@ -43,6 +45,16 @@
 #       future snapper/btrfs-snapshot wiring; it's empty until that
 #       lands. Subvol names are bare (no `@` prefix) to match the
 #       convention already in the running pb-x1 / pb-t480 installs.
+#
+#       The `persist` subvol + the `root-blank` RO snapshot are
+#       wired for flake-modules/impermanence.nix. Both are created
+#       unconditionally because the cost is negligible (one
+#       mountpoint, one empty-subvol snapshot) and having them ready
+#       means a host can opt into impermanence by importing the
+#       module + rebooting — no disk-level migration needed. On
+#       hosts that don't import impermanence today, /persist is just
+#       an empty subvol with no bind-mounts pointing into it, and
+#       root-blank sits unused at the btrfs top level.
 #
 #       With luks=true, p4 is LUKS2-encrypted and btrfs goes on top
 #       of /dev/mapper/cryptroot. The disko script prompts for the
@@ -152,6 +164,36 @@ in
         btrfsContent = {
           type = "btrfs";
           extraArgs = [ "-L" "nixos" "-f" ];
+          # postCreateHook runs after `mkfs.btrfs` + all the
+          # `btrfs subvolume create` calls; we use it to materialize
+          # an empty RO snapshot of the freshly-created `root` subvol
+          # named `root-blank`. The impermanence module's initrd
+          # rollback service restores `root` from this snapshot on
+          # every boot (flake-modules/impermanence.nix).
+          #
+          # The snapshot is tiny (it captures an empty subvol — a
+          # handful of inodes the kernel materializes for any
+          # subvolume) and harmless on hosts that don't import the
+          # impermanence module; it just sits unused at the btrfs
+          # top level. Doing it here means every host that uses this
+          # factory is "impermanence-ready" without per-host wiring.
+          #
+          # Implementation detail: disko exports a `device` shell
+          # variable into the hook scope (via defineHookVariables —
+          # this is the btrfs type's `config.device`, which is
+          # `/dev/disk/by-partlabel/disk-main-nixos` on plain hosts
+          # and `/dev/mapper/cryptroot` on LUKS hosts since the LUKS
+          # wrapper sets its content's `device` to the mapper path).
+          # We mount subvolid=5 (the btrfs top level) at a temp dir,
+          # snapshot root → root-blank, then unmount.
+          postCreateHook = ''
+            MNTPOINT=$(mktemp -d)
+            mount -t btrfs "$device" "$MNTPOINT" -o subvol=/
+            trap 'umount "$MNTPOINT"; rm -rf "$MNTPOINT"' EXIT
+            if ! btrfs subvolume show "$MNTPOINT/root-blank" >/dev/null 2>&1; then
+              btrfs subvolume snapshot -r "$MNTPOINT/root" "$MNTPOINT/root-blank"
+            fi
+          '';
           subvolumes = {
             "root" = {
               mountpoint = "/";
@@ -163,6 +205,18 @@ in
             };
             "home" = {
               mountpoint = "/home";
+              mountOptions = [ "compress=zstd:1" "noatime" ];
+            };
+            # Persistence subvol for the impermanence module
+            # (flake-modules/impermanence.nix). Created unconditionally
+            # because the cost is one inode + a mountpoint, and having
+            # it ready means a host can opt into impermanence by
+            # importing the module + reboot — no disk-level migration
+            # needed. On hosts that DON'T import impermanence, the
+            # /persist mountpoint exists and is writable but no
+            # bind-mounts point into it; harmless.
+            "persist" = {
+              mountpoint = "/persist";
               mountOptions = [ "compress=zstd:1" "noatime" ];
             };
             # Empty slot for future snapper / btrfs-snapshot wiring

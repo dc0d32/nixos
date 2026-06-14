@@ -556,6 +556,22 @@ emit_bridge() {
         imports_block+="        config.flake.modules.nixos.$f"$'\n'
     done
 
+    # Impermanence: opt-in NixOS module (rolls / back to root-blank
+    # on every boot, persists /var/log, etc. under /persist). The
+    # disko factory always provisions the persist subvol + the
+    # root-blank snapshot, so importing this module is the only thing
+    # needed to flip rollback on.
+    if [[ "${IMPERMANENCE:-no}" == "yes" ]]; then
+        imports_block+="        config.flake.modules.nixos.impermanence"$'\n'
+    fi
+
+    # Backup: opt-in NixOS module (daily restic to SFTP target).
+    # Reads its options from `backup.*` (declared in the module);
+    # overrides go in the per-host config block below.
+    if [[ "${BACKUP:-no}" == "yes" ]]; then
+        imports_block+="        config.flake.modules.nixos.backup"$'\n'
+    fi
+
     # Per-user extra HM imports: append the HM-class features (kicad,
     # …) to whichever bundle each user picks. Same set goes to every
     # user on the host; if you want per-user differentiation, edit the
@@ -568,6 +584,11 @@ emit_bridge() {
                 ;;
         esac
     done
+    # Impermanence persistence is now system-side only (the upstream
+    # HM impermanence module is deprecated for standalone HM, so
+    # flake-modules/impermanence.nix declares per-user paths via the
+    # NixOS module's environment.persistence."/persist".users.<login>
+    # block instead). No HM-side import to add.
     # Unattended add-ons.
     if [[ "$UNATTENDED" == "yes" ]]; then
         imports_block+="        config.flake.modules.nixos.auto-upgrade"$'\n'
@@ -602,6 +623,26 @@ BATEOF
       # GPU driver picked by egghead at install time. Adjust if
       # follow-up lspci reveals a hybrid / non-default device.
       gpu.driver = \"$GPU_DRIVER\";"
+    fi
+
+    # Backup options block — only when backup is enabled. Hostname
+    # is read by the module itself (config.networking.hostName); we
+    # only override the per-host knobs (target endpoint, base path).
+    local backup_block=""
+    if [[ "${BACKUP:-no}" == "yes" ]]; then
+        # Escape the values into Nix string literals.
+        local _h="${BACKUP_TRUENAS_HOST//\\/\\\\}"; _h="${_h//\"/\\\"}"
+        local _u="${BACKUP_TRUENAS_USER//\\/\\\\}"; _u="${_u//\"/\\\"}"
+        local _b="${BACKUP_REPO_BASE//\\/\\\\}";    _b="${_b//\"/\\\"}"
+        backup_block="
+      # Backup target — overrides for flake.modules.nixos.backup
+      # defaults. The actual SSH key + repo password live under
+      # /persist/etc (populated by host-setup.sh at install time).
+      backup = {
+        truenasHost  = \"$_h\";
+        truenasUser  = \"$_u\";
+        repoBasePath = \"$_b\";
+      };"
     fi
 
     # LUKS+TPM auto-unlock block — only when both LUKS and TPM are
@@ -791,6 +832,7 @@ $imports_block      ];
       console.keyMap = "$KEYMAP";
 $gpu_block
 $battery_block
+$backup_block
 $ssh_recovery_block$luks_tpm_block
       # mkDefault so hardware modules (nixos-hardware microsoft-
       # surface-*, lenovo-thinkpad-*, etc.) that ship their own
@@ -935,6 +977,37 @@ do_install() {
         preserve_env+=",EGGHEAD_LUKS_PASSWORD_FILE,EGGHEAD_LUKS_TPM"
     fi
 
+    # Backup secrets handoff. host-setup.sh populates
+    # /mnt/persist/etc/restic/host.pass (the per-host repo password,
+    # either OLD-on-re-install or freshly-generated on new install)
+    # and /mnt/persist/etc/ssh-restic/{restic_ed25519,restic_known_hosts}
+    # right after nixos-install. We pass the OLD password (if any)
+    # plus the SFTP target details + the seed-users JSON (each entry
+    # carries its source host's repo password) via tmpfs files; the
+    # JSON file holds plaintext source-host passwords so it MUST be
+    # 0600 on tmpfs only and never copied to disk except into the
+    # short-lived /mnt/persist/etc/restic/host.pass on the install
+    # target.
+    if [[ "${BACKUP:-no}" == "yes" ]]; then
+        local backup_pw_file="/run/egghead-backup.pass"
+        install -m 600 /dev/null "$backup_pw_file"
+        printf '%s' "${BACKUP_REPO_PASSWORD:-}" > "$backup_pw_file"
+        export EGGHEAD_BACKUP_REPO_PASSWORD_FILE="$backup_pw_file"
+        export EGGHEAD_BACKUP_TRUENAS_HOST
+        export EGGHEAD_BACKUP_TRUENAS_USER
+        export EGGHEAD_BACKUP_REPO_BASE
+        export EGGHEAD_IS_REINSTALL
+        preserve_env+=",EGGHEAD_BACKUP_REPO_PASSWORD_FILE,EGGHEAD_BACKUP_TRUENAS_HOST,EGGHEAD_BACKUP_TRUENAS_USER,EGGHEAD_BACKUP_REPO_BASE,EGGHEAD_IS_REINSTALL"
+
+        if [[ "${SEED_USERS_JSON:-[]}" != "[]" ]]; then
+            local seed_file="/run/egghead-seed-users.json"
+            install -m 600 /dev/null "$seed_file"
+            printf '%s' "$SEED_USERS_JSON" > "$seed_file"
+            export EGGHEAD_SEED_USERS_FILE="$seed_file"
+            preserve_env+=",EGGHEAD_SEED_USERS_FILE"
+        fi
+    fi
+
     echo
     echo ">> handing off to: sudo $setup --install $HOSTNAME --no-regen-hwconfig --disk $DISK"
     exec sudo --preserve-env="$preserve_env" \
@@ -953,6 +1026,109 @@ do_install() {
 #   3. Interactive: loop "add another user?" until no. Per user,
 #      collect login, fullname, profile choice, password (no echo,
 #      twice). Empty password = no login (matches primary's behaviour).
+# ─── seed-users collector ─────────────────────────────────────
+# Sets SEED_USERS_JSON (jq-parseable array of objects with
+# {login, fromHost, fromUser, password}). Loops over every
+# declared normal user (PRIMARY_USER + every entry in
+# EXTRA_USERS_JSON) and asks per user whether to seed that user's
+# ~/persist directory from another host's backup at install time.
+#
+# A "seed" pulls only /persist/home/<source-user> (NEVER /persist
+# itself, which holds system state: machine-id, SSH host keys,
+# NetworkManager). host-setup.sh runs the actual
+#   backup-restore --from-host ... --password-file ... \
+#                  --seed-from-user <src> --seed-to-user <login>
+# during do_install_post, before unmount.
+#
+# Source: EGGHEAD_SEED_USERS_JSON or interactive loop. Each entry
+# may have either `password` (plain) or already-pre-shaped fields.
+# Passwords are stored in tmpfs only and never committed; egghead
+# forwards them to host-setup.sh via $EGGHEAD_SEED_USERS_FILE
+# (a 0600 tmpfs JSON file).
+collect_seed_users() {
+    if [[ -n "${EGGHEAD_SEED_USERS_JSON+x}" ]]; then
+        local raw="${EGGHEAD_SEED_USERS_JSON}"
+        [[ -z "$raw" ]] && raw="[]"
+        if ! jq -e 'type == "array"' <<< "$raw" >/dev/null 2>&1; then
+            echo "error: \$EGGHEAD_SEED_USERS_JSON is not a JSON array" >&2
+            exit 2
+        fi
+        SEED_USERS_JSON="$raw"
+        echo ">> seed users: $(jq 'length' <<< "$SEED_USERS_JSON") configured (from \$EGGHEAD_SEED_USERS_JSON)" >&2
+        return 0
+    fi
+
+    if (( NONINTERACTIVE )); then
+        SEED_USERS_JSON="[]"
+        return 0
+    fi
+
+    SEED_USERS_JSON="[]"
+    # Build the candidate list: primary first, then extras.
+    local candidates=("$PRIMARY_USER")
+    if [[ -n "${EXTRA_USERS_JSON:-}" ]] && [[ "$EXTRA_USERS_JSON" != "[]" ]]; then
+        local n i login
+        n=$(jq 'length' <<< "$EXTRA_USERS_JSON")
+        for (( i = 0; i < n; i++ )); do
+            login=$(jq -r ".[$i].login" <<< "$EXTRA_USERS_JSON")
+            candidates+=("$login")
+        done
+    fi
+
+    echo
+    echo "Cross-host seeding: for each user, optionally restore that"
+    echo "user's persisted state (browser profiles, bitwarden, freecad"
+    echo "prefs, etc.) from another host's backup. Seeding pulls ONLY"
+    echo "the user's /persist/home/<user> tree; system state (/persist"
+    echo "itself: machine-id, NetworkManager, SSH host keys) is always"
+    echo "host-specific and never copied."
+    echo
+
+    local u answer from_host from_user password
+    for u in "${candidates[@]}"; do
+        read -r -p "seed ${u}'s persisted home state from another host? (y/n) [n]: " answer
+        answer="${answer:-n}"
+        case "$answer" in
+            y|Y|yes|YES) ;;
+            *) continue ;;
+        esac
+
+        while true; do
+            read -r -p "  source hostname (e.g. pb-x1): " from_host
+            if [[ -n "$from_host" ]]; then break; fi
+        done
+        read -r -p "  source user login [$u]: " from_user
+        from_user="${from_user:-$u}"
+
+        # Source repo password — paste from password manager.
+        local p1 p2
+        while true; do
+            read -r -s -p "  source host's repo password: " p1
+            echo
+            if [[ -z "$p1" ]]; then
+                echo "    password cannot be empty (paste from password manager); try again."
+                continue
+            fi
+            read -r -s -p "    retype to confirm: " p2
+            echo
+            if [[ "$p1" == "$p2" ]]; then
+                password="$p1"
+                break
+            fi
+            echo "    passwords differ; try again."
+        done
+
+        SEED_USERS_JSON=$(jq -c \
+            --arg login "$u" \
+            --arg fh "$from_host" \
+            --arg fu "$from_user" \
+            --arg pw "$password" \
+            '. + [{login: $login, fromHost: $fh, fromUser: $fu, password: $pw}]' \
+            <<< "$SEED_USERS_JSON")
+        echo "  seeded: $u  ←  $from_user@$from_host"
+    done
+}
+
 collect_extra_users() {
     if [[ -n "${EGGHEAD_EXTRA_USERS_JSON+x}" ]]; then
         local raw="${EGGHEAD_EXTRA_USERS_JSON}"
@@ -1179,6 +1355,54 @@ WARNEOF
 
     ask_yesno UNATTENDED "unattended host (auto-upgrade + hm-auto-upgrade)?" "$ROLE_UNATT"
 
+    # ── impermanence + backup ────────────────────────────────────
+    # Default IMPERMANENCE on for bare-metal roles (so an egghead
+    # refresh starts clean and you only carry forward state you've
+    # explicitly declared in environment.persistence). Off by
+    # default for VM roles since the hypervisor / ZFS dataset
+    # snapshots usually already cover that ground.
+    local imperm_default="no"
+    case "$ROLE" in
+        bare-metal-*) imperm_default="yes" ;;
+    esac
+    ask_yesno IMPERMANENCE "wipe root subvol back to empty on every boot (impermanence)?" "$imperm_default"
+
+    # Backup makes sense whenever impermanence does, plus other
+    # bare-metal hosts that want offsite copies. Defaulted the same
+    # way as impermanence.
+    ask_yesno BACKUP "schedule daily restic backups to TrueNAS?" "$imperm_default"
+    if [[ "$BACKUP" == "yes" ]]; then
+        ask BACKUP_TRUENAS_HOST "TrueNAS / SFTP hostname" "nas.lan"
+        ask BACKUP_TRUENAS_USER "TrueNAS SFTP-only user" "restic-backup"
+        ask BACKUP_REPO_BASE "absolute path on TrueNAS under which each host's repo lives" "/mnt/zrust/backup/restic"
+
+        # Re-install vs first-install. On a re-install of an existing
+        # hostname we must reuse the OLD repo password (paste from
+        # password manager). On a first install we generate a fresh
+        # one and print it for the operator to record.
+        ask_yesno IS_REINSTALL "is this a re-install of an existing host (reuse old repo password)?" "no"
+        if [[ "$IS_REINSTALL" == "yes" ]]; then
+            ask_luks_passphrase BACKUP_REPO_PASSWORD "OLD repo password for ${HOSTNAME} (paste from password manager)"
+        else
+            BACKUP_REPO_PASSWORD=""
+        fi
+
+        # Per-user seeding. Loop every declared normal user (primary +
+        # extras) and ask whether to seed their ~/persist from another
+        # host's backup. Operator pastes the SOURCE host's repo
+        # password (which they recorded when first installing that
+        # host). Source user defaults to the same login.
+        SEED_USERS_JSON="[]"
+        collect_seed_users
+    else
+        BACKUP_TRUENAS_HOST=""
+        BACKUP_TRUENAS_USER=""
+        BACKUP_REPO_BASE=""
+        IS_REINSTALL="no"
+        BACKUP_REPO_PASSWORD=""
+        SEED_USERS_JSON="[]"
+    fi
+
     local extra_count
     extra_count=$(jq 'length' <<< "$EXTRA_USERS_JSON")
 
@@ -1222,6 +1446,15 @@ WARNEOF
     echo "  locale       : $LOCALE"
     echo "  keymap       : $KEYMAP"
     echo "  stateVersion : $STATE_VERSION"
+    echo "  impermanence : $IMPERMANENCE"
+    echo "  backup       : $BACKUP"
+    if [[ "$BACKUP" == "yes" ]]; then
+        echo "    target       : ${BACKUP_TRUENAS_USER}@${BACKUP_TRUENAS_HOST}:${BACKUP_REPO_BASE}/${HOSTNAME}"
+        echo "    re-install   : $IS_REINSTALL"
+        local seed_count
+        seed_count=$(jq 'length' <<< "${SEED_USERS_JSON:-[]}")
+        echo "    seeded users : $seed_count"
+    fi
     echo
 
     local PROCEED=""

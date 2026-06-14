@@ -591,11 +591,23 @@ do_install() {
     # warning at worst; the rm is the load-bearing step. We also clear
     # EGGHEAD_LUKS_PASSWORD_FILE from the env so any child process
     # spawned after this point can't resurrect the path.
-    if [[ -n "${EGGHEAD_LUKS_PASSWORD_FILE:-}" ]] && \
-       [[ -f "$EGGHEAD_LUKS_PASSWORD_FILE" ]]; then
-        local _luks_keyfile="$EGGHEAD_LUKS_PASSWORD_FILE"
-        # shellcheck disable=SC2064  # we want $_luks_keyfile expanded NOW
-        trap "shred -u '$_luks_keyfile' 2>/dev/null || rm -f '$_luks_keyfile'" EXIT
+    # Shred-on-exit for any tmpfs secret files egghead handed in.
+    # Combined into a single trap because bash's `trap … EXIT`
+    # replaces, doesn't append. Each file is optional (the operator
+    # may not have used LUKS, or may not have enabled backups).
+    _egghead_secrets_cleanup() {
+        local f
+        for f in \
+            "${EGGHEAD_LUKS_PASSWORD_FILE:-}" \
+            "${EGGHEAD_BACKUP_REPO_PASSWORD_FILE:-}" \
+            "${EGGHEAD_SEED_USERS_FILE:-}"; do
+            if [[ -n "$f" ]] && [[ -f "$f" ]]; then
+                shred -u "$f" 2>/dev/null || rm -f "$f"
+            fi
+        done
+    }
+    if [[ -n "${EGGHEAD_LUKS_PASSWORD_FILE:-}${EGGHEAD_BACKUP_REPO_PASSWORD_FILE:-}${EGGHEAD_SEED_USERS_FILE:-}" ]]; then
+        trap _egghead_secrets_cleanup EXIT
     fi
 
     # 2. Verify the host bridge file exists. This is also a sanity
@@ -886,6 +898,22 @@ do_install_post() {
     # boots and you can verify everything works.
     cleanup_hwcfg_artifacts
 
+    # Backup secret material: populate /mnt/persist/etc/{restic,ssh-restic}/
+    # with the per-host SSH key, the pinned TrueNAS known_hosts entry,
+    # and the repo password (OLD on re-install, freshly-generated on
+    # new install). Idempotent within an install (safe to re-invoke on
+    # an aborted run if /mnt is still mounted). Skipped if backup
+    # wasn't enabled in egghead.
+    do_install_backup_material
+
+    # Cross-host seeding: for each entry in EGGHEAD_SEED_USERS_FILE,
+    # invoke backup-restore (via nixos-enter into /mnt so the wrapper's
+    # closure is available) to pull /persist/home/<src-user> from the
+    # source host's repo into /mnt/persist/home/<this-user>. NEVER
+    # pulls /persist itself (system state is always host-specific:
+    # machine-id, NetworkManager, ssh host keys).
+    do_install_seed_users
+
     # Optional chained steps: seed ~/nixos for every HM-enabled user
     # and bootstrap each user's home-manager profile before reboot.
     # Both default ON; opt out via --no-clone-sources / --no-install-hm.
@@ -1012,6 +1040,36 @@ do_install_post() {
        on the next host."
     fi
 
+    # Build a backup material summary block. Operator needs to record
+    # the freshly-generated repo password (one-time only — we shred
+    # the tmpfs file at script exit) and paste the new host's SSH
+    # pubkey into TrueNAS' authorized_keys before the first daily
+    # backup timer fires.
+    local backup_block=""
+    if [[ -n "${EGGHEAD_BACKUP_TRUENAS_HOST:-}" ]]; then
+        backup_block="
+  1b. BACKUP MATERIAL (write down the password NOW if newly-generated):
+
+       Target repo : sftp://${EGGHEAD_BACKUP_TRUENAS_USER}@${EGGHEAD_BACKUP_TRUENAS_HOST}:${EGGHEAD_BACKUP_REPO_BASE}/${HOSTNAME}
+       Password    : ${BACKUP_PASSWORD_SOURCE:-already-on-disk}"
+        if [[ -n "${BACKUP_PASSWORD_PLAINTEXT:-}" ]]; then
+            backup_block+="
+       PLAINTEXT   : ${BACKUP_PASSWORD_PLAINTEXT}
+       (record this in your password manager — re-installs need it)"
+        fi
+        backup_block+="
+       SSH pubkey  : ${BACKUP_SSH_PUBKEY:-(missing — generate manually after first boot)}
+       → paste pubkey into TrueNAS user ${EGGHEAD_BACKUP_TRUENAS_USER}'s authorized_keys
+         BEFORE the first daily backup timer fires (default 03:00 local)."
+        if [[ "${BACKUP_KNOWN_HOSTS_OK:-1}" != "1" ]]; then
+            backup_block+="
+       WARNING: ssh-keyscan ${EGGHEAD_BACKUP_TRUENAS_HOST} failed during install.
+                After first boot, populate /persist/etc/ssh-restic/restic_known_hosts:
+                  sudo ssh-keyscan -t ed25519,rsa ${EGGHEAD_BACKUP_TRUENAS_HOST} \\
+                    | sudo tee /persist/etc/ssh-restic/restic_known_hosts"
+        fi
+    fi
+
     cat <<EOF
 
 >> nixos-install finished.
@@ -1026,6 +1084,7 @@ Next steps (in order):
        nixos-enter --root /mnt -c 'passwd s'    # if applicable
 
 ${recovery_text}
+${backup_block}
 
 ${hm_step_text}
 
@@ -1665,6 +1724,211 @@ do_hm_switch() {
     echo
     echo ">> ✓ home-manager activation for $TARGET_USER succeeded."
     echo "    profile: $target_home/.local/state/nix/profiles/home-manager"
+}
+
+# ── --install chain: backup material + cross-host seeding ────────
+#
+# Both helpers below are invoked unconditionally by do_install_post.
+# They early-exit when the operator didn't enable backups in egghead
+# (the relevant EGGHEAD_* env vars are unset). They run BEFORE
+# do_install_hm so the seeded ~/<user>/persist is in place by the
+# time the HM activation runs for each user — HM impermanence then
+# bind-mounts the right state into place.
+
+# Generates per-host SSH key + repo password and writes them under
+# /mnt/persist/etc/{restic,ssh-restic}/ so the installed system can
+# back up on first boot without a chicken-and-egg credential dance.
+#
+# On re-install (EGGHEAD_IS_REINSTALL=yes), the password file is the
+# OLD repo password (operator pasted from password manager) so the
+# new install continues writing to the existing repo. On first
+# install, generates a fresh 32-byte base64 password and prints it
+# in the post-install summary so the operator can record it.
+do_install_backup_material() {
+    if [[ -z "${EGGHEAD_BACKUP_TRUENAS_HOST:-}" ]]; then
+        return 0
+    fi
+
+    if ! mountpoint -q /mnt; then
+        echo
+        echo ">> warning: /mnt is not mounted; skipping backup material install." >&2
+        echo "   Re-run host-setup.sh --install or populate manually:" >&2
+        echo "     /persist/etc/restic/host.pass" >&2
+        echo "     /persist/etc/ssh-restic/restic_ed25519{,.pub}" >&2
+        echo "     /persist/etc/ssh-restic/restic_known_hosts" >&2
+        return 0
+    fi
+
+    echo
+    echo "▶ chain step: populate /mnt/persist/etc/{restic,ssh-restic}/ for backups"
+
+    install -d -m 0700 /mnt/persist/etc/restic
+    install -d -m 0700 /mnt/persist/etc/ssh-restic
+
+    # ── repo URL pinfile ────────────────────────────────────────────
+    # Written so scripts/preimpermanence-restore.sh (and any future
+    # ad-hoc restic invocation) can discover the canonical repo URL
+    # from a freshly-installed system without parsing the nix-built
+    # `backup-restore` wrapper. The declarative backup module
+    # synthesizes the exact same URL from its options block.
+    local repo_url="sftp:${EGGHEAD_BACKUP_TRUENAS_USER:-restic-backup}@${EGGHEAD_BACKUP_TRUENAS_HOST}:${EGGHEAD_BACKUP_REPO_BASE:-/mnt/zrust/backup/restic}/${HOSTNAME}"
+    local repo_url_file="/mnt/persist/etc/restic/host.repo"
+    install -m 0644 /dev/null "$repo_url_file"
+    printf '%s\n' "$repo_url" > "$repo_url_file"
+    echo "  wrote $repo_url_file ($repo_url)"
+
+    # ── repo password ─────────────────────────────────────────────
+    local pw_file="/mnt/persist/etc/restic/host.pass"
+    local provided_pw=""
+    if [[ -n "${EGGHEAD_BACKUP_REPO_PASSWORD_FILE:-}" ]] && \
+       [[ -f "$EGGHEAD_BACKUP_REPO_PASSWORD_FILE" ]]; then
+        provided_pw=$(< "$EGGHEAD_BACKUP_REPO_PASSWORD_FILE")
+    fi
+
+    if [[ "${EGGHEAD_IS_REINSTALL:-no}" == "yes" ]]; then
+        if [[ -z "$provided_pw" ]]; then
+            echo "  warning: re-install but no old repo password supplied; backup will FAIL until you set it manually." >&2
+        else
+            install -m 0400 /dev/null "$pw_file"
+            printf '%s' "$provided_pw" > "$pw_file"
+            BACKUP_PASSWORD_SOURCE="reused old password from egghead"
+        fi
+    else
+        if [[ -n "$provided_pw" ]]; then
+            # Operator-supplied first-install password (rare, but supported).
+            install -m 0400 /dev/null "$pw_file"
+            printf '%s' "$provided_pw" > "$pw_file"
+            BACKUP_PASSWORD_SOURCE="provided by operator (kept)"
+        else
+            # Fresh password: 32 random bytes base64'd (~44 chars).
+            install -m 0400 /dev/null "$pw_file"
+            BACKUP_PASSWORD_PLAINTEXT=$(openssl rand -base64 32 2>/dev/null \
+                || head -c 32 /dev/urandom | base64)
+            printf '%s' "$BACKUP_PASSWORD_PLAINTEXT" > "$pw_file"
+            BACKUP_PASSWORD_SOURCE="freshly generated (RECORD IT — printed in summary)"
+        fi
+    fi
+    echo "  wrote $pw_file ($BACKUP_PASSWORD_SOURCE)"
+
+    # ── SSH key ────────────────────────────────────────────────────
+    local key="/mnt/persist/etc/ssh-restic/restic_ed25519"
+    if [[ ! -f "$key" ]]; then
+        ssh-keygen -t ed25519 -N "" -C "restic@${HOSTNAME}" -f "$key" >/dev/null
+        chmod 0600 "$key"
+        chmod 0644 "${key}.pub"
+        echo "  wrote $key (ed25519, no passphrase)"
+    else
+        echo "  $key already exists; reusing"
+    fi
+    BACKUP_SSH_PUBKEY=$(< "${key}.pub")
+
+    # ── known_hosts ───────────────────────────────────────────────
+    # Pin the TrueNAS SSH host key now so the first restic run won't
+    # prompt. If keyscan fails (no network on the live USB, NAS off,
+    # etc.) we still proceed but the post-install summary tells the
+    # operator they need to populate this file on first boot.
+    local kh="/mnt/persist/etc/ssh-restic/restic_known_hosts"
+    if [[ ! -s "$kh" ]]; then
+        echo "  ssh-keyscan ${EGGHEAD_BACKUP_TRUENAS_HOST}..."
+        if ssh-keyscan -T 5 -t ed25519,rsa "${EGGHEAD_BACKUP_TRUENAS_HOST}" \
+            > "$kh" 2>/dev/null && [[ -s "$kh" ]]; then
+            chmod 0644 "$kh"
+            echo "  wrote $kh"
+            BACKUP_KNOWN_HOSTS_OK=1
+        else
+            echo "  warning: ssh-keyscan ${EGGHEAD_BACKUP_TRUENAS_HOST} failed (network?); backups will fail until you populate $kh manually." >&2
+            BACKUP_KNOWN_HOSTS_OK=0
+            rm -f "$kh"
+        fi
+    else
+        echo "  $kh already populated; reusing"
+        BACKUP_KNOWN_HOSTS_OK=1
+    fi
+}
+
+# Iterates EGGHEAD_SEED_USERS_FILE (a JSON array of
+# {login, fromHost, fromUser, password}) and invokes
+# `backup-restore --from-host <fh> --password-file <tmp> \
+#                 --seed-from-user <fromUser> --seed-to-user <login>`
+# inside the installed system via nixos-enter, with the restored
+# tree landing at /mnt/persist/home/<login>. Skipped if no seed
+# users were declared, or backups weren't enabled.
+do_install_seed_users() {
+    if [[ -z "${EGGHEAD_SEED_USERS_FILE:-}" ]] || \
+       [[ ! -f "$EGGHEAD_SEED_USERS_FILE" ]]; then
+        return 0
+    fi
+    if ! mountpoint -q /mnt; then
+        echo
+        echo ">> warning: /mnt not mounted; skipping cross-host seeding." >&2
+        echo "   Re-run from a chroot or use sudo backup-restore after first boot." >&2
+        return 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo
+        echo ">> warning: jq not on PATH; skipping cross-host seeding." >&2
+        return 0
+    fi
+
+    local seed_count
+    seed_count=$(jq 'length' < "$EGGHEAD_SEED_USERS_FILE")
+    if (( seed_count == 0 )); then
+        return 0
+    fi
+
+    echo
+    echo "▶ chain step: cross-host seed $seed_count user(s) before reboot"
+
+    local i login from_host from_user password
+    for (( i = 0; i < seed_count; i++ )); do
+        login=$(jq -r ".[$i].login"    < "$EGGHEAD_SEED_USERS_FILE")
+        from_host=$(jq -r ".[$i].fromHost" < "$EGGHEAD_SEED_USERS_FILE")
+        from_user=$(jq -r ".[$i].fromUser" < "$EGGHEAD_SEED_USERS_FILE")
+        password=$(jq -r ".[$i].password"  < "$EGGHEAD_SEED_USERS_FILE")
+
+        echo
+        echo "  seeding ${login}'s persisted state  ←  ${from_user}@${from_host}"
+
+        # Materialize the source-host password inside /mnt's runtime
+        # tmpfs so the wrapper running under nixos-enter can read it.
+        local src_pw_file="/mnt/run/seed-${login}.pass"
+        install -d -m 0700 /mnt/run
+        install -m 0600 /dev/null "$src_pw_file"
+        printf '%s' "$password" > "$src_pw_file"
+
+        # The user's home dir under /persist is populated by
+        # impermanence on first boot. We restore directly under
+        # /mnt/persist/home/<login>/, which is where impermanence
+        # bind-mounts FROM on the live system.
+        local uid gid
+        uid=$(nixos-enter --root /mnt -c "id -u $login" 2>/dev/null || echo "")
+        gid=$(nixos-enter --root /mnt -c "id -g $login" 2>/dev/null || echo "")
+        if [[ -z "$uid" ]]; then
+            echo "  warning: user $login does not yet exist inside /mnt; skipping seed for this user." >&2
+            rm -f "$src_pw_file"
+            continue
+        fi
+        install -d -m 0700 -o "$uid" -g "$gid" "/mnt/persist/home/${login}"
+
+        # Run the restore inside the installed system (so the
+        # `backup-restore` wrapper, restic, openssh, rsync are all on
+        # PATH from the system closure rather than relying on the
+        # live ISO). The wrapper's --seed-from-user/--seed-to-user
+        # handles the source→dest user-rename case (e.g. seed
+        # alice on new host from user p on pb-x1).
+        set +e
+        nixos-enter --root /mnt -c \
+            "backup-restore --from-host '${from_host}' --password-file '/run/seed-${login}.pass' --seed-from-user '${from_user}' --seed-to-user '${login}' --target / >/dev/null"
+        local rc=$?
+        set -e
+        # Shred the password file unconditionally.
+        shred -u "$src_pw_file" 2>/dev/null || rm -f "$src_pw_file"
+        if (( rc != 0 )); then
+            echo "  warning: seed for $login failed (exit $rc); continuing with other users." >&2
+        else
+            echo "  ✓ seeded ${login}"
+        fi
+    done
 }
 
 # ── dispatch ──────────────────────────────────────────────────────

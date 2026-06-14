@@ -33,6 +33,15 @@ nix build .#homeConfigurations.'p@pb-x1'.activationPackage
 # Smoke-build a placeholder host (pb-t480, ah-1):
 NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
     .#nixosConfigurations.pb-t480.config.system.build.toplevel
+
+# Backup wrappers (installed system-wide when flake.modules.nixos.backup
+# is imported by the host bridge — see "Backup" section below):
+sudo backup-snapshots                   # list snapshots in this host's repo
+sudo backup-restore                     # restore latest (whole /persist)
+sudo backup-restore --include /persist/home/p
+sudo backup-restore --from-host pb-x1 \
+    --password-file /tmp/pb-x1.pass \
+    --seed-from-user p --seed-to-user alice
 ```
 
 ## Placeholder hosts
@@ -301,6 +310,122 @@ capture or follow-up rebuild needed — disko's swap content type pins
 time. Full procedure (plus the hand-rolled fallback for cases the
 script declines) lives in
 `docs/sessions/2026-05-17-disko-in-place-migration.md`.
+
+## Impermanence + backup
+
+Two coupled features (opt-in per host via egghead, or by importing
+`flake.modules.nixos.impermanence` / `flake.modules.nixos.backup` in
+the host bridge):
+
+**Impermanence** (`flake-modules/impermanence.nix`) wipes the btrfs
+`root` subvol back to an empty RO snapshot (`root-blank`, created by
+the disko bare-metal factory at install time) on every boot via a
+systemd-stage-1 initrd unit. Anything that should survive lives under
+`/persist` and is bind-mounted back into place by upstream
+[nix-community/impermanence](https://github.com/nix-community/impermanence).
+Per-user state goes through the same module's
+`environment.persistence."/persist".users.<login>.{directories,files}`
+sub-attribute — browsers, bitwarden, gnupg, freecad/kicad prefs,
+~/nixos, ~/Documents, etc. The default list is in
+`options.impermanence.userDirectories` and is extended per-host with
+plain `environment.persistence."/persist".users.<login>.directories`
+in the host bridge.
+
+There is **no separate HM module** for impermanence. The upstream HM
+impermanence module is deprecated for standalone HM (it requires
+home-manager-as-NixOS-module, which this flake deliberately avoids).
+Per-user persistence is therefore entirely NixOS-side.
+
+The 30-day-rolling archive of pre-rollback `root` subvols lives under
+`/btrfs_tmp/old_roots/<timestamp>/` on the btrfs top-level; the
+initrd unit prunes anything older than 30 days. Useful for recovering
+state from "I forgot to add this to the persistence list" mishaps.
+
+**Backup** (`flake-modules/backup.nix`) is one restic-over-SFTP repo
+per host targeting a TrueNAS (or any sshd + sftp host) at
+`sftp://<user>@<host>:<base>/<hostname>`. Daily timer at 03:00 with
+`Persistent=true` (laptop in S3 → fires on wake), `RandomizedDelaySec=30m`,
+and an `ExecStartPre` gate that polls `/sys/class/power_supply/AC*`
+for up to 4h before running (no AC → exit and retry next timer fire).
+Source-side consistency: btrfs RO snapshot of `/persist` mounted at
+`/run/restic-snapshots/persist` for the backup window.
+
+Defense against a rogue `nas.lan` on a hostile network: the per-host
+SSH key + pinned host key in `/persist/etc/ssh-restic/` plus
+`StrictHostKeyChecking=yes` and `BatchMode=yes` make SSH refuse the
+handshake on mismatch. The per-host repo password (in
+`/persist/etc/restic/host.pass`) symmetric-encrypts every object
+client-side; an attacker-controlled destination only ever sees
+ciphertext.
+
+One shared `restic-backup` SSH user on the NAS has read+write to its
+own host's repo and read-only to every other host's repo, which is
+what enables cross-host seeding: paste another host's repo password
+during install (egghead surfaces this per declared user) and
+`backup-restore --seed-from-user <src> --seed-to-user <login>` pulls
+`/persist/home/<src>` from the source repo into
+`/persist/home/<login>` on the new host. Seeding never touches
+`/persist` itself (system state — machine-id, NetworkManager,
+SSH host keys — is always host-specific).
+
+TrueNAS-side one-time setup recipe (sshd Match block,
+`internal-sftp` jail, dataset layout, `authorized_keys` recipe) lives
+in `docs/runbooks/truenas-restic.md`. Re-using an existing repo on
+re-install is supported via egghead's `IS_REINSTALL=yes` flow — the
+operator pastes the original repo password instead of letting
+host-setup.sh generate a fresh one.
+
+## Adding backup to an already-installed host
+
+For a host already on disko + impermanence that wasn't egghead-ed
+with backup turned on:
+
+1. Add `config.flake.modules.nixos.backup` to the host's
+   bridge `imports = [ … ]`, plus the four `backup.*` overrides for
+   `truenasHost`, `truenasUser`, `repoBasePath`, and any per-host
+   retention tuning.
+2. Generate the SSH key + repo password material into `/persist`
+   manually — the helpers expect them at:
+     `/persist/etc/restic/host.pass` (any random 30+ char string;
+        store it in your password manager)
+     `/persist/etc/restic/host.repo` (canonical sftp URL; same
+        format as `flake-modules/backup.nix` constructs:
+        `sftp:<user>@<host>:<base>/<hostname>`)
+     `/persist/etc/ssh-restic/restic_ed25519{,.pub}` (one ssh-keygen
+        invocation)
+     `/persist/etc/ssh-restic/restic_known_hosts` (one
+        `ssh-keyscan` against the NAS, double-checked against an
+        out-of-band fingerprint)
+   All five files are root-owned (pass file 0600, repo url 0644,
+   ssh key 0600, pubkey + known_hosts 0644). See
+   `scripts/host-setup.sh:do_install_backup_material` for the exact
+   commands the install path uses.
+3. Paste the new host's ed25519 pubkey into the NAS's
+   `~restic-backup/.ssh/authorized_keys` and create the
+   `<repoBasePath>/<hostname>` directory (see runbook).
+4. `sudo nixos-rebuild switch --flake .#<hostname>` and wait for
+   the next 03:00 timer (or `sudo systemctl start
+   restic-backups-host.service` to trigger immediately).
+
+## Migrating a live (pre-impermanence) host to impermanence + backup
+
+Full step-by-step playbook in
+[`docs/runbooks/host-migration.md`](docs/runbooks/host-migration.md).
+Short version: run `sudo scripts/preimpermanence-backup.sh` on the
+live host to push a `preimpermanence`-tagged snapshot of every
+impermanence-relevant path (system + each user's `/home/<login>`)
+to the NAS, stash the printed repo password + ssh key off-host,
+then egghead-refresh with `IS_REINSTALL=yes` (pasting the same
+password back in), then `sudo scripts/preimpermanence-restore.sh
+--target /mnt/persist` from the installer (or
+`preimpermanence-restore.sh` from a recovery-root after first
+boot). Snapshot paths align 1:1 with what impermanence persists,
+so `restore --target /persist` puts every file where the next
+boot's bind-mounts expect to find it. The two scripts share the
+host's restic repo with the declarative backup module — they just
+write a different `--tag`, so post-migration `restic forget --tag
+preimpermanence` retires the migration history once `auto` backups
+are trusted.
 
 ## Session log
 

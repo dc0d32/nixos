@@ -108,6 +108,28 @@ export interface Answers {
   LUKS_TPM: string;
   ROOT_PASSWORD: string;
   UNATTENDED: string;
+  // Wipe root subvol on every boot (impermanence). Defaulted on for
+  // bare-metal roles, off for VM roles. Forwarded to the bash side
+  // as EGGHEAD_IMPERMANENCE.
+  IMPERMANENCE: string;
+  // Schedule daily restic backups to TrueNAS. Defaulted same as
+  // IMPERMANENCE.
+  BACKUP: string;
+  BACKUP_TRUENAS_HOST: string;
+  BACKUP_TRUENAS_USER: string;
+  BACKUP_REPO_BASE: string;
+  // Re-install of an existing host? When yes, the wizard prompts for
+  // the OLD repo password (paste from password manager) so the new
+  // install continues writing to the same repo. When no, host-setup.sh
+  // generates a fresh password and prints it once at the end.
+  IS_REINSTALL: string;
+  // Old repo password — only relevant when IS_REINSTALL=yes.
+  BACKUP_REPO_PASSWORD: string;
+  // JSON array of {login, fromHost, fromUser, password} for per-user
+  // cross-host seeding. Each entry pulls /persist/home/<fromUser>
+  // from <fromHost>'s repo into /mnt/persist/home/<login> during
+  // install. NEVER pulls /persist (system state is host-specific).
+  SEED_USERS_JSON: string;
 }
 
 export type StepKind =
@@ -320,6 +342,65 @@ export const STEPS: StepDef[] = [
     help: "Adds auto-upgrade + hm-auto-upgrade. (nixos-clone is always on.)",
     defaultFrom: (p) => envOr("UNATTENDED", role(p)?.unattended ?? "no"),
   },
+  {
+    key: "IMPERMANENCE",
+    kind: "yesno",
+    prompt: "wipe root subvol on every boot (impermanence)?",
+    help: "btrfs root rollback in initrd. Anything not under /persist or in environment.persistence is gone after reboot. Default on for bare-metal roles so egghead-refresh starts clean; off for VMs (hypervisor snapshots already cover that ground).",
+    defaultFrom: (p) =>
+      envOr("IMPERMANENCE", p.ROLE?.startsWith("bare-metal") ? "yes" : "no"),
+  },
+  {
+    key: "BACKUP",
+    kind: "yesno",
+    prompt: "schedule daily restic backups to TrueNAS?",
+    help: "Daily 03:00 backup of /persist + every user's ~/persist over SFTP. AC-power gated. One restic repo per host at sftp://<user>@<host>:<base>/<hostname>; cross-host isolation enforced by per-host repo password.",
+    defaultFrom: (p) =>
+      envOr("BACKUP", p.IMPERMANENCE === "yes" ? "yes" : "no"),
+  },
+  {
+    key: "BACKUP_TRUENAS_HOST",
+    kind: "text",
+    prompt: "TrueNAS / SFTP hostname",
+    defaultFrom: () => envOr("BACKUP_TRUENAS_HOST", "nas.lan"),
+    shouldRun: (p) => p.BACKUP === "yes",
+  },
+  {
+    key: "BACKUP_TRUENAS_USER",
+    kind: "text",
+    prompt: "SFTP-only user on TrueNAS",
+    help: "Shared across hosts (read+write to this host's repo, read to others — enables cross-host seeding).",
+    defaultFrom: () => envOr("BACKUP_TRUENAS_USER", "restic-backup"),
+    shouldRun: (p) => p.BACKUP === "yes",
+  },
+  {
+    key: "BACKUP_REPO_BASE",
+    kind: "text",
+    prompt: "absolute path on TrueNAS under which each host's repo lives",
+    defaultFrom: () => envOr("BACKUP_REPO_BASE", "/mnt/zrust/backup/restic"),
+    shouldRun: (p) => p.BACKUP === "yes",
+  },
+  {
+    key: "IS_REINSTALL",
+    kind: "yesno",
+    prompt: "re-install of an existing host (reuse old repo password)?",
+    help: "When yes, the wizard prompts for the OLD repo password so the new install continues writing to the existing repo. When no, host-setup.sh generates a fresh password and prints it once at the end of the install — record it in your password manager.",
+    defaultFrom: () => envOr("IS_REINSTALL", "no"),
+    shouldRun: (p) => p.BACKUP === "yes",
+  },
+  {
+    key: "BACKUP_REPO_PASSWORD",
+    kind: "password",
+    prompt: "OLD repo password (paste from password manager)",
+    help: "Required for re-install so the new install keeps writing to the existing repo. Kept in tmpfs only; written to /mnt/persist/etc/restic/host.pass during install.",
+    defaultFrom: () => envOr("BACKUP_REPO_PASSWORD", ""),
+    secret: true,
+    shouldRun: (p) => p.BACKUP === "yes" && p.IS_REINSTALL === "yes",
+    validate: (v, p) =>
+      p.BACKUP === "yes" && p.IS_REINSTALL === "yes" && v.length === 0
+        ? "re-install requires the OLD repo password"
+        : undefined,
+  },
 ];
 
 /**
@@ -332,6 +413,12 @@ export const STEPS: StepDef[] = [
  * LUKS_PASSPHRASE / LUKS_TPM get the same skip-side cleanup: when
  * LUKS=no, both are forced to "" / "no" so the bash side never sees
  * stale env values from a partial back-then-forward navigation.
+ *
+ * Backup skip-side cleanup: when BACKUP=no, IS_REINSTALL and
+ * BACKUP_REPO_PASSWORD are zeroed out. The SEED_USERS_JSON wizard
+ * step lives outside STEPS (it's collected by the bash side per
+ * declared user, not as a single screen) — the TUI just forwards
+ * whatever EGGHEAD_SEED_USERS_JSON it inherits.
  */
 export function normalizeAnswers(a: Partial<Answers>): Partial<Answers> {
   const out = { ...a };
@@ -341,6 +428,10 @@ export function normalizeAnswers(a: Partial<Answers>): Partial<Answers> {
   if (out.LUKS === "no") {
     out.LUKS_PASSPHRASE = "";
     out.LUKS_TPM = "no";
+  }
+  if (out.BACKUP === "no") {
+    out.IS_REINSTALL = "no";
+    out.BACKUP_REPO_PASSWORD = "";
   }
   return out;
 }

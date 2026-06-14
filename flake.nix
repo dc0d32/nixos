@@ -79,6 +79,15 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # impermanence — opinionated `/persist`-style state management.
+    # Provides `environment.persistence."<root>"` (NixOS) with per-user
+    # sub-attribute `users.<login>` for HM-style bind mounts under
+    # /home/<login>. Wired by flake-modules/impermanence.nix. Standalone
+    # HM (this flake's mode) cannot use the upstream HM module — it's
+    # deprecated and requires home-manager-as-NixOS-module. The NixOS
+    # module exposes the same per-user functionality natively.
+    impermanence.url = "github:nix-community/impermanence";
   };
 
   outputs = inputs:

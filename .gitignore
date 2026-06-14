@@ -5,6 +5,7 @@ result-*
 *.swp
 .DS_Store
 .claude/settings.local.json
+node_modules/
 
 # git-hooks.nix shellHook materializes a .pre-commit-config.yaml symlink
 # pointing into the nix store. Local-only artifact; not part of the flake.
