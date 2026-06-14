@@ -31,9 +31,8 @@
 #
 # Importing face-unlock.nix WITHOUT also importing biometrics.nix
 # is a misconfiguration (the option won't be declared and the
-# evaluator will reject the assignment). The egghead wizard always
-# includes biometrics when the `face-unlock` feature is selected;
-# hand-written host bridges should import both.
+# evaluator will reject the assignment). Hosts that want face unlock
+# import both.
 #
 # Retire when: face unlock is no longer wanted on any host, or the
 # howdy closure shrinks enough (e.g. ships pre-quantized models)

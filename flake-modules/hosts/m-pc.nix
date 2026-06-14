@@ -289,8 +289,7 @@ in
         # the post-install `home-manager switch` step for p and m.
         config.flake.modules.nixos.home-manager-bootstrap
         # Per-user oneshot that clones https://github.com/dc0d32/nixos
-        # into ~/nixos for each HM user (idempotent; backfills hosts
-        # installed before host-setup.sh's install-time clone step).
+        # into ~/nixos for each HM user (idempotent).
         # See flake-modules/nixos-clone.nix.
         config.flake.modules.nixos.nixos-clone
         # Daily `home-manager switch` at 05:30 local for every HM

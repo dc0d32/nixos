@@ -63,7 +63,7 @@ let
   # autoloads = [] until the actual T480 PipeWire sink node-name is
   # captured on real hardware. Run on the T480 itself, from a
   # checkout of this flake:
-  #   ./scripts/host-setup.sh --audio-discover
+  #   ./scripts/audio-discover.sh
   # which prints a ready-to-paste autoload entry like:
   #   {
   #     device = "alsa_output.pci-0000_00_1f.3.analog-stereo";
@@ -311,9 +311,7 @@ in
         # Per-user oneshot that clones https://github.com/dc0d32/nixos
         # into ~/nixos for every HM-enabled user (idempotent;
         # ConditionPathExists guard skips users who already have a
-        # clone). Backfills hosts that were installed before
-        # scripts/host-setup.sh's install-time clone step. See
-        # flake-modules/nixos-clone.nix.
+        # clone). See flake-modules/nixos-clone.nix.
         config.flake.modules.nixos.nixos-clone
         # Daily `home-manager switch` at 05:30 local (30min after
         # nixos-upgrade.timer's window) for every HM user on this

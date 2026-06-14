@@ -66,15 +66,11 @@
     };
 
     # disko — declarative disk partitioning & formatting. Drives both
-    # install-time (`disko-install --flake .#<host> --disk main /dev/…`)
-    # and runtime (the NixOS module reads `disko.devices` and emits
+    # install-time (via nixos-anywhere, which calls disko) and runtime
+    # (the NixOS module reads `disko.devices` and emits
     # `config.fileSystems.*` / `swapDevices` / LUKS unlock entries
-    # automatically). Lets `hosts/<host>/disko.nix` be the single
-    # declarative source of truth for disk layout instead of bash in
-    # scripts/host-setup.sh + duplicated `fileSystems.*` blocks in
-    # generated `hardware-configuration.nix`. See
-    # flake-modules/disko.nix for the layout factory and per-host
-    # `hosts/<host>/disko.nix` for the call sites.
+    # automatically). See flake-modules/disko.nix for the layout
+    # factory and per-host bridges for the call sites.
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";

@@ -22,12 +22,12 @@
 #   nothing in the flake describes (browser profiles, ad-hoc dotfiles,
 #   FreeCAD prefs, machine-id, NetworkManager keyrings, …). After
 #   six months you can't tell what's "real config" vs "I once ran
-#   command X and it left a turd". Egghead-refreshing such a host
-#   means re-deriving that pile by hand — exactly the toil this whole
+#   command X and it left a turd". Reinstalling such a host means
+#   re-deriving that pile by hand — exactly the toil this whole
 #   exercise exists to eliminate.
 #
 #   With impermanence, every irreducible piece of state is explicitly
-#   listed below. The next time we egghead-refresh, the new install
+#   listed below. The next time we reinstall, the new install
 #   boots into a blank root, and the backup-restore wrapper from
 #   flake-modules/backup.nix puts /persist back exactly as it was —
 #   which the impermanence bind-mounts then re-expose at /var/...,

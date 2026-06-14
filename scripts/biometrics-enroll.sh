@@ -176,8 +176,9 @@ do_face() {
   echo "═══ Face enrollment ═══"
   if ! command -v howdy >/dev/null 2>&1; then
     echo "  howdy is not installed on this host (face unlock not enabled)."
-    echo "  Add the 'face-unlock' feature in the egghead wizard (or import"
-    echo "  flake-modules/face-unlock.nix on the host bridge) and rebuild."
+    echo "  Add face-unlock + biometrics to the host bridge (import"
+    echo "  flake-modules/face-unlock.nix and flake-modules/biometrics.nix)"
+    echo "  and rebuild."
     return 0
   fi
   # 1. IR emitter calibration. The configure step is

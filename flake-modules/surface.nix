@@ -10,7 +10,7 @@
 #     microsoft-surface-pro-intel bundle for firmware / iptsd /
 #     thermald / sensors / surface-control, but forces
 #     `boot.kernelPackages` back to whatever the host originally
-#     wanted (linuxPackages_latest from egghead's bridge by default).
+#     wanted (linuxPackages_latest by default on bare-metal hosts).
 #     This avoids the ~30 minute local rebuild of linux-surface's
 #     patched 6.x LTS kernel. Stock kernel covers most of SL3's
 #     happy path: wired keyboard, trackpad, display, USB, Wi-Fi/BT,

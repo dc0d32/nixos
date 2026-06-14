@@ -104,117 +104,66 @@ and (2) the condition under which it can be deleted.
 
 ## Adding a new host
 
-Two paths:
-
-**Hand-rolled (advanced):** create `flake-modules/hosts/<name>.nix`
-modeled after `pb-x1.nix` (full desktop laptop) or `wsl.nix` (headless
-/ WSL). See "Adding a hand-rolled host" below.
-
-**Wizard (`egghead`):** from the official NixOS installer ISO, run
-
-```sh
-# enable flakes for this shell, then run the wizard
-sudo nix --extra-experimental-features 'nix-command flakes' \
-    run github:dc0d32/nixos#egghead
-```
-
-(The `--extra-experimental-features` flags are required because the
-official NixOS ISO ships without `nix-command` / `flakes` enabled by
-default. Once egghead finishes and the new system boots, both
-features are turned on globally by `flake-modules/nix-settings.nix`.)
-
-The TypeScript+Ink TUI walks through hostname, role template
-(`bare-metal-laptop` / `bare-metal-desktop` / `vm-headless` /
-`vm-desktop`), target disk, users, feature toggles, optional LUKS
-root encryption, and locale. The wizard writes
-`flake-modules/hosts/<name>.nix` +
-`hosts/<name>/hardware-configuration.nix` into a fresh checkout of
-the flake, commits them, then hands off to `scripts/host-setup.sh
---install`. On first boot, a one-shot `egghead-amend.service`
-re-runs `nixos-generate-config` against the installed kernel and
-commits any divergence in the primary user's `~/nixos` clone.
-
-For non-interactive runs (tests, golden-master) every prompt is
-also accepted from a matching `EGGHEAD_<NAME>` env var; pass
-`--non-interactive` to skip the TUI entirely. The bash engine
-underneath ships separately as `nix run .#egghead-sh` for
-environments where the Node closure is too heavy or stdin isn't a
-TTY. See `nix run .#egghead -- --help` for the full surface.
-
-### Adding a hand-rolled host
-
-1. Create `flake-modules/hosts/<name>.nix` modeled after `pb-x1.nix`
-   (full desktop laptop) or `wsl.nix` (headless / WSL). For physical
-   hosts and VMs, also import disko: pull in
+1. Create `flake-modules/hosts/<name>.nix` modeled after
+   `pb-x1.nix` (bare-metal laptop) or `wsl.nix` (headless / WSL).
+   For physical hosts and VMs, import disko: pull in
    `config.flake.modules.nixos.disko` plus one of
-   `config.flake.lib.diskoLayouts.bare-metal` (BIOS+UEFI capable,
-   btrfs subvols + swap) or `.vm` (UEFI-only ext4, no swap; for
-   Proxmox+NFS-backed VMs to avoid 3× CoW).
-2. Generate `hosts/<name>/hardware-configuration.nix` via
-   `sudo nixos-generate-config --no-filesystems --show-hardware-config`.
-   `--no-filesystems` is required — disko provides `fileSystems.*`
-   and `swapDevices` already, so emitting them again would collide.
+   `config.flake.lib.diskoLayouts.bare-metal` (BIOS+UEFI, btrfs
+   subvols + optional swap partition) or `.vm` (UEFI-only ext4).
+2. Stub `hosts/<name>/hardware-configuration.nix` with the
+   placeholder pattern used by `pb-t480` and `m-pc` until you can
+   regenerate it on the live hardware.
 3. Pick which feature modules to import; set their option values.
 4. Set `users.primary = "<your-user>";` inside the per-config
    `module` block (declared by `flake-modules/users.nix`).
-5. Build and switch as above.
+5. `git add` every new file (flake builds only see git-tracked
+   files).
 
 ## Installing on real hardware
 
-For first-time installs onto bare metal or a fresh VM, boot a NixOS
-live USB / ISO and run:
+This flake uses [`nixos-anywhere`](https://github.com/nix-community/nixos-anywhere)
+for fresh installs. Boot the official NixOS installer ISO (or any
+kexec image) on the target machine, bring networking up, log in
+as `root`, and from a machine that already has this flake checked
+out run:
 
 ```sh
-# enable flakes for this shell, then run egghead
-sudo nix --extra-experimental-features 'nix-command flakes' \
-    run github:dc0d32/nixos#egghead
+./scripts/install.sh <hostname> <target-ip>
 ```
 
-`egghead` is the interactive installer wizard: it asks for hostname,
-role, target disk, primary user, optional LUKS, optional root
-recovery password, etc., clones this repo into `/tmp/nixos-egghead`,
-generates a host bridge + `hardware-configuration.nix`, commits
-both, then hands off to `host-setup.sh` to partition (via disko),
-install, and bootstrap home-manager.
+`install.sh` is a thin wrapper around `nixos-anywhere --flake
+.#<hostname> --target-host root@<target-ip>`. It:
 
-Before booting the installer:
+1. Builds the host's disko script + system closure on the local
+   machine.
+2. Partitions + formats the target's disks per `disko.devices`.
+3. Copies the closure to the target and runs `nixos-install`.
+4. Reboots into the new system.
+
+Pre-flight on bare metal:
 
 - **Secure Boot must be OFF in UEFI.** NixOS' default kernel isn't
-  shim-signed. Microsoft Surface and most OEM laptops ship with it
-  enabled. Re-enable it post-install only if you've enrolled a
-  custom key.
+  shim-signed.
+- **For Microsoft Surface devices** import
+  `flake.modules.nixos.surface` in the host bridge — touchscreen,
+  pen, suspend, audio, Wi-Fi quirks need it.
 - **Networking must come up on the installer.** USB-ethernet is
-  simplest; for WiFi use `iwctl` (iwd) or `nmtui` from the installer
-  shell. `egghead` clones from GitHub and downloads nixpkgs over
-  the network — if the network is down it will fail loudly before
-  any disk is touched.
-- **For Microsoft Surface devices** (Laptop 3/4/5, Pro 7+), append
-  `surface` to the feature list when the wizard asks. That wires in
-  the linux-surface patched kernel via
-  `flake-modules/surface.nix` — touchscreen, pen, suspend, audio,
-  and Wi-Fi quirks all work without it taking only the second of
-  those.
+  simplest; for WiFi use `iwctl` / `nmtui` from the installer
+  shell. `nixos-anywhere` ships the closure to the target over
+  SSH; if the network is down it fails before any disk is touched.
 
-`egghead` writes a root recovery password into the generated bridge
-(default `recovery`). On first boot, if the display manager or HM
-activation explodes, ssh in from another machine on the LAN with
-`ssh root@<host-ip>`, fix the bridge, `nixos-rebuild switch`, and
-rotate the password with `passwd root`.
+After first boot:
 
-For an existing hand-rolled host (already committed in this repo,
-e.g. `pb-x1`), skip the wizard and run `host-setup.sh` directly:
-
-```sh
-sudo ./scripts/host-setup.sh --install <hostname>
-```
-
-This builds the host's disko script
-(`config.system.build.diskoScript`), runs it to partition + format +
-mount /mnt, regenerates hardware-configuration.nix from the live
-installer kernel, runs `nixos-install`, then bootstraps each
-HM-enabled user's home-manager profile and seeds `~/nixos` from the
-canonical remote. `--help` documents every flag, including
-`--force-disk` (CI-only; bypasses every disk-safety guard).
+1. Regenerate hardware-configuration.nix from the running kernel:
+   `sudo nixos-generate-config --no-filesystems --show-hardware-config
+   > hosts/<hostname>/hardware-configuration.nix`. Commit + push.
+2. Bootstrap restic backup (if the host imports
+   `flake.modules.nixos.backup`):
+   `./scripts/init-backup.sh`. Prompts for the NAS account
+   password and the repo password (from your password manager).
+3. (Optional, only when porting state from another host)
+   `./scripts/seed-from-host.sh --from <other-host> --user <login>`
+   pulls `/persist/home/<login>` from the other host's repo.
 
 ## Module conventions
 

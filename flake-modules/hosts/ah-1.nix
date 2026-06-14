@@ -114,8 +114,7 @@ let
       # boot of a fresh install. No-op once activated.
       config.flake.modules.nixos.home-manager-bootstrap
       # Per-user oneshot that clones https://github.com/dc0d32/nixos
-      # into ~/nixos for the nas user (idempotent). Backfills hosts
-      # installed before host-setup.sh's install-time clone step.
+      # into ~/nixos for the nas user (idempotent).
       # See flake-modules/nixos-clone.nix.
       config.flake.modules.nixos.nixos-clone
       # Daily `home-manager switch` at 05:30 local for nas. Pulls

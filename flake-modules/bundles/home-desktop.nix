@@ -16,9 +16,8 @@
 #     quickshell vscode wallpaper
 #   ]
 #
-# Modules intentionally NOT in this bundle (carved out as per-host
-# opt-ins via the egghead wizard's feature toggle, because each is
-# a fat download that not every desktop host wants):
+# Modules intentionally NOT in this bundle (per-host opt-in, because
+# each is a fat download that not every desktop host wants):
 #
 #   - kicad     ~865 MiB DL / 2.9 GiB on disk (EDA)
 #   - freecad   ~1.3 GiB DL / 7.1 GiB on disk (CAD; biggest hitter)
@@ -26,8 +25,7 @@
 #
 # Hosts that want any of these append
 # `config.flake.modules.homeManager.<name>` to their HM imports
-# explicitly (see flake-modules/hosts/pb-x1.nix etc.). The egghead
-# wizard's feature toggles for these names emit exactly that append.
+# explicitly (see flake-modules/hosts/pb-x1.nix etc.).
 #
 # Adding a new module that should appear on every adult desktop:
 # add it here.

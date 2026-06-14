@@ -35,7 +35,7 @@
 #       `resume_offset=` dance, no `btrfs inspect-internal map-swapfile`
 #       service, no per-host kernelParam pin. Trade-off: swap size is
 #       fixed at install time (resize means partition reshape +
-#       mkswap, see scripts/disko-migrate.sh / docs/sessions/…). For
+#       mkswap, see docs/sessions/…). For
 #       hibernate, size should be >= installed RAM. Set
 #       `swapSize = null` (the default) for hosts that don't need
 #       swap (e.g. servers with enough RAM, hosts that never
@@ -85,8 +85,8 @@
 #       luks=true is supported here too but rarely useful: the
 #       hypervisor (or the underlying ZFS pool) usually owns
 #       encryption for guest images. Available so that "encrypt
-#       everything" remains a one-flag toggle in egghead even for
-#       VM-class hosts.
+#       everything" remains a one-flag toggle even for VM-class
+#       hosts.
 #
 # Why factories rather than fixed modules:
 #   The `disk` device path + `swapSize` are the only per-host knobs
@@ -121,29 +121,6 @@
 #   * NixOS gains a first-class declarative partitioning system that
 #     supersedes disko (no concrete proposal as of this writing).
 { inputs, lib, ... }:
-let
-  # Impure side channel for the install-time LUKS passphrase. When
-  # egghead is enrolling a TPM2 keyslot it needs disko to format +
-  # open the LUKS container non-interactively (so the passphrase can
-  # be fed to `systemd-cryptenroll --unlock-key-file=…` right after).
-  # The wizard writes the passphrase to a tmpfs file, exports its
-  # path here, and shreds it post-install.
-  #
-  # Reads:
-  #   EGGHEAD_LUKS_PASSWORD_FILE  absolute path to a 0600 tmpfs file
-  #                               containing the raw passphrase.
-  #   When unset/empty (the default), disko falls back to its TTY
-  #   askpass — same UX hosts have always had. Requires the disko
-  #   build to be `--impure`, which scripts/host-setup.sh already is.
-  luksPasswordFile =
-    let f = builtins.getEnv "EGGHEAD_LUKS_PASSWORD_FILE";
-    in if f == "" then null else f;
-
-  withPasswordFile = luksContent:
-    if luksPasswordFile == null
-    then luksContent
-    else luksContent // { passwordFile = luksPasswordFile; };
-in
 {
   flake.modules.nixos.disko = {
     imports = [ inputs.disko.nixosModules.disko ];
@@ -232,16 +209,15 @@ in
         };
         nixosPartContent =
           if luks then
-            withPasswordFile
-              {
-                type = "luks";
-                name = "cryptroot";
-                settings = {
-                  allowDiscards = true;
-                  bypassWorkqueues = true;
-                };
-                content = btrfsContent;
-              }
+            {
+              type = "luks";
+              name = "cryptroot";
+              settings = {
+                allowDiscards = true;
+                bypassWorkqueues = true;
+              };
+              content = btrfsContent;
+            }
           else
             btrfsContent;
 
@@ -327,16 +303,15 @@ in
         };
         nixosPartContent =
           if luks then
-            withPasswordFile
-              {
-                type = "luks";
-                name = "cryptroot";
-                settings = {
-                  allowDiscards = true;
-                  bypassWorkqueues = true;
-                };
-                content = ext4Content;
-              }
+            {
+              type = "luks";
+              name = "cryptroot";
+              settings = {
+                allowDiscards = true;
+                bypassWorkqueues = true;
+              };
+              content = ext4Content;
+            }
           else
             ext4Content;
         swapPartition = lib.optionalAttrs (swapSize != null) {

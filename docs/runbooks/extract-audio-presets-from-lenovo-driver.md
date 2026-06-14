@@ -146,8 +146,7 @@ audio = {
 ```
 
 The `device` and `profile` strings come from
-`./scripts/host-setup.sh --audio-discover` run on the live host
-(see `--help` for details).
+`./scripts/audio-discover.sh` run on the live host.
 
 ### 7. Rebuild + activate
 

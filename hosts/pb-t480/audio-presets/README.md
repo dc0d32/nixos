@@ -47,7 +47,7 @@ PipeWire sink node-name is captured on the live hardware (we can't
 guess it from a different host). Run:
 
 ```
-./scripts/host-setup.sh --audio-discover
+./scripts/audio-discover.sh
 ```
 
 on the T480 itself; it prints the autoload entry to paste into

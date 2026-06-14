@@ -11,10 +11,8 @@
 #   - hack on the repo and `nh os switch` from the working tree
 #     (wheel users only).
 # Without this module, every user has to remember the long
-# `git clone https://github.com/dc0d32/nixos ~/nixos` invocation —
-# and on already-installed hosts that predate scripts/host-setup.sh's
-# install-time clone step, that ceremony has never happened. This
-# module backfills it on the next NixOS rebuild.
+# `git clone https://github.com/dc0d32/nixos ~/nixos` invocation.
+# This module performs that clone declaratively on first boot.
 #
 # How: for every HM configuration named `<user>@<hostname>` matching
 # this host's hostname, contribute a oneshot systemd service

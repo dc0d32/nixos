@@ -35,13 +35,12 @@ NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
     .#nixosConfigurations.pb-t480.config.system.build.toplevel
 
 # Backup wrappers (installed system-wide when flake.modules.nixos.backup
-# is imported by the host bridge — see "Backup" section below):
+# is imported by the host bridge — see "Impermanence + backup" below):
 sudo backup-snapshots                   # list snapshots in this host's repo
 sudo backup-restore                     # restore latest (whole /persist)
 sudo backup-restore --include /persist/home/p
-sudo backup-restore --from-host pb-x1 \
-    --password-file /tmp/pb-x1.pass \
-    --seed-from-user p --seed-to-user alice
+./scripts/seed-from-host.sh --from pb-x1 --user p   # pull /persist/home/p
+                                                     # from pb-x1's repo
 ```
 
 ## Placeholder hosts
@@ -181,141 +180,74 @@ audio.easyeffects = {
 
 ## Adding a new host
 
-Two paths:
+1. Create `flake-modules/hosts/<name>.nix` modeled after
+   `pb-x1.nix` (bare-metal laptop), `m-pc.nix` (bare-metal desktop),
+   `wsl.nix` (headless multi-config WSL), or the future placeholder
+   `pb-t480.nix`. Import the disko block by including
+   `config.flake.modules.nixos.disko` and the matching layout
+   factory call from `config.flake.lib.diskoLayouts.{bare-metal,vm}`
+   with the target disk path. Bare-metal hosts use `bare-metal`
+   (hybrid BIOS+UEFI, btrfs subvols); Proxmox/NFS-backed VMs use
+   `vm` (UEFI-only, ext4, no subvols). Both factories accept an
+   optional `swapSize` arg (e.g. `"32G"`); omit it (or pass `null`)
+   for no swap partition. LUKS is opt-in via `luks = true;`
+   (prompts at install time via the disko TTY askpass).
+2. Stub `hosts/<name>/hardware-configuration.nix` with the
+   placeholder pattern shipping in `m-pc.nix`/`pb-t480.nix` (an
+   assertion gated on `NIXOS_ALLOW_PLACEHOLDER=1`) until you can
+   regenerate it on the live hardware.
+3. Pick which feature modules to import; set their option values.
+4. `git add` everything new — flake builds only see git-tracked
+   files.
 
-**Wizard (preferred for fresh hosts) — `egghead`:** boot the
-official NixOS installer ISO, bring networking up (USB-ethernet
-preferred; or `iwctl` / `nmtui` for WiFi), then run
+## Installing on real hardware
+
+This flake uses [`nixos-anywhere`](https://github.com/nix-community/nixos-anywhere)
+for fresh installs. Boot the official NixOS installer ISO (or any
+kexec image) on the target machine, bring networking up, log in
+as `root`, and from a machine that already has this flake checked
+out run:
 
 ```sh
-sudo nix --extra-experimental-features 'nix-command flakes' \
-    run github:dc0d32/nixos#egghead
+./scripts/install.sh <hostname> <target-ip>
 ```
 
-A TypeScript+Ink TUI asks for hostname, role (`bare-metal-laptop` /
-`bare-metal-desktop` / `vm-headless` / `vm-desktop`), target disk,
-users (with HM profiles), feature toggles (presets driven by role),
-optional LUKS root encryption, optional root recovery password
-(default `recovery` — see "SL3 install safety guardrails" below),
-locale, and timezone. It writes
-`flake-modules/hosts/<name>.nix` +
-`hosts/<name>/hardware-configuration.nix` into a fresh checkout,
-commits, and execs `scripts/host-setup.sh --install <name>
---no-regen-hwconfig`. First-boot `egghead-amend.service` reruns
-`nixos-generate-config` against the installed kernel and commits
-any divergence in the primary user's `~/nixos` clone.
+`install.sh` is a thin wrapper around
+`nixos-anywhere --flake .#<hostname> --target-host root@<target-ip>`.
+It builds the host's closure locally, ships it to the target,
+runs disko (formats + mounts), runs `nixos-install`, and reboots.
 
 Pre-flight on bare metal:
 
 - **Secure Boot must be OFF in UEFI.** NixOS doesn't ship a
   shim-signed kernel; this includes Microsoft Surface, most OEM
   laptops, and any board with secure boot enabled out of the box.
-- **For Microsoft Surface devices** append `surface` to the
-  features list when the wizard asks. That imports
-  `flake.modules.nixos.surface` (wraps nixos-hardware's
-  `microsoft-surface-pro-intel` bundle — patched linux-surface
-  kernel, iptsd, thermald, surface-control). Without it
+- **For Microsoft Surface devices** import
+  `flake.modules.nixos.surface` in the host bridge. Without it
   touchscreen/pen/suspend will be flaky on every Surface device.
 - Bridge emits `boot.kernelPackages = lib.mkDefault
   linuxPackages_latest;` so hardware modules that ship their own
   kernel (`microsoft-surface-*`, `lenovo-thinkpad-*`, etc.) can
   override without `mkForce`.
 
-Non-interactive use (tests / golden masters): every prompt is
-backed by an `EGGHEAD_<NAME>` env var; pass `--non-interactive` to
-skip the TUI entirely (caller must supply all `EGGHEAD_*`). The
-bash engine ships separately as `nix run .#egghead-sh` for
-headless / no-Node environments. See `nix run .#egghead -- --help`.
+After first boot:
 
-## SL3 install safety guardrails
-
-`host-setup.sh --install` runs `guard_disk_safety` before disko's
-destructive partition wipe:
-
-- Refuses if the target disk is the live ISO's source
-  (parent device of `/`, `/nix`, `/nix/store`, `/iso`,
-  `/run/installer`, etc.).
-- Refuses if the disk is smaller than 16 GiB.
-- Refuses if any partition on the disk is currently mounted.
-- Requires the operator to retype the disk's MODEL and SIZE
-  (whitespace + case ignored) instead of the old "type YES" prompt.
-
-`--force-disk` (env `FORCE_DISK=1`) bypasses every check and the
-typed-back confirmation — ONLY for automated smoke tests; a typo
-under it destroys data.
-
-Wizard-generated bridges emit a recovery posture when the operator
-sets a non-empty `EGGHEAD_ROOT_PASSWORD` (default `recovery`):
-`users.users.root.initialPassword`, plus
-`services.openssh.settings { PasswordAuthentication=true;
-PermitRootLogin="yes"; }`. The point: if first boot's display
-manager / HM activation breaks, `ssh root@<host-ip>` from another
-LAN machine still works. Operator's first action post-boot should
-be `passwd root` to rotate the plain-text password. The
-post-`nixos-install` summary printed by `host-setup.sh` echoes the
-configured password and the ssh recipe.
-
-**Hand-rolled (advanced):**
-
-1. Create `flake-modules/hosts/<name>.nix` modeled after `pb-x1.nix`
-   (full desktop) or `wsl.nix` (headless / multi-config). Include
-   the disko block by importing `config.flake.modules.nixos.disko`
-   and the matching layout factory call from
-   `config.flake.lib.diskoLayouts.{bare-metal,vm}` with the target
-   disk path. Bare-metal hosts use `bare-metal` (hybrid BIOS+UEFI,
-   btrfs subvols); Proxmox/NFS-backed VMs use `vm` (UEFI-only, ext4,
-   no subvols). Both factories accept an optional `swapSize` arg
-   (e.g. `"32G"`); omit it (or pass `null`) for no swap partition.
-2. Generate `hosts/<name>/hardware-configuration.nix` via
-   `sudo nixos-generate-config --no-filesystems --show-hardware-config`.
-   The `--no-filesystems` flag is mandatory — disko owns
+1. Regenerate `hosts/<name>/hardware-configuration.nix` against
+   the live kernel:
+   `sudo nixos-generate-config --no-filesystems --show-hardware-config
+   > hosts/<name>/hardware-configuration.nix`
+   (the `--no-filesystems` flag is mandatory — disko owns
    `fileSystems.*` and `swapDevices`, and an emitted block would
-   collide. The placeholder pattern shipping with `m-pc`/`ah-1` (an
-   assertion gated on `NIXOS_ALLOW_PLACEHOLDER=1`) is the right
-   shape for unbuilt hosts.
-3. Pick which feature modules to import; set their option values.
-4. `git add` everything new and build.
-5. To install on real hardware: boot a NixOS live USB, clone this
-   flake, then `sudo ./scripts/host-setup.sh --install <name>` — it
-   builds the host's `config.system.build.diskoScript`, runs it
-   (formats + mounts /mnt), regenerates hwconfig, runs nixos-install,
-   then bootstraps each user's home-manager profile.
-
-## Migrating a pre-disko host
-
-Hosts that existed before the disko switchover (commit `c24521a`) have
-GPT partitions without `disk-main-<role>` partlabels, a stale btrfs FS
-label, fewer subvols than the disko factory expects, and no dedicated
-swap partition. A `nixos-rebuild switch` against the new bridge hangs
-at initrd because the synthesized `fileSystems.*` / `swapDevices` set
-references partlabels / subvols that don't exist on disk yet.
-
-Use `scripts/disko-migrate.sh <hostname>` on the affected host:
-
-```sh
-sudo ./scripts/disko-migrate.sh <hostname>            # dry-run / plan
-sudo ./scripts/disko-migrate.sh <hostname> --yes      # execute
-sudo nixos-rebuild boot --flake .#<hostname>          # NOT switch
-sudo reboot
-```
-
-The script is idempotent (detects what's already correct and skips
-it), refuses LUKS and multi-disk hosts, refuses to run on a machine
-whose `hostname` differs from the arg. If a swap-partition reshape is
-needed (shrink btrfs → shrink nixos partition → add swap partition at
-end), the `--yes` run prompts the operator to type back the target
-disk's MODEL and SIZE before touching anything. No `resume_offset`
-capture or follow-up rebuild needed — disko's swap content type pins
-`boot.resumeDevice` to `/dev/disk/by-partlabel/disk-main-swap` at eval
-time. Full procedure (plus the hand-rolled fallback for cases the
-script declines) lives in
-`docs/sessions/2026-05-17-disko-in-place-migration.md`.
+   collide). Commit + push from inside the host.
+2. If the host imports `flake.modules.nixos.backup`, bootstrap the
+   restic repo: `./scripts/init-backup.sh`. See "Impermanence +
+   backup" below.
 
 ## Impermanence + backup
 
-Two coupled features (opt-in per host via egghead, or by importing
-`flake.modules.nixos.impermanence` / `flake.modules.nixos.backup` in
-the host bridge):
+Two coupled features (opt-in per host by importing
+`flake.modules.nixos.impermanence` / `flake.modules.nixos.backup`
+in the host bridge):
 
 **Impermanence** (`flake-modules/impermanence.nix`) wipes the btrfs
 `root` subvol back to an empty RO snapshot (`root-blank`, created by
@@ -360,72 +292,35 @@ ciphertext.
 
 One shared `restic-backup` SSH user on the NAS has read+write to its
 own host's repo and read-only to every other host's repo, which is
-what enables cross-host seeding: paste another host's repo password
-during install (egghead surfaces this per declared user) and
-`backup-restore --seed-from-user <src> --seed-to-user <login>` pulls
-`/persist/home/<src>` from the source repo into
-`/persist/home/<login>` on the new host. Seeding never touches
-`/persist` itself (system state — machine-id, NetworkManager,
-SSH host keys — is always host-specific).
+what enables cross-host seeding via
+`scripts/seed-from-host.sh --from <other> --user <login>` — it pulls
+`/persist/home/<login>` from `<other>`'s repo into the current host's
+`/persist/home/<login>`. Seeding never touches `/persist` itself
+(system state — machine-id, NetworkManager, SSH host keys — is
+always host-specific).
 
-TrueNAS-side one-time setup recipe (sshd Match block,
-`internal-sftp` jail, dataset layout, `authorized_keys` recipe) lives
-in `docs/runbooks/truenas-restic.md`. Re-using an existing repo on
-re-install is supported via egghead's `IS_REINSTALL=yes` flow — the
-operator pastes the original repo password instead of letting
-host-setup.sh generate a fresh one.
+TrueNAS-side one-time setup recipe lives in
+`docs/runbooks/truenas-restic.md`. Per-host bootstrap is
+`scripts/init-backup.sh`.
 
-## Adding backup to an already-installed host
+## Bootstrapping backup on a host
 
-For a host already on disko + impermanence that wasn't egghead-ed
-with backup turned on:
+After `nixos-anywhere` finishes and the host boots, run
+`./scripts/init-backup.sh` on the host. The script:
 
-1. Add `config.flake.modules.nixos.backup` to the host's
-   bridge `imports = [ … ]`, plus the four `backup.*` overrides for
-   `truenasHost`, `truenasUser`, `repoBasePath`, and any per-host
-   retention tuning.
-2. Generate the SSH key + repo password material into `/persist`
-   manually — the helpers expect them at:
-     `/persist/etc/restic/host.pass` (any random 30+ char string;
-        store it in your password manager)
-     `/persist/etc/restic/host.repo` (canonical sftp URL; same
-        format as `flake-modules/backup.nix` constructs:
-        `sftp:<user>@<host>:<base>/<hostname>`)
-     `/persist/etc/ssh-restic/restic_ed25519{,.pub}` (one ssh-keygen
-        invocation)
-     `/persist/etc/ssh-restic/restic_known_hosts` (one
-        `ssh-keyscan` against the NAS, double-checked against an
-        out-of-band fingerprint)
-   All five files are root-owned (pass file 0600, repo url 0644,
-   ssh key 0600, pubkey + known_hosts 0644). See
-   `scripts/host-setup.sh:do_install_backup_material` for the exact
-   commands the install path uses.
-3. Paste the new host's ed25519 pubkey into the NAS's
-   `~restic-backup/.ssh/authorized_keys` and create the
-   `<repoBasePath>/<hostname>` directory (see runbook).
-4. `sudo nixos-rebuild switch --flake .#<hostname>` and wait for
-   the next 03:00 timer (or `sudo systemctl start
-   restic-backups-host.service` to trigger immediately).
+1. Prompts for the repo password (paste from password manager).
+   Same password works whether this is a fresh install or a
+   reinstall on top of an existing repo — restic accepts the
+   pasted password either way.
+2. Generates a per-host ed25519 SSH key under
+   `/persist/etc/ssh-restic/`.
+3. Runs `ssh-copy-id restic-backup@nas.lan` — prompts the NAS
+   account password once.
+4. Pins the NAS host key into the host's known_hosts.
+5. Either `restic init` (fresh repo) or detects an existing repo
+   and skips init.
 
-## Migrating a live (pre-impermanence) host to impermanence + backup
-
-Full step-by-step playbook in
-[`docs/runbooks/host-migration.md`](docs/runbooks/host-migration.md).
-Short version: run `sudo scripts/preimpermanence-backup.sh` on the
-live host to push a `preimpermanence`-tagged snapshot of every
-impermanence-relevant path (system + each user's `/home/<login>`)
-to the NAS, stash the printed repo password + ssh key off-host,
-then egghead-refresh with `IS_REINSTALL=yes` (pasting the same
-password back in), then `sudo scripts/preimpermanence-restore.sh
---target /mnt/persist` from the installer (or
-`preimpermanence-restore.sh` from a recovery-root after first
-boot). Snapshot paths align 1:1 with what impermanence persists,
-so `restore --target /persist` puts every file where the next
-boot's bind-mounts expect to find it. The two scripts share the
-host's restic repo with the declarative backup module — they just
-write a different `--tag`, so post-migration `restic forget --tag
-preimpermanence` retires the migration history once `auto` backups
-are trusted.
+After that the daily timer takes over.
 
 ## Session log
 

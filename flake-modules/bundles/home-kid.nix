@@ -64,8 +64,8 @@
 #                                          kids actually use
 #   - zoom                                 school meetings
 #
-# NOT in this bundle (per-host opt-in via the egghead wizard's
-# feature toggles, to keep the kid-bundle closure lean):
+# NOT in this bundle (per-host opt-in, to keep the kid-bundle
+# closure lean):
 #
 #   - freecad   ~1.3 GiB DL — hosts that want CAD for kids append
 #                `config.flake.modules.homeManager.freecad` to the
