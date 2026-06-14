@@ -243,6 +243,15 @@ in
           swapSize = "12G";
         })
 
+        # Root-rollback impermanence: wipe the btrfs `root` subvol back
+        # to the empty `root-blank` snapshot on every boot. Everything
+        # that should survive a reboot lives under /persist and is
+        # bind-mounted back by the upstream impermanence NixOS module.
+        config.flake.modules.nixos.impermanence
+        # Daily restic backup of /persist to nas.lan:/mnt/zrust/backup/restic/m-pc
+        # via SFTP. Bootstrap with scripts/init-backup.sh after fresh install.
+        config.flake.modules.nixos.backup
+
         # Feature modules. Subset of pb-t480 with biometrics +
         # hardware-hacking dropped (no fingerprint/IR on this box;
         # m's robotics work happens on pb-t480, not here).

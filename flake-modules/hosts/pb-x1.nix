@@ -96,6 +96,17 @@ in
           # partition rather than a btrfs swapfile.
           swapSize = "32G";
         })
+        # Root-rollback impermanence: wipe the btrfs `root` subvol back
+        # to the empty `root-blank` snapshot on every boot. Everything
+        # that should survive a reboot lives under /persist and is
+        # bind-mounted back by the upstream impermanence NixOS module.
+        # The disko bare-metal factory already creates root-blank and the
+        # persist subvol, so this Just Works after nixos-rebuild boot.
+        config.flake.modules.nixos.impermanence
+        # Daily restic backup of /persist to nas.lan:/mnt/zrust/backup/restic/pb-x1
+        # via SFTP. Timer at 03:00 with AC-gate (no AC → skip, retry next
+        # fire). Bootstrap with scripts/init-backup.sh after fresh install.
+        config.flake.modules.nixos.backup
         # Migrated dendritic feature modules (NixOS side).
         config.flake.modules.nixos.hardware-hacking
         config.flake.modules.nixos.gpu

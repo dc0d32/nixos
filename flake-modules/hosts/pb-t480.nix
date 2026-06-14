@@ -252,6 +252,15 @@ in
         # thinkpad_acpi, microcode, sane TLP-vs-PPD defaults, etc.
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t480
 
+        # Root-rollback impermanence: wipe the btrfs `root` subvol back
+        # to the empty `root-blank` snapshot on every boot. Everything
+        # that should survive a reboot lives under /persist and is
+        # bind-mounted back by the upstream impermanence NixOS module.
+        config.flake.modules.nixos.impermanence
+        # Daily restic backup of /persist to nas.lan:/mnt/zrust/backup/restic/pb-t480
+        # via SFTP. Bootstrap with scripts/init-backup.sh after fresh install.
+        config.flake.modules.nixos.backup
+
         # Feature modules.
         config.flake.modules.nixos.gpu
         config.flake.modules.nixos.power
