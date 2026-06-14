@@ -95,10 +95,6 @@ in
           # See flake-modules/disko.nix for why swap is its own
           # partition rather than a btrfs swapfile.
           swapSize = "32G";
-          # LUKS full-disk encryption. Passphrase prompted at boot
-          # by systemd-cryptsetup. Required for a laptop that
-          # travels and holds personal + family data.
-          luks = true;
         })
         # nixos-hardware: X1 Yoga 7th gen tunings — fprintd (fingerprint),
         # fwupd (firmware updates), Wacom pen/touch, SSD TRIM. Sets

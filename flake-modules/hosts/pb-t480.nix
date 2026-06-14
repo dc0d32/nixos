@@ -245,8 +245,6 @@ in
           # small margin. See flake-modules/disko.nix for why swap is
           # its own partition rather than a btrfs swapfile.
           swapSize = "32G";
-          # LUKS full-disk encryption. Passphrase prompted at boot.
-          luks = true;
         })
 
         # Hardware-specific defaults from nixos-hardware (kernel

@@ -241,8 +241,6 @@ in
           # the hibernate requirement (swap >= RAM) with margin for
           # zswap-style compression headroom.
           swapSize = "12G";
-          # LUKS full-disk encryption. Passphrase prompted at boot.
-          luks = true;
         })
 
         # Root-rollback impermanence: wipe the btrfs `root` subvol back
