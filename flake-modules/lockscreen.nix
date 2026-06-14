@@ -2,18 +2,21 @@
 #
 # Cross-class:
 #   - NixOS side: security.pam.services.swaylock so the unlock prompt
-#     accepts the user's password. fprintAuth = true so on biometric
-#     hosts the fingerprint sensor also unlocks the screen.
+#     accepts the user's password. fprintAuth is OFF by default —
+#     password must always unlock without touching the fingerprint
+#     sensor. Hosts that want fingerprint unlock can set
+#     `security.pam.services.swaylock.fprintAuth = true;` in their
+#     bridge ONLY after fingerprints are enrolled; pam_fprintd blocks
+#     the PAM conversation waiting for a swipe on hosts where no
+#     fingerprints are registered, making swaylock appear hung.
 #   - HM side: install swaylock-effects + drop a config file.
 #
 # Pattern A: hosts opt in by importing. Importing IS enabling.
 #
 # Replaces the quickshell-based lockscreen (deleted along with the
 # rest of the QML tree). Trade-off accepted at retreat time: no face
-# unlock on the lockscreen anymore (howdy + swaylock is not a thing
-# anyone has wired), only password and fingerprint. fprintd's PAM
-# module runs in parallel with pam_unix so fingerprint and password
-# both race for a winner; whichever returns success first unlocks.
+# unlock on the lockscreen (howdy + swaylock is not a thing anyone
+# has wired). Face still works for sudo/login/ly.
 #
 # Lock is invoked by:
 #   - niri keybind Super+Alt+L              (see flake-modules/niri.nix)
@@ -22,18 +25,15 @@
 #
 # Retire when: a future compositor ships its own lockscreen, or you
 # go back to a custom shell.
-{ lib, ... }:
+{ ... }:
 {
   flake.modules.nixos.lockscreen = { ... }: {
     # NixOS auto-prepends the correct linux-pam store path for
-    # pam_unix and pam_fprintd, so we don't spell module paths
-    # explicitly here. `fprintAuth = true` slots pam_fprintd into
-    # the auth substack at the host-wide order; on hosts without
-    # fprintd enabled (m-pc), the rule short-circuits to "ignore"
-    # and the prompt is password-only.
-    security.pam.services.swaylock = {
-      fprintAuth = lib.mkDefault true;
-    };
+    # pam_unix. fprintAuth is deliberately left false (the default)
+    # so password unlock always works. To enable fingerprint unlock
+    # on a specific host, add to its bridge AFTER enrolling prints:
+    #   security.pam.services.swaylock.fprintAuth = true;
+    security.pam.services.swaylock = { };
   };
 
   flake.modules.homeManager.lockscreen = { pkgs, ... }: {
