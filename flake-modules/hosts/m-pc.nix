@@ -241,6 +241,8 @@ in
           # the hibernate requirement (swap >= RAM) with margin for
           # zswap-style compression headroom.
           swapSize = "12G";
+          # LUKS full-disk encryption. Passphrase prompted at boot.
+          luks = true;
         })
 
         # Root-rollback impermanence: wipe the btrfs `root` subvol back
@@ -302,12 +304,8 @@ in
         # user on this host. Pulls fresh from github:dc0d32/nixos
         # each run. See flake-modules/hm-auto-upgrade.nix.
         config.flake.modules.nixos.hm-auto-upgrade
-        # Steam (system-wide programs.steam.enable). Restrictions
-        # (game/store/chat) are configured per-Steam-account in
-        # Steam's built-in Family View, not here. The WX 2100 is
-        # GCN 1.1 with 2 GiB VRAM — fine for older / lighter games
-        # via Vulkan/RADV, won't push modern AAA.
-        config.flake.modules.nixos.steam
+        # NOT imported: config.flake.modules.nixos.steam
+        # Removed 2026-06-14 — not actively used; add back when needed.
       ];
 
       networking.hostName = hostName;

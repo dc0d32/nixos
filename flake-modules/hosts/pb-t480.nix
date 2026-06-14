@@ -245,6 +245,8 @@ in
           # small margin. See flake-modules/disko.nix for why swap is
           # its own partition rather than a btrfs swapfile.
           swapSize = "32G";
+          # LUKS full-disk encryption. Passphrase prompted at boot.
+          luks = true;
         })
 
         # Hardware-specific defaults from nixos-hardware (kernel
@@ -329,10 +331,8 @@ in
         # github:dc0d32/nixos each run, mirroring system.autoUpgrade.
         # See flake-modules/hm-auto-upgrade.nix.
         config.flake.modules.nixos.hm-auto-upgrade
-        # Steam (system-wide programs.steam.enable). Game/store/chat
-        # restrictions are configured per-Steam-account in Steam's
-        # built-in Family View, not here. See flake-modules/steam.nix.
-        config.flake.modules.nixos.steam
+        # NOT imported: config.flake.modules.nixos.steam
+        # Removed 2026-06-14 — not actively used; add back when needed.
       ];
 
       networking.hostName = hostName;
@@ -444,6 +444,10 @@ in
         pkgs = hmPkgs;
         module = {
           imports = config.flake.lib.bundles.homeManager.desktop ++ [
+            # hardware-hacking HM tools — pb-t480 has the NixOS udev
+            # rules + USB-device groups (hardware-hacking NixOS module
+            # imported above), so the tools are actually usable here.
+            config.flake.modules.homeManager.hardware-hacking
             # KiCad + FreeCAD + Firefox are opt-in per-host since
             # 2026-05-16; preserve the previous behaviour for
             # pb-t480's primary user.

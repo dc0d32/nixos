@@ -48,7 +48,6 @@
       desktop-shell
       file-manager
       fonts
-      hardware-hacking
       idle
       lockscreen
       niri

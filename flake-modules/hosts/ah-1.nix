@@ -10,7 +10,7 @@
 #     config`),
 #   - and that's it. Same user, same module set, same package set.
 #
-# Why one factory file (mirrors flake-modules/hosts/wsl.nix):
+# Why one factory file (mirrors flake-modules/wsl.nix):
 #   The bodies for ah-1, ah-2, ... are 100% identical except for the
 #   hostname. Duplicating them invites drift; a factory keeps the
 #   per-host knob count to exactly one (the name).

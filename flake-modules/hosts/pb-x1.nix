@@ -15,7 +15,7 @@
 # Retire when: this host is decommissioned, replaced by a successor
 #   (e.g. pb-x2 / a different Lenovo gen), or its role merges with
 #   another host bridge.
-{ lib, config, ... }:
+{ lib, config, inputs, ... }:
 let
   hostName = "pb-x1";
   user = "p";
@@ -95,7 +95,16 @@ in
           # See flake-modules/disko.nix for why swap is its own
           # partition rather than a btrfs swapfile.
           swapSize = "32G";
+          # LUKS full-disk encryption. Passphrase prompted at boot
+          # by systemd-cryptsetup. Required for a laptop that
+          # travels and holds personal + family data.
+          luks = true;
         })
+        # nixos-hardware: X1 Yoga 7th gen tunings — fprintd (fingerprint),
+        # fwupd (firmware updates), Wacom pen/touch, SSD TRIM. Sets
+        # boot.kernelPackages only if < 5.19 (conditional mkDefault, no
+        # conflict with our explicit linuxPackages_latest below).
+        inputs.nixos-hardware.nixosModules.lenovo-thinkpad-x1-yoga-7th-gen
         # Root-rollback impermanence: wipe the btrfs `root` subvol back
         # to the empty `root-blank` snapshot on every boot. Everything
         # that should survive a reboot lives under /persist and is
@@ -209,6 +218,7 @@ in
         # directly. See flake-modules/idle.nix and packages/idled/.
         extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
         shell = hmPkgs.zsh;
+        initialPassword = "changeme";
       };
 
       # Extra system packages specific to this host. Most packages live
@@ -229,6 +239,10 @@ in
     pkgs = hmPkgs;
     module = {
       imports = config.flake.lib.bundles.homeManager.desktop ++ [
+        # hardware-hacking HM tools (esptool, picocom, dfu-util, etc.)
+        # moved out of the desktop bundle so m-pc (no NixOS udev rules,
+        # no USB-device access for p) doesn't get them.
+        config.flake.modules.homeManager.hardware-hacking
         # These three are opt-in per-host since 2026-05-16: the
         # desktop bundle no longer carries them (so vm-desktop / new
         # hosts don't pay the closures unless asked). pb-x1 does PCB
