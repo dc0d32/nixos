@@ -164,6 +164,9 @@
           # We mount subvolid=5 (the btrfs top level) at a temp dir,
           # snapshot root → root-blank, then unmount.
           postCreateHook = ''
+            # Wait for udev to settle after mkfs.btrfs so the kernel's
+            # partition/superblock cache is consistent before we mount.
+            udevadm settle || true
             MNTPOINT=$(mktemp -d)
             mount -t btrfs "$device" "$MNTPOINT" -o subvol=/
             trap 'umount "$MNTPOINT"; rm -rf "$MNTPOINT"' EXIT
