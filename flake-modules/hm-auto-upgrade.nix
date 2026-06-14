@@ -5,7 +5,7 @@
 # NixOS system closure nightly, but it does NOT touch any user's
 # home-manager profile — by design (AGENTS.md: HM is standalone, not
 # wired in as a NixOS module). Without this module, dotfile/zsh/
-# quickshell/EasyEffects changes that ship via HM only land when
+# waybar/EasyEffects changes that ship via HM only land when
 # the user manually runs
 #   home-manager switch --flake github:dc0d32/nixos#'<user>@<host>'
 # which on a kid's laptop or a headless homelab account never

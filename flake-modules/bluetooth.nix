@@ -1,6 +1,6 @@
 # Bluetooth — BlueZ stack on the NixOS side, blueman applet + audio
 # codecs on the home-manager side, plus a cross-module signal so other
-# dendritic modules (quickshell's bar) can adapt.
+# dendritic modules (waybar's bluetooth chip) can adapt.
 #
 # Cross-class footprint:
 #   - flake.modules.nixos.bluetooth — hardware.bluetooth (BlueZ) with
@@ -8,16 +8,16 @@
 #     org.bluez.Battery1 interface for headset battery levels), a
 #     polkit JS rule letting wheel users drive bluez/blueman without
 #     password prompts, system packages bluez + bluez-tools so
-#     `bluetoothctl` is available to root and to quickshell's QML
-#     monitor process, and a wireplumber bluetooth config block
-#     enabling the Hands-Free Profile (HFP) and the high-bitrate
-#     A2DP codecs (LDAC, aptX, aptX-HD).
+#     `bluetoothctl` is available to root and to user-side tooling
+#     (blueman, waybar's bluetooth module via bluez DBus), and a
+#     wireplumber bluetooth config block enabling the Hands-Free
+#     Profile (HFP) and the high-bitrate A2DP codecs (LDAC, aptX,
+#     aptX-HD).
 #   - flake.modules.homeManager.bluetooth — installs blueman so the
-#     graphical pairing wizard / device manager is available as an
-#     escape hatch when quickshell's flyout can't handle a corner
-#     case (e.g. unusual PIN flows, exotic services). Autostarts
-#     blueman-applet via a user systemd unit so its tray icon lands
-#     in quickshell's SystemTray automatically.
+#     graphical pairing wizard / device manager is available as the
+#     primary UI (waybar's bluetooth chip's on-click launches it).
+#     Autostarts blueman-applet via a user systemd unit so its tray
+#     icon lands in waybar's SystemTray automatically.
 #
 # Pattern A: hosts opt in by importing this module on either class.
 # WSL doesn't get bluetooth; ah-1 (NAS) doesn't either.
@@ -25,8 +25,8 @@
 # Top-level options:
 #   - bluetooth.enable — read-only signal; true iff this module is
 #     imported on this host. Set by mkDefault inside the module body
-#     so other modules (e.g. quickshell's bluetooth chip) can read
-#     the flag without coupling to a host-level toggle. Mirrors the
+#     so other modules (e.g. waybar's bluetooth chip) can read the
+#     flag without coupling to a host-level toggle. Mirrors the
 #     pattern used in flake-modules/biometrics.nix.
 #
 # User permissions: BlueZ does not ship a `bluetooth` Unix group;
@@ -49,7 +49,7 @@
       default = false;
       description = ''
         Read-only signal: true iff the bluetooth module is imported on
-        this host. Other dendritic modules (quickshell's bar chip,
+        this host. Other dendritic modules (waybar's bluetooth chip,
         future per-host UI hints) inspect this to decide whether to
         render bluetooth UI. Don't set this manually — import
         flake-modules/bluetooth.nix to enable bluetooth; the module
@@ -60,7 +60,7 @@
 
   config = {
     # Importing this module IS enabling bluetooth. Publish that fact
-    # as a signal so dependent modules (quickshell bar chip) can
+    # as a signal so dependent modules (waybar bluetooth chip) can
     # read it.
     bluetooth.enable = lib.mkDefault true;
 
@@ -73,23 +73,23 @@
         # any device will connect.
         powerOnBoot = true;
         # Experimental = on exposes org.bluez.Battery1 for headset
-        # battery levels (read by quickshell's bluetooth chip via
-        # `bluetoothctl info <mac>`'s `Battery Percentage` line) and
-        # enables LE Privacy / advertising features that some
-        # earbuds / trackers expect. Stable on BlueZ ≥ 5.65.
+        # battery levels (read by waybar's bluetooth module via the
+        # BlueZ DBus interface) and enables LE Privacy / advertising
+        # features that some earbuds / trackers expect. Stable on
+        # BlueZ ≥ 5.65.
         settings.General.Experimental = true;
       };
 
       # Polkit rule: let any local active-session user drive bluez
       # and blueman without a password prompt. Without this, every
-      # pairing / connect / scan-toggle from quickshell's flyout
-      # pops a polkit auth dialog (which would route through
-      # hyprpolkitagent to the face/finger biometric stack — annoying
-      # for a routine bluetooth toggle). The `subject.local &&
-      # subject.active` test is the standard polkit idiom for
-      # "physically present at this seat" — covers wheel users on
-      # pb-x1 and the kid accounts on pb-t480 alike. Remote / inactive
-      # sessions still hit the prompt.
+      # pairing / connect / scan-toggle from blueman pops a polkit
+      # auth dialog (which would route through hyprpolkitagent to
+      # the face/finger biometric stack — annoying for a routine
+      # bluetooth toggle). The `subject.local && subject.active`
+      # test is the standard polkit idiom for "physically present
+      # at this seat" — covers wheel users on pb-x1 and the kid
+      # accounts on pb-t480 alike. Remote / inactive sessions still
+      # hit the prompt.
       #
       # The two action prefixes cover BlueZ direct (org.bluez.*) and
       # blueman's gdbus wrapper (org.blueman.*). Rule format is the
@@ -106,10 +106,10 @@
       '';
 
       # bluez-tools provides `bt-adapter`, `bt-agent`, `bt-device`
-      # etc. for scripting; bluez itself supplies `bluetoothctl`,
-      # which is what BluetoothState.qml shells out to. Both are
-      # needed at the system level so they exist on $PATH for
-      # quickshell's Process { command } invocations.
+      # etc. for scripting; bluez itself supplies `bluetoothctl`.
+      # Both are needed at the system level so they exist on $PATH
+      # for ad-hoc CLI use and for the blueman-applet helpers that
+      # shell out to them.
       environment.systemPackages = [
         pkgs.bluez
         pkgs.bluez-tools
@@ -167,8 +167,8 @@
       # blueman = full graphical pairing wizard + device manager.
       # Reaches the system bluez via D-Bus (no extra config needed).
       # The applet binary `blueman-applet` populates the system tray
-      # with a connect/disconnect menu; quickshell's SystemTray
-      # picks it up automatically.
+      # with a connect/disconnect menu; waybar's tray module picks
+      # it up automatically.
       home.packages = [ pkgs.blueman ];
 
       # Autostart blueman-applet under the graphical session so the

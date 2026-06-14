@@ -96,7 +96,7 @@ is still placeholder.
 ## Cross-module signals
 
 When feature A needs to know whether feature B is loaded (e.g.
-`quickshell` checks `biometrics.enable` to decide lockscreen hints),
+waybar's bluetooth chip checks `bluetooth.enable`),
 feature B declares `options.B.enable = mkOption { default = false; };`
 and sets `config.B.enable = lib.mkDefault true;` inside its own module.
 Importing B publishes the signal; non-importers get false. No host
@@ -133,7 +133,7 @@ hardcoded bash path; `nix flake check` runs the same hook.
 - System-level (`flake.modules.nixos.*`): PipeWire, kernel, services,
   boot — `sudo nixos-rebuild switch --flake .#pb-x1`.
 - User-level (`flake.modules.homeManager.*`): dotfiles, EasyEffects,
-  quickshell, zsh, alacritty — `home-manager switch --flake .#'p@pb-x1'`.
+  waybar, zsh, alacritty — `home-manager switch --flake .#'p@pb-x1'`.
 - Editing a `flake.modules.nixos.*` module and only running
   home-manager (or vice versa) silently has no effect.
 
@@ -166,17 +166,35 @@ audio.easyeffects = {
 - The existing `easyeffectsrc` will block deployment unless
   `force = true` is set on that `xdg.configFile` entry.
 
-## Quickshell (QML bar/shell)
+## Desktop shell
 
-- QML files live in `flake-modules/quickshell/qml/` and are deployed
-  via `xdg.configFile."quickshell"` with `recursive = true`.
-- Every new QML type must be registered in
-  `flake-modules/quickshell/qml/qmldir` or it won't be found at
-  runtime.
-- New files must be `git add`-ed before deploying (flake build ignores
-  untracked files).
-- Use Quickshell for as many shell features as possible. Ask explicit
-  user permission before reaching for swaybar/waybar etc.
+Bar / launcher / notifications / clipboard history / screenshot live
+in `flake-modules/desktop-shell.nix` (HM cross-cutting module). It
+wires:
+
+- **waybar** — `programs.waybar.enable` + JSON settings + CSS style.
+  niri's workspaces and active window are surfaced via waybar's
+  native `niri/workspaces` / `niri/window` modules. Autostarts via
+  the HM-provided `waybar.service` (graphical-session.target bound).
+- **mako** — notifications, autostarted via `services.mako.enable`.
+- **fuzzel** — app launcher, bound to `Super+Space` in niri.nix.
+- **cliphist** — clipboard history (text + image), watched by a pair
+  of systemd-user units. Picker (`clipboard-pick`) is bound to
+  `Mod+Shift+C`.
+- **screenshot wrapper** — bash wrapper around grim + slurp + satty.
+  Bound to `Print` (region) / `Shift+Print` (whole screen) /
+  `Alt+Print` (focused window, niri-native).
+
+Lockscreen lives separately in `flake-modules/lockscreen.nix` (cross-
+class because it carries a NixOS-side PAM service): `swaylock-effects`
+with `security.pam.services.swaylock.fprintAuth = true`, so on
+biometric hosts the fingerprint sensor unlocks alongside the password
+prompt. No face unlock on the lockscreen — howdy + swaylock isn't a
+thing anyone has wired (trade accepted at the quickshell-retreat
+session: see `docs/sessions/`).
+
+Each new HM file under the desktop-shell config needs `git add` before
+rebuild — same flake-is-git-tracked caveat applies.
 
 ## Adding a new host
 

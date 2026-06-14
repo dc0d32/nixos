@@ -37,13 +37,13 @@
       # Absolute store paths for every command idled spawns. idled invokes
       # commands via `sh -c "<cmd>"` which performs PATH lookup; under
       # systemd-user with strict sandboxing, the executor's default PATH
-      # is just /nix/store/<systemd>/bin, so PATH lookups for quickshell /
+      # is just /nix/store/<systemd>/bin, so PATH lookups for swaylock /
       # niri / systemctl all fail with ENOENT. Pinning absolute paths
       # makes the commands hermetic — the unit's PATH could be empty and
       # they'd still resolve. The unit also sets a sane PATH below as
       # belt-and-suspenders, but these strings are the authoritative
       # source of truth.
-      lockCmd = "${pkgs.quickshell}/bin/quickshell ipc call lock lock";
+      lockCmd = "${pkgs.swaylock-effects}/bin/swaylock";
       dpmsOffCmd = "${pkgs.niri}/bin/niri msg action power-off-monitors";
       dpmsOnCmd = "${pkgs.niri}/bin/niri msg action power-on-monitors";
       suspendCmd = "${pkgs.systemd}/bin/systemctl suspend";
@@ -119,7 +119,7 @@
         systemd.user.services.idled = {
           Unit = {
             Description = "Kernel-input idle daemon";
-            # Start after the wayland session is up so quickshell ipc / niri msg
+            # Start after the wayland session is up so swaylock / niri msg
             # work the first time we fire. graphical-session.target is set up by
             # the niri user service and home-manager's session integration.
             After = [ "graphical-session.target" ];
@@ -146,7 +146,7 @@
             SystemCallArchitectures = "native";
             # idled spawns commands via `sh -c`. systemd-user's default
             # PATH for spawned children on NixOS is just /nix/store/<systemd>/bin,
-            # so unqualified PATH lookups (quickshell, niri, systemctl)
+            # so unqualified PATH lookups (swaylock, niri, systemctl)
             # all fail with ENOENT — observed in the wild as silent
             # idle-stage failures (the lock command never fires, suspend
             # never fires, machine stays awake all night). The configToml

@@ -1,7 +1,8 @@
 # Home-manager bundle: desktop.
 #
 # Full desktop session for an adult/admin user: dev bundle plus
-# compositor (niri), bar/lockscreen (quickshell), browsers (firefox
+# compositor (niri), shell (waybar/mako/fuzzel/cliphist via
+# `desktop-shell`), lockscreen (swaylock-effects), browsers (firefox
 # as primary daily driver, chrome as fallback / for sites that
 # need a chromium engine), password manager (bitwarden), editor
 # with GUI (vscode), terminal (alacritty), audio DSP daemon
@@ -12,8 +13,8 @@
 #
 # = dev ++ [
 #     alacritty audio bitwarden bluetooth chrome desktop-extras
-#     file-manager fonts hardware-hacking idle niri polkit-agent
-#     quickshell vscode wallpaper
+#     desktop-shell file-manager fonts hardware-hacking idle
+#     lockscreen niri polkit-agent vscode wallpaper
 #   ]
 #
 # Modules intentionally NOT in this bundle (per-host opt-in, because
@@ -44,13 +45,14 @@
       bluetooth
       chrome
       desktop-extras
+      desktop-shell
       file-manager
       fonts
       hardware-hacking
       idle
+      lockscreen
       niri
       polkit-agent
-      quickshell
       vscode
       wallpaper
     ]);

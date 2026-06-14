@@ -6,7 +6,7 @@
 # user's HM profile must be activated separately. Without this module
 # every fresh host requires manual per-user `nix run home-manager …` /
 # `home-manager switch …` invocations, and on first login users land
-# in a default desktop (e.g. ly default niri config, no quickshell, no
+# in a default desktop (e.g. ly default niri config, no waybar, no
 # zsh dotfiles) until somebody remembers to bootstrap them.
 #
 # How: for every standalone home-manager configuration named

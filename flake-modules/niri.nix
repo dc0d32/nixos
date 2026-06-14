@@ -11,10 +11,11 @@
 #   - imports inputs.niri.homeModules.niri
 #   - the user-side niri config (the kdl file, keybinds, layout)
 #
-# App launcher, clipboard history, and screenshot picker were native fuzzel /
-# cliphist+fuzzel / grim+slurp+satty bash one-liners; they are now native
-# Quickshell overlays driven by IPC (`quickshell ipc call <target> toggle`).
-# See flake-modules/quickshell/qml/{launcher,clipboard,screenshot}/.
+# App launcher (fuzzel), clipboard history (cliphist + fuzzel),
+# screenshot picker (grim + slurp + satty), bar (waybar), notification
+# daemon (mako), and lockscreen (swaylock-effects) are wired in
+# flake-modules/desktop-shell.nix + flake-modules/lockscreen.nix.
+# This module just binds keys to invoke them.
 #
 # Pattern A: hosts opt in by importing this module. Headless / WSL
 # hosts simply don't import it, so inputs.niri's modules are never
@@ -93,14 +94,10 @@
     services.power-profiles-daemon.enable = lib.mkDefault true;
 
     # UPower daemon — provides org.freedesktop.UPower over system
-    # dbus, which quickshell's Quickshell.Services.UPower
-    # (BatteryState.qml) consumes for battery percentage / charging
-    # state. Without this, only the power-profiles-daemon-provided
-    # org.freedesktop.UPower.PowerProfiles interface is on the bus,
-    # and BatteryState.present stays false → the battery chip is
-    # hidden. Safe to leave on for desktops without a battery
-    # (UPower simply reports no laptop battery and BatteryState
-    # hides itself).
+    # dbus for waybar's battery module (and any other consumer that
+    # walks UPower for battery state). Safe to leave on for desktops
+    # without a battery (UPower simply reports no laptop battery and
+    # the waybar battery module hides itself).
     services.upower.enable = lib.mkDefault true;
 
     # niri-flake auto-installs polkit-kde-authentication-agent-1 as
@@ -166,7 +163,7 @@
     #
     # mkBefore so this env-propagation runs FIRST, before all the
     # other spawn-at-startup entries (bitwarden, polkit-agent,
-    # easyeffects, quickshell) — those depend on the env having
+    # waybar, mako, etc.) — those depend on the env having
     # been pushed.
     #
     # Retire when: niri grows native systemd-import behaviour at
@@ -222,14 +219,13 @@
         # keybind just prefers the GUI for casual file browsing
         # (USB-stick mounting via gvfs+udisks2, drag-and-drop, etc.).
         "Mod+E".action.spawn = "thunar";
-        # App launcher — quickshell native overlay (replaces fuzzel).
-        "Super+Space".action.spawn = [
-          "bash"
-          "-c"
-          "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call launcher toggle"
-        ];
+        # App launcher — fuzzel (wired in flake-modules/desktop-shell.nix).
+        "Super+Space".action.spawn = "fuzzel";
 
-        "Super+Alt+L".action.spawn = [ "bash" "-c" "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call lock lock" ];
+        # Lockscreen — swaylock-effects (wired in flake-modules/lockscreen.nix).
+        # Daemonizes itself per the swaylock config; this spawn returns
+        # immediately so niri stays responsive.
+        "Super+Alt+L".action.spawn = "swaylock";
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;
@@ -409,22 +405,18 @@
 
         "Mod+W".action.toggle-column-tabbed-display = { };
 
-        # Screenshots — quickshell overlay drives grim/slurp/satty.
-        # Print       = picker (region/screen/region-clipboard) → satty annotation
-        # Alt+Print   = focused window (niri native, needs compositor cooperation)
-        "Print".action.spawn = [
-          "bash"
-          "-c"
-          "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call screenshot toggle"
-        ];
+        # Screenshots — `screenshot` helper from desktop-shell.nix
+        # wraps grim + slurp + satty (region picker → annotation).
+        # Print       = region picker → satty annotation
+        # Shift+Print = whole-screen → satty annotation
+        # Alt+Print   = focused window (niri native)
+        "Print".action.spawn = [ "screenshot" "region" ];
+        "Shift+Print".action.spawn = [ "screenshot" "screen" ];
         "Alt+Print".action.screenshot-window = { };
 
-        # Clipboard history — quickshell native overlay (replaces fuzzel dmenu).
-        "Mod+Shift+C".action.spawn = [
-          "bash"
-          "-c"
-          "${pkgs.quickshell}/bin/quickshell ipc --pid $(pgrep -o quickshell) call clipboard toggle"
-        ];
+        # Clipboard history — fuzzel dmenu picker over cliphist
+        # (`clipboard-pick` helper from desktop-shell.nix).
+        "Mod+Shift+C".action.spawn = "clipboard-pick";
 
         # Screen recording — toggle wf-recorder for full screen capture
         # First invocation starts recording to ~/Videos/; second sends SIGINT to stop.
@@ -681,53 +673,26 @@
     };
 
     # ── Background blur (niri 26.04+, Window Effects) ───────────
-    # niri exposes per-window-rule and per-layer-rule
-    # `background-effect { blur true; xray false; }` to blur
-    # whatever sits behind a (semi-)transparent surface. With
-    # xray=false (live-composite mode), niri samples the actual
-    # composite of whatever is rendered below the surface (other
-    # windows, wallpaper) and blurs it per frame — so a
-    # translucent window over another app shows blurred app
-    # content, and the bar shows a blurred live preview of the
-    # workspace beneath it. With xray=true, niri samples only
-    # the wallpaper (cheaper, constant cost) and the bar would
-    # always look the same regardless of what's under it.
-    #
-    # We enable it globally with xray=false: a catch-all
-    # window-rule and a catch-all layer-rule. Opaque surfaces
-    # visually swallow the effect (their own pixels cover the
-    # blurred composite), so this only actually shows up where
-    # we've intentionally made things translucent — currently
-    # the bar/OSDs (Quickshell layer surfaces backed by
-    # Theme.opacity / Theme.panelOpacity), at the rounded-corner
-    # cutouts of every window, and on the per-app translucent
-    # windows (alacritty, VS Code, Chrome, PiP). Future
-    # translucent apps automatically inherit the effect with no
-    # extra config.
-    #
-    # Perf cost: live-composite mode is more expensive than xray
-    # mode — niri does a per-frame backdrop blur of the actual
-    # composite for every blurred surface, vs one wallpaper
-    # sample reused everywhere. On modern GPUs this is fine for
-    # a single bar + a handful of translucent windows; if it
-    # ever becomes a problem the simplest knob is to flip the
-    # catch-all xray back to `true` (cheap wallpaper-only) and
-    # opt specific surfaces back into live composite via a
-    # more-specific rule.
+    # Catch-all `background-effect { blur true; xray false; }` on
+    # every window-rule and layer-rule. Opaque surfaces visually
+    # swallow the effect (their own pixels cover the blurred
+    # composite), so this only actually shows up where we've
+    # intentionally made things translucent — the waybar bar (CSS
+    # alpha < 1), fuzzel launcher, mako notifications, and the
+    # per-app translucent windows (alacritty, VS Code, Chrome,
+    # PiP). xray=false uses live-composite mode (blurs the actual
+    # composite of whatever is below); flip to xray=true for the
+    # cheaper wallpaper-only sample if GPU cost ever shows up.
     #
     # Why we go through `programs.niri.config` instead of
-    # `programs.niri.settings.window-rules`: the niri-flake
-    # schema (sodiboo/niri-flake, settings.nix) does not yet
-    # expose a typed `background-effect` field on window-rule or
-    # layer-rule. Verified against the latest upstream HEAD as
-    # of 2026-05; only `match`, `excludes`, `opacity`,
-    # `block-out-from`, `shadow`, `geometry-corner-radius`, etc.
-    # are in the serializer. So we render the typed settings
-    # tree as normal, then append two raw KDL nodes built via
-    # niri-flake's exported `inputs.niri.lib.kdl.node`
+    # `programs.niri.settings.window-rules`: the niri-flake schema
+    # (sodiboo/niri-flake, settings.nix) does not yet expose a
+    # typed `background-effect` field on window-rule or layer-rule.
+    # Verified against upstream HEAD as of 2026-05. So we render
+    # the typed settings tree as normal, then append two raw KDL
+    # nodes via niri-flake's exported `inputs.niri.lib.kdl.node`
     # constructor. niri-flake still runs `niri validate` on the
-    # final concatenated config, so syntax errors fail the
-    # build, not runtime.
+    # final concatenated config, so syntax errors fail the build.
     #
     # We read the default render via `options.programs.niri.config.default`
     # (the option's default is `settings.render cfg.settings`,
@@ -749,40 +714,10 @@
     # Retire when: niri-flake's settings.nix grows a typed
     # `background-effect = { blur = true; xray = ...; }` field
     # on window-rule / layer-rule, OR niri-flake fixes the
-    # should-collapse codepath to not collapse children whose
-    # only child is itself a block. At that point, drop this
-    # block and add `background-effect.blur = true;` to a
-    # catch-all entry in `programs.niri.settings.window-rules`
-    # and `…layer-rules`.
-    #
-    # Flyout-canvas exclusion: the Quickshell flyout canvas
-    # (namespace "quickshell-flyouts") is a full-screen layer
-    # surface mapped while a flyout or tooltip is shown, hosting
-    # flyout cards plus a click-to-dismiss MouseArea covering
-    # the rest of the screen. niri blurs the entire layer
-    # surface rectangle, so leaving this in the catch-all would
-    # blur the whole screen behind the flyout the moment one
-    # opens — exactly the visual we want flyout cards to
-    # provide locally, not a screen-wide effect. Each flyout
-    # card already paints its own translucent backdrop via
-    # Theme.panelOpacity. The third KDL node below
-    # (a more-specific layer-rule matching this exact
-    # namespace, last-wins per the niri `Configuration: Layer
-    # Rules` docs) sets blur false, turning blur off for the
-    # flyout-canvas surface only.
-    #
-    # The chip-strip surface itself (namespace "quickshell-bar")
-    # is exactly Theme.barHeight + 2 px tall and intentionally
-    # opts in to the catch-all blur, giving the chip strip a
-    # frosted-glass live-composite look over whatever is
-    # underneath it (workspace content or wallpaper).
-    #
-    # Per-tooltip surfaces (namespace "quickshell-tooltip-<id>")
-    # follow the per-flyout pattern — each tooltip is its own small
-    # layer surface sized to the card's bounding box, so they pick
-    # up the catch-all blur (the "^quickshell-flyouts$" exclusion
-    # only matches the dismiss canvas exactly) and get the same
-    # frosted-glass look as flyout cards.
+    # should-collapse codepath. At that point, drop this block
+    # and add `background-effect.blur = true;` to a catch-all
+    # entry in `programs.niri.settings.window-rules` /
+    # `…layer-rules`.
     programs.niri.config =
       let
         kdl = inputs.niri.lib.kdl;
@@ -790,16 +725,10 @@
           (kdl.node "blur" [ true ] [ ])
           (kdl.node "xray" [ false ] [ ])
         ];
-        noBlurChild = kdl.node "background-effect" [ ] [
-          (kdl.node "blur" [ false ] [ ])
-          (kdl.node "xray" [ false ] [ ])
-        ];
-        flyoutCanvasMatch = kdl.node "match" [{ namespace = "^quickshell-flyouts$"; }] [ ];
       in
       options.programs.niri.config.default ++ [
         (kdl.node "window-rule" [ ] [ blurChild ])
         (kdl.node "layer-rule" [ ] [ blurChild ])
-        (kdl.node "layer-rule" [ ] [ flyoutCanvasMatch noBlurChild ])
       ];
   };
 }

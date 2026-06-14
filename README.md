@@ -18,7 +18,6 @@ flake-modules/                dendritic feature modules (one per concern)
   hosts/pb-x1.nix             host bridge: primary laptop
   hosts/wsl.nix               host bridge: both WSL configurations
   <feature>.nix               each contributes flake.modules.{nixos,homeManager}.<feature>
-  quickshell/qml/             QML tree deployed to ~/.config/quickshell/
   FusionLike/                 FreeCAD auto-startup mod (Init.py + InitGui.py)
 hosts/pb-x1/                  hardware-configuration.nix + audio presets/IRS dirs
 overlays/                     custom overlays (each documents why and when to delete)

@@ -8,7 +8,7 @@
 #   - m : kid (no wheel), restricted HM (no dev tooling)
 #   - s : kid (no wheel), restricted HM (no dev tooling)
 #
-# Kids' graphical session is the same niri/quickshell stack as p so
+# Kids' graphical session is the same niri / desktop-shell stack as p so
 # things look familiar across users. They get google-chrome (with
 # Family-Link-locking managed policies — see chrome-managed.nix),
 # alacritty, zsh, fish but no vscode / freecad / bitwarden / ai-cli /
@@ -290,12 +290,13 @@ in
         # has IR hardware and used face unlock historically.
         config.flake.modules.nixos.face-unlock
         config.flake.modules.nixos.niri
-        # Quickshell system-side wiring: security.pam.services.
-        # quickshell-password (the lockscreen always offers a password
-        # prompt; without this PAM service the prompt would silently
-        # reject every input). HM-side QML deployment comes via the
-        # home-desktop / home-kid bundles.
-        config.flake.modules.nixos.quickshell
+        # Lockscreen system-side wiring: security.pam.services.swaylock
+        # (fprintAuth = true so the fingerprint sensor unlocks alongside
+        # the password prompt; face unlock on the lockscreen is gone
+        # post-quickshell-retreat — swaylock doesn't speak howdy). HM-
+        # side install (swaylock-effects + config) comes via the home-
+        # desktop / home-kid bundles' `lockscreen` import.
+        config.flake.modules.nixos.lockscreen
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
         # Daily `nixos-rebuild switch --refresh --flake
@@ -377,8 +378,8 @@ in
       #           or adjust per-kid policies at runtime.
       #   - m,s : kid (no wheel, no sudo). They get
       #           video/audio so the desktop session works,
-      #           `input` so quickshell's lockscreen / idled function
-      #           for them too (idled reads /dev/input/event*), and
+      #           `input` so swaylock / idled function for them too
+      #           (idled reads /dev/input/event*), and
       #           `networkmanager` so they can connect to any wifi
       #           AP themselves without an admin around — important
       #           because the laptop travels (school, friends'

@@ -267,17 +267,14 @@ in
         config.flake.modules.nixos.file-manager
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
-        # Quickshell system-side wiring: security.pam.services.
-        # quickshell-password. m-pc deliberately does NOT import the
-        # biometrics module (no fingerprint reader, no IR camera) but
-        # still runs the lockscreen — it needs the password PAM
-        # service. The companion biometric PAM service lives in
-        # biometrics.nix and is intentionally absent here;
-        # LockContext.qml gates its biometric PamContext on
-        # QUICKSHELL_LOCK_FACE / QUICKSHELL_LOCK_FINGERPRINT (set
-        # from biometrics.enable, which stays false here) so the
-        # missing service is never referenced.
-        config.flake.modules.nixos.quickshell
+        # Lockscreen system-side wiring: security.pam.services.swaylock.
+        # m-pc deliberately does NOT import the biometrics module (no
+        # fingerprint reader, no IR camera); the lockscreen runs
+        # password-only because fprintAuth's pam_fprintd substack
+        # short-circuits to "ignore" on hosts without fprintd enabled.
+        # HM-side install (swaylock-effects + config) comes via the
+        # home-desktop bundle's `lockscreen` import.
+        config.flake.modules.nixos.lockscreen
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
         # Daily `nixos-rebuild switch --refresh --flake
@@ -338,7 +335,7 @@ in
       #         can drive `timekpra` / `timekprc` to grant ad-hoc
       #         time or adjust m's policy at runtime without sudo.
       #   - m : kid (no wheel, no sudo). video/audio for the desktop
-      #         session, `input` for quickshell's lockscreen / idled,
+      #         session, `input` for swaylock / idled,
       #         `networkmanager` so she can join APs herself if/when
       #         the wired connection is unavailable.
       #

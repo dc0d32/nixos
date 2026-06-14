@@ -55,7 +55,9 @@
 #                                          hardware-hacking.extraUsers
 #                                          to grant kids the device
 #                                          groups.
-#   - idle, niri, quickshell, wallpaper    compositor stack
+#   - idle, niri, desktop-shell,           compositor stack +
+#     lockscreen, wallpaper                 bar/launcher/notifications/
+#                                            cliphist + swaylock-effects
 #   - kid-launcher                         hides app-menu noise from
 #                                          transitive deps
 #                                          (qt6ct/easyeffects/satty/
@@ -86,14 +88,15 @@
     chrome
     chrome-managed
     desktop-extras
+    desktop-shell
     file-manager
     fish
     fonts
     hardware-hacking
     idle
     kid-launcher
+    lockscreen
     niri
-    quickshell
     wallpaper
     zoom
     zsh

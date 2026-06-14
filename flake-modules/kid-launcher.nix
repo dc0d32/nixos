@@ -6,11 +6,11 @@
 # theming control panels (qt5ct/qt6ct), audio control surfaces
 # (easyeffects/calf/pwvucontrol), CLI tools that auto-register
 # launchers (btop/htop/yazi), screenshot annotators invoked from
-# compositor hotkeys (satty), Thunar settings/helper entries, the
-# duplicate Chrome launcher, and the wlroots quickshell internal
-# entry. Hiding them is purely a UX decision: the binaries stay
-# installed and continue to work when invoked by code paths that
-# need them (quickshell hotkeys, Thunar context menus, etc.).
+# compositor hotkeys (satty), Thunar settings/helper entries, and
+# the duplicate Chrome launcher. Hiding them is purely a UX
+# decision: the binaries stay installed and continue to work when
+# invoked by code paths that need them (niri keybinds, Thunar
+# context menus, etc.).
 #
 # We use `xdg.desktopEntries.<id> = { name; noDisplay = true; }`
 # rather than dropping the packages, because most of these come in
@@ -64,14 +64,12 @@
         # user thing kids won't use.
         "imv-dir"
 
-        # Compositor service launcher — not user-facing.
-        "org.quickshell"
-
         # Qt theming control panels.
         "qt5ct"
         "qt6ct"
 
-        # Screenshot annotator, invoked from quickshell hotkey.
+        # Screenshot annotator, invoked from the niri Print hotkey
+        # (the `screenshot` wrapper script in desktop-shell.nix).
         "satty"
 
         # Thunar helper / settings entries; the main "thunar"

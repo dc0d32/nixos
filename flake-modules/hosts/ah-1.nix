@@ -30,8 +30,8 @@
 #   workflows and vice versa.
 #
 # Why headless module set:
-#   No GUI (niri/quickshell/wallpaper/idle/desktop-extras), no
-#   GUI-only HM (alacritty, chrome, vscode, freecad), no audio,
+#   No GUI (niri/desktop-shell/lockscreen/wallpaper/idle/desktop-extras),
+#   no GUI-only HM (alacritty, chrome, vscode, freecad), no audio,
 #   no battery, no biometrics, no hardware-hacking groups. The HM
 #   bundle mirrors the wsl.nix headless set (zsh, fish, tmux, vim, btop,
 #   git, direnv, gh, ai-cli, build-deps) so SSHing into any homelab

@@ -12,8 +12,9 @@
 #
 # A `biometrics.enable` signal option (default false, set to true
 # by this module's own config when imported) is published so other
-# dendritic modules (e.g. quickshell's lockscreen) can adapt their
-# UI without coupling to a host-level flag.
+# dendritic modules can adapt their UI without coupling to a
+# host-level flag. (Currently no consumer reads it after the
+# quickshell retreat — kept in place for future use; cheap.)
 #
 # Top-level options:
 #   - biometrics.enable — read-only signal; true iff this module is
@@ -40,10 +41,10 @@ in
       default = false;
       description = ''
         Read-only signal: true iff the biometrics module is imported on
-        this host. Other dendritic modules (quickshell's lockscreen,
-        future per-host UI hints) inspect this to adapt their UI. Don't
-        set this manually — import flake-modules/biometrics.nix to
-        enable biometrics; the module sets this flag itself.
+        this host. Currently unused after the quickshell retreat; kept
+        for future cross-module UI adaptation. Don't set this manually
+        — import flake-modules/biometrics.nix to enable biometrics;
+        the module sets this flag itself.
       '';
     };
     cameraDevice = lib.mkOption {
@@ -60,7 +61,8 @@ in
 
   config = {
     # Importing this module IS enabling biometrics. Publish that fact as
-    # a signal so dependent modules (quickshell lockscreen) can read it.
+    # a signal (no current consumer post-quickshell-retreat, but kept
+    # for future cross-module wiring).
     biometrics.enable = lib.mkDefault true;
 
     flake.modules.nixos.biometrics = { lib, pkgs, config, ... }:
@@ -211,44 +213,6 @@ in
               # Retire if bitwarden-desktop ever ships its own PAM
               # service file.
               bitwarden = reorderPasswordFirst // { fprintAuth = lib.mkDefault true; };
-
-              # ── Quickshell lockscreen: biometric half of the split PAM stack ──
-              # The default "login" PAM stack runs sequentially
-              # (unix → howdy → fprintd → deny). With pam_unix as
-              # `sufficient`, PAM immediately asks for a password
-              # and only falls through to biometrics if pam_unix
-              # returns ignore. That serial behavior makes it
-              # impossible for the lockscreen to *concurrently* try
-              # biometrics while the user types a password.
-              #
-              # Solution: split the auth stack into two
-              # single-purpose PAM services so quickshell can drive
-              # two parallel PamContexts. Whichever returns success
-              # first wins. The PASSWORD half is owned by
-              # flake-modules/quickshell.nix; the BIOMETRIC half
-              # lives here because it depends on howdy + fprintd.
-              #
-              # IMPORTANT: PAM resolves bare module names
-              # (`pam_howdy.so`) relative to linux-pam's *own*
-              # `lib/security/` directory — which only contains the
-              # modules linux-pam itself ships. Modules from other
-              # packages must be referenced absolutely.
-              quickshell-biometric = {
-                # Biometric-only: try howdy (face, when present)
-                # then fprintd (finger). pam_deny last so failure
-                # of both yields a clean PamResult.Failed instead
-                # of hanging. No password module — this PamContext
-                # should never set responseRequired.
-                text = ''
-                  ${lib.optionalString face
-                    "auth      sufficient  ${pkgs.howdy}/lib/security/pam_howdy.so"}
-                  auth      sufficient  ${pkgs.fprintd}/lib/security/pam_fprintd.so
-                  auth      required    pam_deny.so
-                  account   required    pam_unix.so
-                  password  required    pam_deny.so
-                  session   required    pam_unix.so
-                '';
-              };
             };
 
           # ── Camera autodetect (face-only) ───────────────────────

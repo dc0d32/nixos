@@ -119,12 +119,14 @@ in
         config.flake.modules.nixos.file-manager
         config.flake.modules.nixos.login-ly
         config.flake.modules.nixos.niri
-        # Quickshell system-side wiring: security.pam.services.
-        # quickshell-password (the lockscreen always offers a password
-        # prompt; without this PAM service the prompt would silently
-        # reject every input). HM-side QML deployment comes via the
-        # home-desktop bundle.
-        config.flake.modules.nixos.quickshell
+        # Lockscreen system-side wiring: security.pam.services.swaylock
+        # (the unlock prompt accepts the user's password; fprintAuth = true
+        # so on biometric hosts the fingerprint sensor also unlocks). HM-
+        # side install (swaylock-effects + config) comes via the home-
+        # desktop bundle's `lockscreen` import. pb-x1 has the biometrics
+        # module imported above, so the swaylock PAM stack auto-includes
+        # the fprintd substack and the indicator turns blue on touch.
+        config.flake.modules.nixos.lockscreen
         # Auto-bootstraps p's home-manager profile on first boot of
         # any fresh install via a oneshot systemd service. No-op on
         # already-bootstrapped systems (the unit's ConditionPathExists
