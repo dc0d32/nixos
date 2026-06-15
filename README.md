@@ -131,17 +131,13 @@ out run:
 ```
 
 `install.sh` is a thin wrapper around `nixos-anywhere --flake
-.#<hostname> --target-host root@<target-ip> --force-kexec`. It:
+.#<hostname> --target-host root@<target-ip>`. It:
 
 1. Builds the host's disko script + system closure on the local
    machine.
-2. Kexecs the target into nixos-anywhere's pinned image (forced on
-   even when the target is already on the NixOS installer ISO —
-   guarantees a fresh kernel with no cached block-layer state, which
-   matters on repaves).
-3. Partitions + formats the target's disks per `disko.devices`.
-4. Copies the closure to the target and runs `nixos-install`.
-5. Reboots into the new system.
+2. Partitions + formats the target's disks per `disko.devices`.
+3. Copies the closure to the target and runs `nixos-install`.
+4. Reboots into the new system.
 
 Pre-flight on bare metal:
 

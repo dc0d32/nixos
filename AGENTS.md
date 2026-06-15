@@ -231,16 +231,9 @@ out run:
 ```
 
 `install.sh` is a thin wrapper around
-`nixos-anywhere --flake .#<hostname> --target-host root@<target-ip>
---force-kexec`. It builds the host's closure locally, ships it to
-the target, runs disko (formats + mounts), runs `nixos-install`, and
-reboots. `--force-kexec` makes nixos-anywhere always kexec into its
-own pinned image even when the target is already on the NixOS
-installer ISO, which is necessary on repaves — without it, the
-installer kernel's cached block-layer state from the previous
-install can confuse disko's filesystem autodetection during
-subvolume creation (manifests as `vfat: Unknown parameter 'subvol'`
-on a freshly-`mkfs.btrfs`'d partition).
+`nixos-anywhere --flake .#<hostname> --target-host root@<target-ip>`.
+It builds the host's closure locally, ships it to the target,
+runs disko (formats + mounts), runs `nixos-install`, and reboots.
 
 Pre-flight on bare metal:
 
