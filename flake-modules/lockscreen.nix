@@ -27,13 +27,30 @@
 # go back to a custom shell.
 { ... }:
 {
-  flake.modules.nixos.lockscreen = { ... }: {
+  flake.modules.nixos.lockscreen = { config, ... }: {
     # NixOS auto-prepends the correct linux-pam store path for
     # pam_unix. fprintAuth is deliberately left false (the default)
     # so password unlock always works. To enable fingerprint unlock
     # on a specific host, add to its bridge AFTER enrolling prints:
     #   security.pam.services.swaylock.fprintAuth = true;
-    security.pam.services.swaylock = { };
+    security.pam.services.swaylock = {
+      allowNullPassword = true;
+
+      # Add an early optional pam_unix before howdy to initialize the
+      # PAM_AUTHTOK buffer. Without this, howdy can interfere with
+      # the auth token and cause pam_unix's try_first_pass to fail.
+      # See docs/sessions/2026-04-29-idle-lock-fix.md for background
+      # on serial PAM bugs and why this matters.
+      rules.auth."unix-early" = {
+        control = "optional";
+        order = 0;
+        modulePath = "${config.security.pam.package}/lib/security/pam_unix.so";
+        settings = {
+          nullok = true;
+          likeauth = true;
+        };
+      };
+    };
   };
 
   flake.modules.homeManager.lockscreen = { pkgs, ... }: {
