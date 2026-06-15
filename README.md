@@ -135,9 +135,17 @@ out run:
 
 1. Builds the host's disko script + system closure on the local
    machine.
-2. Partitions + formats the target's disks per `disko.devices`.
-3. Copies the closure to the target and runs `nixos-install`.
-4. Reboots into the new system.
+2. SSHes to the target and pre-wipes the primary disk
+   (`wipefs` + `sgdisk --zap-all` + zero first 16 MiB +
+   `blockdev --flushbufs` + `partprobe` + `udevadm settle`). The
+   `blockdev --flushbufs` step matters: on a repave the installer
+   kernel caches per-device filesystem-type detection from the
+   previous install, which survives mkfs and breaks disko's
+   subvolume-creation mount with `vfat: Unknown parameter
+   'subvol'`. Flushing the page cache forces fresh re-detection.
+3. Partitions + formats the target's disks per `disko.devices`.
+4. Copies the closure to the target and runs `nixos-install`.
+5. Reboots into the new system.
 
 Pre-flight on bare metal:
 

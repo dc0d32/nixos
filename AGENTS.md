@@ -235,6 +235,17 @@ out run:
 It builds the host's closure locally, ships it to the target,
 runs disko (formats + mounts), runs `nixos-install`, and reboots.
 
+Before invoking nixos-anywhere it SSHes into the target and runs
+a full pre-wipe on `disko.devices.disk.main.device` (derived from
+the flake): `wipefs -af` + `sgdisk --zap-all` + `dd` first 16 MiB
+to zero + `blockdev --flushbufs` + `partprobe` + `udevadm settle`.
+The `blockdev --flushbufs` is the critical step — on a repave the
+installer kernel caches the previous install's filesystem-type
+detection per device, which survives mkfs and causes disko's
+internal subvolume mount to dispatch to `vfat` and fail with
+`Unknown parameter 'subvol'`. Flushing the device's page cache
+forces the kernel to re-detect from the fresh superblock.
+
 Pre-flight on bare metal:
 
 - **Secure Boot must be OFF in UEFI.** NixOS doesn't ship a
