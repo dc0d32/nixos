@@ -348,6 +348,23 @@
             "/etc/ssh/ssh_host_ed25519_key.pub"
             "/etc/ssh/ssh_host_rsa_key"
             "/etc/ssh/ssh_host_rsa_key.pub"
+            # User/group state. With mutableUsers = true (the NixOS
+            # default), `passwd` writes to /etc/shadow at runtime; if
+            # we don't persist it, every reboot wipes the user's
+            # password and the activation script re-applies whatever
+            # `initialPassword` is in the host bridge. That includes
+            # the swaylock-rejects-correct-password failure mode —
+            # the password you set yesterday is gone. Persisting the
+            # whole shadow/passwd/group set is the canonical
+            # impermanence workaround. /etc/subuid + /etc/subgid are
+            # cheap to list and matter for podman/userns rootless
+            # containers.
+            "/etc/passwd"
+            "/etc/shadow"
+            "/etc/group"
+            "/etc/gshadow"
+            "/etc/subuid"
+            "/etc/subgid"
           ];
 
           # Per-user persistence — impermanence's NixOS module supports
