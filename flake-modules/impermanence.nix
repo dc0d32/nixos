@@ -164,6 +164,27 @@
             ".local/share/Trash"
             ".config/systemd"
             ".local/share/systemd"
+            # cliphist clipboard history DB. flake.modules.homeManager
+            # .desktop-shell installs cliphist + a pair of systemd-user
+            # watchers; without this entry the history is wiped every
+            # boot and Mod+Shift+C lands on an empty fuzzel picker.
+            ".local/share/cliphist"
+            # direnv allow-list + cached envs. flake.modules.homeManager
+            # .direnv enables direnv with nix-direnv; without this entry
+            # every `cd` into a project re-prompts `direnv allow` and
+            # re-evaluates the flake env from scratch.
+            ".local/share/direnv"
+            # gnome-keyring / libsecret store. Many GUI apps (browsers,
+            # bitwarden CLI, gh, vscode, JetBrains, signal, slack)
+            # default to libsecret for credential storage. Listing
+            # speculatively is harmless on hosts that don't install
+            # those apps.
+            ".local/share/keyrings"
+            # dconf — GTK app prefs (file manager state, gtk dark mode,
+            # cursor blink, per-app remembered window sizes). Browsers
+            # and GTK apps key off this; losing it resets a long tail
+            # of small UX state on every boot.
+            ".config/dconf"
           ];
         };
 
@@ -308,6 +329,18 @@
             # NetworkManager: declared connections + system-connection
             # secrets. Losing this means re-pairing every WiFi network.
             "/etc/NetworkManager/system-connections"
+            # NetworkManager runtime state — DHCP leases, last-known
+            # state, connection timestamps. Without this, every boot
+            # NM treats every known network as never-seen-before,
+            # which delays reconnect and re-runs DHCP from scratch.
+            "/var/lib/NetworkManager"
+            # AccountsService — user metadata consumed by ly + future
+            # greeters (avatar paths, last-session). Cheap to list.
+            "/var/lib/AccountsService"
+            # fwupd firmware DB cache. flake.modules.nixos.power
+            # enables fwupd; without this, every boot re-downloads
+            # the LVFS catalog before the first `fwupdmgr` call.
+            "/var/lib/fwupd"
             # UPower — battery history (informational; tiny).
             "/var/lib/upower"
             # fprintd / iwd state if the host has biometrics or iwd.
@@ -341,6 +374,11 @@
             # machine-id: many services key host identity off this.
             # Losing it churns systemd journals + breaks systemd-id128.
             "/etc/machine-id"
+            # RTC drift calibration written by hwclock --adjust. Tiny
+            # text file; losing it means the kernel re-learns RTC
+            # drift on every boot from scratch, which is harmless but
+            # wastes the calibration the previous boot did for us.
+            "/etc/adjtime"
             # SSH host keys: changing these on every boot is a recipe
             # for SSH client warnings and Tailscale-style identity
             # churn. Pin them.
