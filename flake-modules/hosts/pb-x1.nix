@@ -214,7 +214,13 @@ in
         # directly. See flake-modules/idle.nix and packages/idled/.
         extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
         shell = hmPkgs.zsh;
-        initialPassword = "changeme";
+        # Declarative password under impermanence (mutableUsers=false in
+        # flake.modules.nixos.impermanence). The hash lives under
+        # /persist so it survives the root wipe, and is read by
+        # update-users-groups on every activation. Create it once:
+        #   mkpasswd -m sha-512 | sudo tee /persist/passwords/${user}
+        #   sudo chmod 600 /persist/passwords/${user}
+        hashedPasswordFile = "/persist/passwords/${user}";
       };
 
       # Extra system packages specific to this host. Most packages live

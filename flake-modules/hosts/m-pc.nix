@@ -344,8 +344,11 @@ in
       #         `networkmanager` so she can join APs herself if/when
       #         the wired connection is unavailable.
       #
-      # Initial passwords are throwaway literals (`changeme`); rotate
-      # them with `passwd` on first login.
+      # Passwords are declarative under impermanence (mutableUsers=false):
+      # each login reads a hash from /persist/passwords/<login>, created
+      # once on the host with e.g.
+      #   mkpasswd -m sha-512 | sudo tee /persist/passwords/<login>
+      #   sudo chmod 600 /persist/passwords/<login>
       users.users =
         {
           ${primaryUser} = {
@@ -353,7 +356,7 @@ in
             description = primaryUser;
             extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" "timekpr" ];
             shell = hmPkgs.zsh;
-            initialPassword = "changeme";
+            hashedPasswordFile = "/persist/passwords/${primaryUser}";
           };
         }
         // lib.genAttrs kidUsers (kid: {
@@ -361,7 +364,7 @@ in
           description = kid;
           extraGroups = [ "video" "audio" "input" "networkmanager" ];
           shell = hmPkgs.zsh;
-          initialPassword = "changeme";
+          hashedPasswordFile = "/persist/passwords/${kid}";
         });
 
       # Minimal system package set; rest lives in home-manager.

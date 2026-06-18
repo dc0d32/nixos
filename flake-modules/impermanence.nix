@@ -386,23 +386,18 @@
             "/etc/ssh/ssh_host_ed25519_key.pub"
             "/etc/ssh/ssh_host_rsa_key"
             "/etc/ssh/ssh_host_rsa_key.pub"
-            # User/group state. With mutableUsers = true (the NixOS
-            # default), `passwd` writes to /etc/shadow at runtime; if
-            # we don't persist it, every reboot wipes the user's
-            # password and the activation script re-applies whatever
-            # `initialPassword` is in the host bridge. That includes
-            # the swaylock-rejects-correct-password failure mode —
-            # the password you set yesterday is gone. Persisting the
-            # whole shadow/passwd/group set is the canonical
-            # impermanence workaround. /etc/subuid + /etc/subgid are
-            # cheap to list and matter for podman/userns rootless
-            # containers.
-            "/etc/passwd"
-            "/etc/shadow"
-            "/etc/group"
-            "/etc/gshadow"
-            "/etc/subuid"
-            "/etc/subgid"
+            # NOTE: /etc/{passwd,shadow,group,gshadow,subuid,subgid} are
+            # deliberately NOT persisted. update-users-groups.pl rewrites
+            # them via atomic write+rename on EVERY activation, and
+            # rename() over a bind mountpoint fails with EBUSY — so
+            # bind-mounting them from /persist breaks every
+            # `nixos-rebuild switch`. They are regenerated
+            # deterministically each boot from declarative config plus
+            # the already-persisted /var/lib/nixos uid/gid maps, so there
+            # is nothing mutable to keep. Password persistence is handled
+            # declaratively instead — see `users.mutableUsers = false`
+            # below and the per-user hashedPasswordFile set in the host
+            # bridge.
           ];
 
           # Per-user persistence — impermanence's NixOS module supports
@@ -416,6 +411,23 @@
             })
             normalUsers;
         };
+
+        # Declarative users only. update-users-groups.pl rewrites
+        # /etc/{passwd,shadow,group,…} via atomic write+rename on every
+        # activation, which is incompatible with bind-mounting those
+        # files from /persist (rename over a mountpoint → EBUSY). And
+        # because impermanence wipes the root subvol — hence /etc/shadow
+        # — on every boot, a runtime `passwd` change could not survive
+        # anyway. So users are fully declarative and each login's
+        # password is pinned via a per-user hashedPasswordFile kept under
+        # /persist (set in the host bridge, e.g. /persist/passwords/<login>).
+        # mkDefault so a host can still opt back into mutable users if it
+        # provides its own /etc/shadow-survives-the-wipe mechanism.
+        #
+        # Retire when: a host needs runtime-mutable users AND ships a
+        #   mechanism to persist /etc/shadow across the wipe without
+        #   bind-mounting it (e.g. a boot/shutdown copy service).
+        users.mutableUsers = lib.mkDefault false;
 
         # impermanence binds /var/lib/nixos from /persist. If /persist
         # is missing the host won't allocate uids correctly on second
