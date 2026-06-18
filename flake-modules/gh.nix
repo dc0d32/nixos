@@ -9,15 +9,10 @@
   flake.modules.homeManager.gh = {
     programs.gh = {
       enable = true;
-      settings = {
-        git_protocol = "https";
-        prompt = "enabled";
-        editor = "nvim";
-        aliases = {
-          co = "pr checkout";
-          pv = "pr view";
-        };
-      };
+
+      # Do NOT set `settings` here — gh writes to config.yml at runtime
+      # (e.g. during `gh auth login`), and HM-managed settings produce a
+      # read-only Nix store symlink that gh cannot update.
 
       # Installs the gh credential helper into git config so HTTPS
       # pushes/pulls authenticate through the logged-in gh session.
