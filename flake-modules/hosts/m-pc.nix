@@ -344,11 +344,10 @@ in
       #         `networkmanager` so she can join APs herself if/when
       #         the wired connection is unavailable.
       #
-      # Passwords are declarative under impermanence (mutableUsers=false):
-      # each login reads a hash from /persist/passwords/<login>, created
-      # once on the host with e.g.
-      #   mkpasswd -m sha-512 | sudo tee /persist/passwords/<login>
-      #   sudo chmod 600 /persist/passwords/<login>
+      # Throwaway initial passwords (mutableUsers stays true); change
+      # them on first login with `passwd`. New hashes survive the
+      # impermanence root wipe via the /etc/shadow copy-sync in
+      # flake.modules.nixos.impermanence.
       users.users =
         {
           ${primaryUser} = {
@@ -356,7 +355,7 @@ in
             description = primaryUser;
             extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" "timekpr" ];
             shell = hmPkgs.zsh;
-            hashedPasswordFile = "/persist/passwords/${primaryUser}";
+            initialPassword = "changeme";
           };
         }
         // lib.genAttrs kidUsers (kid: {
@@ -364,7 +363,7 @@ in
           description = kid;
           extraGroups = [ "video" "audio" "input" "networkmanager" ];
           shell = hmPkgs.zsh;
-          hashedPasswordFile = "/persist/passwords/${kid}";
+          initialPassword = "changeme";
         });
 
       # Minimal system package set; rest lives in home-manager.

@@ -82,6 +82,22 @@
     let
       cfg = config.impermanence;
       normalUsers = lib.filterAttrs (_: u: u.isNormalUser) config.users.users;
+
+      # User/group database files that carry mutable runtime state
+      # (passwords, group membership, subordinate-id ranges). These are
+      # persisted by COPY (not bind mount) — see the restore/save wiring
+      # in the config block and the NOTE in the persistence file list.
+      authFiles = [ "passwd" "shadow" "group" "gshadow" "subuid" "subgid" ];
+      persistEtc = "${cfg.persistRoot}/etc";
+      saveAuthScript = pkgs.writeShellScript "persist-auth-save" ''
+        set -eu
+        ${pkgs.coreutils}/bin/install -d -m 0755 ${persistEtc}
+        for f in ${lib.concatStringsSep " " authFiles}; do
+          if [ -e /etc/$f ]; then
+            ${pkgs.coreutils}/bin/cp -a --remove-destination /etc/$f ${persistEtc}/$f
+          fi
+        done
+      '';
     in
     {
       imports = [ inputs.impermanence.nixosModules.impermanence ];
@@ -387,17 +403,15 @@
             "/etc/ssh/ssh_host_rsa_key"
             "/etc/ssh/ssh_host_rsa_key.pub"
             # NOTE: /etc/{passwd,shadow,group,gshadow,subuid,subgid} are
-            # deliberately NOT persisted. update-users-groups.pl rewrites
+            # NOT in this bind-mount list. update-users-groups.pl rewrites
             # them via atomic write+rename on EVERY activation, and
             # rename() over a bind mountpoint fails with EBUSY — so
-            # bind-mounting them from /persist breaks every
-            # `nixos-rebuild switch`. They are regenerated
-            # deterministically each boot from declarative config plus
-            # the already-persisted /var/lib/nixos uid/gid maps, so there
-            # is nothing mutable to keep. Password persistence is handled
-            # declaratively instead — see `users.mutableUsers = false`
-            # below and the per-user hashedPasswordFile set in the host
-            # bridge.
+            # bind-mounting them breaks every `nixos-rebuild switch`.
+            # They DO carry mutable state (passwords, group membership),
+            # so rather than bind-mount we persist them by COPY: restored
+            # from /persist before the `users` snippet on a wiped boot,
+            # and saved back on change + at shutdown. See the restore/save
+            # wiring just below the persistence block.
           ];
 
           # Per-user persistence — impermanence's NixOS module supports
@@ -412,22 +426,67 @@
             normalUsers;
         };
 
-        # Declarative users only. update-users-groups.pl rewrites
-        # /etc/{passwd,shadow,group,…} via atomic write+rename on every
-        # activation, which is incompatible with bind-mounting those
-        # files from /persist (rename over a mountpoint → EBUSY). And
-        # because impermanence wipes the root subvol — hence /etc/shadow
-        # — on every boot, a runtime `passwd` change could not survive
-        # anyway. So users are fully declarative and each login's
-        # password is pinned via a per-user hashedPasswordFile kept under
-        # /persist (set in the host bridge, e.g. /persist/passwords/<login>).
-        # mkDefault so a host can still opt back into mutable users if it
-        # provides its own /etc/shadow-survives-the-wipe mechanism.
+        # Native, persistent passwords under impermanence.
         #
-        # Retire when: a host needs runtime-mutable users AND ships a
-        #   mechanism to persist /etc/shadow across the wipe without
-        #   bind-mounting it (e.g. a boot/shutdown copy service).
-        users.mutableUsers = lib.mkDefault false;
+        # mutableUsers stays at its default (true) so `passwd`, `chsh`,
+        # `gpasswd`, usermod, … work natively. We persist the user/group
+        # database across the root wipe by COPYING it to /persist — never
+        # bind-mounting (update-users-groups.pl atomic-renames these files
+        # on every activation, and rename() over a mountpoint fails
+        # EBUSY).
+        #
+        # Restore runs as an activation snippet ordered BEFORE the `users`
+        # snippet: on a freshly-wiped boot /etc/shadow is missing, so we
+        # seed it (and the rest) from /persist, and update-users-groups
+        # then preserves those passwords (mutableUsers = true merges
+        # existing state). On a running-system `switch` the files are
+        # already populated, so the `! -s` guard skips the copy — we never
+        # clobber live state with a staler /persist copy.
+        #
+        # Retire when: a secrets framework owns user passwords, or NixOS
+        #   grows first-class persistence for mutable /etc state.
+        system.activationScripts.restorePersistedAuth = {
+          deps = [ "specialfs" ];
+          text = ''
+            for f in ${lib.concatStringsSep " " authFiles}; do
+              if [ ! -s /etc/$f ] && [ -f ${persistEtc}/$f ]; then
+                ${pkgs.coreutils}/bin/cp -a --remove-destination \
+                  ${persistEtc}/$f /etc/$f
+              fi
+            done
+          '';
+        };
+        # Run the user/group activation AFTER the restore so
+        # update-users-groups sees the persisted passwords. (deps is a
+        # list option — this merges with upstream's [ "specialfs" ].)
+        system.activationScripts.users.deps = [ "restorePersistedAuth" ];
+
+        # Save the live database back to /persist promptly on any change
+        # (passwd, gpasswd, usermod, …) …
+        systemd.services.persist-auth-save = {
+          description = "Copy /etc user/group database to /persist";
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = saveAuthScript;
+          };
+        };
+        systemd.paths.persist-auth-save = {
+          description = "Watch /etc user/group database for changes";
+          wantedBy = [ "multi-user.target" ];
+          pathConfig.PathChanged = map (f: "/etc/${f}") authFiles;
+        };
+        # … and once more at shutdown, to capture the very last change.
+        systemd.services.persist-auth-shutdown = {
+          description = "Persist /etc user/group database on shutdown";
+          wantedBy = [ "multi-user.target" ];
+          before = [ "shutdown.target" ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = "${pkgs.coreutils}/bin/true";
+            ExecStop = saveAuthScript;
+          };
+        };
 
         # impermanence binds /var/lib/nixos from /persist. If /persist
         # is missing the host won't allocate uids correctly on second
