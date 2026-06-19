@@ -1,14 +1,12 @@
 # Lockscreen — swaylock(-effects). PAM stack + per-user config.
 #
 # Cross-class:
-#   - NixOS side: security.pam.services.swaylock so the unlock prompt
-#     accepts the user's password. fprintAuth is OFF by default —
-#     password must always unlock without touching the fingerprint
-#     sensor. Hosts that want fingerprint unlock can set
-#     `security.pam.services.swaylock.fprintAuth = true;` in their
-#     bridge ONLY after fingerprints are enrolled; pam_fprintd blocks
-#     the PAM conversation waiting for a swipe on hosts where no
-#     fingerprints are registered, making swaylock appear hung.
+#   - NixOS side: security.pam.services.swaylock — password-ONLY auth.
+#     fprintd + howdy are explicitly stripped (they are auto-wired into
+#     every PAM service by services.{fprintd,howdy}.enable; on the
+#     lockscreen that broke password unlock — see the body comment and
+#     the 2026-06-18 session log). The screen must always unlock with a
+#     password; biometrics deliberately do NOT apply here.
 #   - HM side: install swaylock-effects + drop a config file.
 #
 # Pattern A: hosts opt in by importing. Importing IS enabling.
@@ -27,29 +25,27 @@
 # go back to a custom shell.
 { ... }:
 {
-  flake.modules.nixos.lockscreen = { config, ... }: {
-    # NixOS auto-prepends the correct linux-pam store path for
-    # pam_unix. fprintAuth is deliberately left false (the default)
-    # so password unlock always works. To enable fingerprint unlock
-    # on a specific host, add to its bridge AFTER enrolling prints:
-    #   security.pam.services.swaylock.fprintAuth = true;
+  flake.modules.nixos.lockscreen = { lib, ... }: {
+    # The lockscreen declares its OWN auth policy: password only.
+    #
+    # Both services.fprintd.enable and services.howdy.enable auto-wire
+    # pam_fprintd + pam_howdy as `sufficient` into EVERY pam service,
+    # including swaylock. biometrics.nix reorders those for
+    # sudo/login/ly/bitwarden but not swaylock, so the lockscreen used
+    # to inherit `fprintd → howdy → unix(try_first_pass) → deny`. With
+    # no fingerprints enrolled and pam_howdy clobbering PAM_AUTHTOK
+    # before the try_first_pass pam_unix, the correct password was
+    # rejected as "invalid credentials" (see the 2026-06-18 session
+    # log). Earlier unix-early / allowNullPassword hacks fought the
+    # symptom; this removes the cause.
+    #
+    # Stripping both biometrics leaves swaylock with `pam_unix →
+    # pam_deny` — deterministic, and immune to any future biometric
+    # change. Password must always unlock the screen; face/fingerprint
+    # still work for login/sudo/ly via their own (reordered) stacks.
     security.pam.services.swaylock = {
-      allowNullPassword = true;
-
-      # Add an early optional pam_unix before howdy to initialize the
-      # PAM_AUTHTOK buffer. Without this, howdy can interfere with
-      # the auth token and cause pam_unix's try_first_pass to fail.
-      # See docs/sessions/2026-04-29-idle-lock-fix.md for background
-      # on serial PAM bugs and why this matters.
-      rules.auth."unix-early" = {
-        control = "optional";
-        order = 0;
-        modulePath = "${config.security.pam.package}/lib/security/pam_unix.so";
-        settings = {
-          nullok = true;
-          likeauth = true;
-        };
-      };
+      fprintAuth = lib.mkForce false;
+      howdy.enable = lib.mkForce false;
     };
   };
 
