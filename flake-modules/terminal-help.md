@@ -5,7 +5,7 @@ command and pressing **Enter**. This page lists the handy commands set
 up on this machine. Most commands accept `--help` for more, and
 `tldr <command>` shows quick real-world examples.
 
-> Type `help` any time to see this page again.
+> Type `tools` any time to see this page again.
 
 ## 📂  Moving around folders
 
@@ -145,7 +145,7 @@ Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
 | `btop`  (or `htop`) | Live view of CPU / memory / processes |
 | `tldr cmd` | Quick examples for any command |
 | `man cmd` | Full manual for a command |
-| `help` | Show this page again |
+| `tools` | Show this page again |
 
 ---
 *Stuck? Add `--help` to a command, or run `tldr <command>`.*

@@ -14,10 +14,11 @@
 #
 # Retire when: the user no longer wants zsh as their interactive shell or
 # wants the companion tools split out per-feature.
+{ config, ... }:
 {
   flake.modules.homeManager.zsh = { pkgs, ... }:
     let
-      # The terminal guide shown by `help`. Kept as an external Markdown
+      # The terminal guide shown by `tools`. Kept as an external Markdown
       # file (terminal-help.md) rather than inline — it spans the whole
       # environment's commands and would be unwieldy in this module.
       helpDoc = ./terminal-help.md;
@@ -150,17 +151,10 @@
       programs.starship = {
         enable = true;
         enableZshIntegration = true;
-        settings = {
-          add_newline = false;
-          format = "$directory$git_branch$git_status$nix_shell$character";
-          directory = {
-            truncation_length = 3;
-          };
-          character = {
-            success_symbol = "[>](bold green)";
-            error_symbol = "[>](bold red)";
-          };
-        };
+        # Shared with the native-Windows PowerShell prompt: the single
+        # definition lives in flake-modules/windows/windows.nix and is
+        # rendered to ~/.config/starship.toml there too (see hm_win).
+        settings = config.flake.lib.starshipSettings;
       };
 
       programs.fzf = {
@@ -218,12 +212,15 @@
         # Misc
         numbat # unit-aware scientific calculator
 
-        # Verbose, kid-followable terminal guide — run `help`. Renders the
+        # Verbose, kid-followable terminal guide — run `tools`. Renders the
         # `helpDoc` Markdown (defined in the `let` above) through glow on a
         # terminal, falling back to plain text when piped/redirected. A
         # future terminal-tools bundle refactor can carry this along.
+        # (Named `tools`, not `help`: `help` is a builtin in PowerShell on
+        # the Windows side, so the command name is kept identical across
+        # both platforms.)
         (writeShellApplication {
-          name = "help";
+          name = "tools";
           runtimeInputs = [ coreutils glow ];
           text = ''
             if [ -t 1 ]; then
