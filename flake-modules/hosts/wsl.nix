@@ -106,9 +106,13 @@ let
 
   # Headless-friendly home-manager module shared by p@wsl and
   # p@wsl-arm. Uses the `dev` bundle (= base CLI tools + ai-cli +
-  # build-deps); GUI/desktop modules are intentionally excluded.
+  # build-deps) plus Azure tooling (az + azcopy) for working against
+  # internal Azure resources; GUI/desktop modules are intentionally
+  # excluded.
   hmModule = {
-    imports = config.flake.lib.bundles.homeManager.dev;
+    imports = config.flake.lib.bundles.homeManager.dev ++ [
+      config.flake.modules.homeManager.azure
+    ];
 
     programs.home-manager.enable = true;
 
