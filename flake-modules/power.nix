@@ -32,7 +32,7 @@
       HandlePowerKeyLongPress = lib.mkDefault "poweroff";
       HandleSuspendKey = lib.mkDefault "suspend";
       HandleHibernateKey = lib.mkDefault "ignore";
-      # We let idled (kernel-input idle daemon) drive idle-suspend
+      # We let swayidle (flake-modules/idle.nix) drive idle-suspend
       # timing rather than logind, so don't double up here.
       IdleAction = lib.mkDefault "ignore";
     };

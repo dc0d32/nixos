@@ -17,9 +17,9 @@
 # has wired). Face still works for sudo/login/ly.
 #
 # Lock is invoked by:
-#   - niri keybind Super+Alt+L              (see flake-modules/niri.nix)
-#   - idled stage "lock" timeout            (see flake-modules/idle.nix)
-#   - idled lock_before_sleep pre-suspend   (see flake-modules/idle.nix)
+#   - niri keybind Super+Alt+L → loginctl lock-session (niri.nix)
+#   - swayidle "lock" stage timeout         (see flake-modules/idle.nix)
+#   - swayidle before-sleep pre-suspend     (see flake-modules/idle.nix)
 #
 # Retire when: a future compositor ships its own lockscreen, or you
 # go back to a custom shell.
@@ -54,7 +54,7 @@
 
     # `daemonize` makes `swaylock` return immediately after the
     # locker has acquired the session-lock surface — important for
-    # idled / niri-keybind invocations that shouldn't block.
+    # swayidle / niri-keybind invocations that shouldn't block.
     xdg.configFile."swaylock/config".text = ''
       ignore-empty-password
       show-failed-attempts

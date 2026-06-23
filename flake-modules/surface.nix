@@ -149,7 +149,7 @@
           # lockscreen briefly then puts the laptop back to sleep.
           # Setting "ignore" here means the *only* way to suspend is
           # the lid switch, an explicit `systemctl suspend` from the
-          # CLI or a waybar tray action, or idled. That's an
+          # CLI or a waybar tray action, or swayidle. That's an
           # acceptable trade on a Surface, since the power button
           # was never reliable as an explicit-suspend trigger anyway.
           services.logind.settings.Login.HandlePowerKey = "ignore";

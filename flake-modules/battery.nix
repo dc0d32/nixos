@@ -12,9 +12,11 @@
 #     hibernate-resume "just works" — no resume_offset, no per-host
 #     kernelParam pin.
 #   * The "switch to power-saver at N%" trigger lives in the
-#     user-level idled daemon (packages/idled/), not here. This module
-#     publishes `battery.powerSaverPercent` as a NixOS module option so
-#     flake-modules/idle.nix can read it from the same NixOS config.
+#     user-level swayidle/battery module (flake-modules/idle.nix), not
+#     here. This module publishes `battery.powerSaverPercent` as a
+#     NixOS module option so a host bridge can set the value in one
+#     place; the HM `idle` module reads the same number from its own
+#     `idle.powerSaverPercent` option.
 #
 # Pattern A: hosts opt in by importing this module. Hosts without a
 # battery (desktops, VMs) simply don't import it.
@@ -73,8 +75,8 @@
           default = 40;
           description = ''
             Switch to power-profiles-daemon "power-saver" at this percent
-            on battery. Read by the user-side idled daemon, not by this
-            module directly.
+            on battery. Read by the user-side swayidle/battery module
+            (flake-modules/idle.nix), not by this module directly.
           '';
         };
         batteries = lib.mkOption {

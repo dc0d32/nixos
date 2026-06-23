@@ -11,5 +11,4 @@
 #     host bridge calls via `config.flake.lib.mkPkgs`).
 [
   (import ./nvim-treesitter-pin.nix)
-  (import ./idled.nix)
 ]

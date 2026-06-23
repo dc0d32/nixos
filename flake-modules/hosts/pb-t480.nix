@@ -385,8 +385,8 @@ in
       #           or adjust per-kid policies at runtime.
       #   - m,s : kid (no wheel, no sudo). They get
       #           video/audio so the desktop session works,
-      #           `input` so swaylock / idled function for them too
-      #           (idled reads /dev/input/event*), and
+      #           `input` is vestigial (was for the old idled daemon's
+      #           /dev/input access; harmless now), and
       #           `networkmanager` so they can connect to any wifi
       #           AP themselves without an admin around — important
       #           because the laptop travels (school, friends'

@@ -340,7 +340,7 @@ in
       #         can drive `timekpra` / `timekprc` to grant ad-hoc
       #         time or adjust m's policy at runtime without sudo.
       #   - m : kid (no wheel, no sudo). video/audio for the desktop
-      #         session, `input` for swaylock / idled,
+      #         session, `input` is vestigial (was for idled; harmless),
       #         `networkmanager` so she can join APs herself if/when
       #         the wired connection is unavailable.
       #

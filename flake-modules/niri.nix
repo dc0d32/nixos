@@ -222,10 +222,13 @@
         # App launcher — fuzzel (wired in flake-modules/desktop-shell.nix).
         "Super+Space".action.spawn = "fuzzel";
 
-        # Lockscreen — swaylock-effects (wired in flake-modules/lockscreen.nix).
-        # Daemonizes itself per the swaylock config; this spawn returns
-        # immediately so niri stays responsive.
-        "Super+Alt+L".action.spawn = "swaylock";
+        # Lockscreen — swaylock-effects (wired in flake-modules/
+        # lockscreen.nix), driven via logind. `loginctl lock-session`
+        # emits the logind Lock signal, which swayidle (flake-modules/
+        # idle.nix) handles by running the single-instance lock wrapper —
+        # so a manual lock and an idle lock share one code path and never
+        # stack. Returns immediately; niri stays responsive.
+        "Super+Alt+L".action.spawn = [ "loginctl" "lock-session" ];
 
         "XF86AudioRaiseVolume" = {
           allow-when-locked = true;

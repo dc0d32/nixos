@@ -195,8 +195,8 @@ in
         criticalAction = "Hibernate";
         # Switch to power-profiles-daemon "power-saver" at this
         # percent on battery; restored when we go back above it.
-        # Implemented by the UPower watcher inside the idled user
-        # daemon.
+        # Implemented by the battery timer in flake-modules/idle.nix
+        # (HM swayidle/idle module).
         powerSaverPercent = 40;
       };
 
@@ -210,8 +210,11 @@ in
       users.users.${user} = {
         isNormalUser = true;
         description = user;
-        # `input` group: required by idled to read /dev/input/event*
-        # directly. See flake-modules/idle.nix and packages/idled/.
+        # `input` group: vestigial. It was added for the old idled
+        # daemon's raw /dev/input access; niri + swaylock get input via
+        # logind/libseat, not this group, so it is now safe to drop.
+        # Retained for now to avoid an unrelated change; see
+        # docs/sessions/2026-06-22-retire-idled-swayidle.md.
         extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
         shell = hmPkgs.zsh;
         # Throwaway initial password; mutableUsers stays true, so change
