@@ -43,6 +43,28 @@
       initContent = ''
         bindkey -e
 
+        # Home / End / Delete — make the navigation keys work across
+        # terminals (alacritty, Windows Terminal, the VS Code terminal,
+        # and inside tmux). `bindkey -e` only gives the emacs chords
+        # (^A/^E); the physical Home/End keys send terminal-specific
+        # escape sequences that zsh doesn't bind by default. Cover the
+        # CSI (~app-cursor), SS3 (app-cursor) and vt-style `~` forms.
+        bindkey '^[[H'  beginning-of-line   # Home (CSI)
+        bindkey '^[OH'  beginning-of-line   # Home (SS3 / app-cursor)
+        bindkey '^[[1~' beginning-of-line   # Home (vt)
+        bindkey '^[[F'  end-of-line         # End  (CSI)
+        bindkey '^[OF'  end-of-line         # End  (SS3 / app-cursor)
+        bindkey '^[[4~' end-of-line         # End  (vt)
+        bindkey '^[[3~' delete-char         # Delete (forward)
+
+        # Ctrl+Left / Ctrl+Right — move by word. Cover the xterm
+        # modifyOtherKeys CSI form (alacritty, Windows Terminal, the
+        # VS Code terminal, tmux) and the older modifier form.
+        bindkey '^[[1;5D' backward-word     # Ctrl+Left
+        bindkey '^[[1;5C' forward-word      # Ctrl+Right
+        bindkey '^[[5D'   backward-word     # Ctrl+Left (legacy)
+        bindkey '^[[5C'   forward-word      # Ctrl+Right (legacy)
+
         # fzf-tab: must be sourced after compinit but before syntax-highlighting.
         # home-manager runs compinit and then sources initContent, so this is the
         # correct place. autosuggestions loads before initContent; that's fine —
