@@ -3,10 +3,15 @@
 # background audio prevents idle.
 #
 # Pattern A: importing this module IS enabling it. Per-stage timeouts
-# and `powerSaverPercent` are declared as HM module options (NOT
-# flake-parts singletons) so multi-laptop hosts can each carry their
-# own values without conflicts. Each HM config sets `idle = { … };`
-# inside its own `configurations.homeManager.<id>.module` block.
+# are declared as HM module options (NOT flake-parts singletons) so
+# multi-laptop hosts can each carry their own values without conflicts.
+# Each HM config sets `idle = { … };` inside its own
+# `configurations.homeManager.<id>.module` block.
+#
+# Battery → power-saver auto-switching is NOT here: power-profiles-daemon
+# 0.30+ does it natively (the BatteryAware feature, on by default), and
+# being a system daemon it applies to every user — see flake-modules/
+# battery.nix.
 #
 # Why HM-side options (not flake-parts top-level): the idle daemon
 # is a per-user service writing per-user config. With more than one
@@ -32,7 +37,6 @@
   flake.modules.homeManager.idle = { lib, pkgs, config, ... }:
     let
       cfg = config.idle;
-      batteryEnabled = cfg.powerSaverPercent > 0;
 
       # Single-instance lock wrapper. swaylock's config carries
       # `daemonize` (fork-and-return), so a stale instance leaves a pid;
@@ -46,67 +50,6 @@
       dpmsOffCmd = "${pkgs.niri}/bin/niri msg action power-off-monitors";
       dpmsOnCmd = "${pkgs.niri}/bin/niri msg action power-on-monitors";
       suspendCmd = "${pkgs.systemd}/bin/systemctl suspend";
-
-      # Battery → power-saver auto-switch (replaces idled's UPower watcher).
-      # Polled by a user timer below; only emitted on hosts that set a
-      # non-zero powerSaverPercent (i.e. laptops).
-      #
-      # Stateful, to faithfully match idled's watcher (which kept the
-      # snapshot in memory). A per-session snapshot file in
-      # $XDG_RUNTIME_DIR records the profile that was active when we
-      # entered saver mode:
-      #   * Descent (discharging, cap <= thresh): act ONCE. Snapshot the
-      #     current profile and switch to power-saver. While the snapshot
-      #     exists we never re-touch the profile, so a manual override
-      #     made below the threshold sticks (we don't fight the user).
-      #   * Ascent (charging, or cap >= thresh + hyst): restore the
-      #     snapshotted profile — but only if still on power-saver (if the
-      #     user moved it themselves, leave it) — then clear the snapshot.
-      # The runtime file is per-boot session state, exactly like idled's
-      # in-memory snapshot: a reboot mid-discharge just re-evaluates.
-      powerSaverScript = pkgs.writeShellApplication {
-        name = "battery-power-saver";
-        runtimeInputs = [ pkgs.power-profiles-daemon pkgs.coreutils ];
-        text = ''
-          thresh=${toString cfg.powerSaverPercent}
-          hyst=5
-          snap="''${XDG_RUNTIME_DIR:-/tmp}/battery-power-saver.snapshot"
-
-          bat=""
-          for d in /sys/class/power_supply/BAT*; do
-            [ -e "$d" ] || continue
-            bat="$d"; break
-          done
-          [ -n "$bat" ] || exit 0
-          cap=$(cat "$bat/capacity")
-          status=$(cat "$bat/status")
-          cur=$(powerprofilesctl get)
-
-          if [ "$status" = "Discharging" ] && [ "$cap" -le "$thresh" ]; then
-            # Descent: act once. Snapshot + switch only if not already
-            # managing saver mode (snapshot file absent).
-            if [ ! -e "$snap" ]; then
-              if [ "$cur" = "power-saver" ]; then
-                # Already in saver (user's own choice): restore to
-                # balanced later, don't change anything now.
-                printf 'balanced\n' > "$snap"
-              else
-                printf '%s\n' "$cur" > "$snap"
-                powerprofilesctl set power-saver
-              fi
-            fi
-          elif [ "$status" != "Discharging" ] || [ "$cap" -ge "$((thresh + hyst))" ]; then
-            # Ascent: restore the snapshotted profile, but only if we're
-            # still on power-saver (don't override a manual change).
-            if [ -e "$snap" ]; then
-              if [ "$cur" = "power-saver" ]; then
-                powerprofilesctl set "$(cat "$snap")"
-              fi
-              rm -f "$snap"
-            fi
-          fi
-        '';
-      };
     in
     {
       options.idle = {
@@ -124,20 +67,6 @@
           type = lib.types.int;
           default = 1800;
           description = "Seconds of inactivity before systemd suspend.";
-        };
-        powerSaverPercent = lib.mkOption {
-          type = lib.types.int;
-          default = 0;
-          description = ''
-            Switch to power-profiles-daemon "power-saver" at this
-            percent on battery; restored to "balanced" once back above
-            the threshold (with 5% hysteresis) or while charging. 0 =
-            disabled (no battery timer emitted). Mirrors
-            `battery.powerSaverPercent` on the NixOS side; declared here
-            too so hosts that import the HM idle module without also
-            wiring the NixOS battery module can still get the
-            power-saver behavior (or omit it).
-          '';
         };
       };
 
@@ -166,26 +95,6 @@
             before-sleep = "${lockScreen}";
             lock = "${lockScreen}";
           };
-        };
-
-        # ── Battery → power-saver auto-switch ───────────────────────
-        # Tiny polling timer; replaces the UPower watcher that used to
-        # live inside idled. Only wired on hosts with a non-zero
-        # powerSaverPercent (laptops). Desktops/VMs omit it entirely.
-        systemd.user.services.battery-power-saver = lib.mkIf batteryEnabled {
-          Unit.Description = "Switch power profile to power-saver on low battery";
-          Service = {
-            Type = "oneshot";
-            ExecStart = "${powerSaverScript}/bin/battery-power-saver";
-          };
-        };
-        systemd.user.timers.battery-power-saver = lib.mkIf batteryEnabled {
-          Unit.Description = "Poll battery level for power-saver switching";
-          Timer = {
-            OnBootSec = "60s";
-            OnUnitActiveSec = "60s";
-          };
-          Install.WantedBy = [ "timers.target" ];
         };
 
         # PipeWire → idle-inhibit bridge.

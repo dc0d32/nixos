@@ -11,12 +11,17 @@
 #     /dev/disk/by-partlabel/disk-main-swap automatically so
 #     hibernate-resume "just works" — no resume_offset, no per-host
 #     kernelParam pin.
-#   * The "switch to power-saver at N%" trigger lives in the
-#     user-level swayidle/battery module (flake-modules/idle.nix), not
-#     here. This module publishes `battery.powerSaverPercent` as a
-#     NixOS module option so a host bridge can set the value in one
-#     place; the HM `idle` module reads the same number from its own
-#     `idle.powerSaverPercent` option.
+#   * Automatic "power-saver on low battery" is handled NATIVELY by
+#     power-profiles-daemon 0.30+ (the BatteryAware feature, on by
+#     default and persisted in /var/lib/power-profiles-daemon — which
+#     impermanence keeps). PPD is a system daemon, so the switch applies
+#     to every user (kids included) regardless of who is logged in, via
+#     a clean profile hold that auto-restores when the battery recovers.
+#     It triggers at UPower's "low" level (PercentageLow, set below), so
+#     there is nothing to hand-roll here. This replaced an earlier custom
+#     watcher (in idled, then briefly a swayidle-side timer) — do NOT
+#     reintroduce one; just tune PercentageLow if the trigger point needs
+#     to move.
 #
 # Pattern A: hosts opt in by importing this module. Hosts without a
 # battery (desktops, VMs) simply don't import it.
@@ -25,11 +30,6 @@
 # INSIDE the NixOS module body (not at the flake-parts top level) so
 # each NixOS configuration gets its own option values. Declaring it
 # at the flake-parts level would make it a global singleton.
-#
-# Cross-class footprint: NixOS only for now. The companion HM-side
-# `idle` module will read the same `battery.*` options once it
-# migrates — once that happens, the option declaration may need to
-# move to a shared location both classes can reach.
 #
 # Retire when: no host in the repo runs on battery (all are docked
 #   desktops, VMs, or servers), OR the kernel's charge-threshold sysfs
@@ -68,15 +68,6 @@
             requires a swap area >= RAM (provision via the disko
             factory's `swapSize` arg). Falls back to PowerOff if
             hibernate fails.
-          '';
-        };
-        powerSaverPercent = lib.mkOption {
-          type = lib.types.int;
-          default = 40;
-          description = ''
-            Switch to power-profiles-daemon "power-saver" at this percent
-            on battery. Read by the user-side swayidle/battery module
-            (flake-modules/idle.nix), not by this module directly.
           '';
         };
         batteries = lib.mkOption {

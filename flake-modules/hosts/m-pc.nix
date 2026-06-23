@@ -125,7 +125,7 @@ let
 
     programs.home-manager.enable = true;
     # pb-t480 kids — m's muscle memory across the two hosts shouldn't
-    # diverge. No powerSaverPercent: there's no battery to monitor.
+    # diverge.
     idle = {
       lockAfter = 300;
       dpmsAfter = 420;
@@ -397,7 +397,7 @@ in
 
           # Auto-lock / DPMS / suspend timings (seconds). Same as
           # pb-x1 / pb-t480 to keep p's experience uniform across
-          # hosts. No powerSaverPercent: no battery to monitor.
+          # hosts.
           idle = {
             lockAfter = 300;
             dpmsAfter = 420;

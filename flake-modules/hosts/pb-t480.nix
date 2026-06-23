@@ -111,9 +111,9 @@ let
     ];
 
     programs.home-manager.enable = true;
-    # accounts — they leave sessions unattended more often. No
-    # powerSaverPercent (default 0 = disabled): kids' charge
-    # behavior isn't worth automating.
+    # Auto-lock / DPMS / suspend timings (seconds). Battery →
+    # power-saver switching is handled natively by power-profiles-daemon
+    # BatteryAware (system-wide, applies to every user), not per-user.
     idle = {
       lockAfter = 300;
       dpmsAfter = 420;
@@ -369,7 +369,6 @@ in
         chargeStartThreshold = 75;
         criticalPercent = 10;
         criticalAction = "Hibernate";
-        powerSaverPercent = 40;
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported
@@ -457,15 +456,14 @@ in
 
           programs.home-manager.enable = true;
 
-          # Auto-lock / DPMS / suspend timings (seconds), plus the
-          # power-saver-percent threshold mirrored from battery on
-          # the NixOS side (40% — see battery block in the NixOS
-          # module above). Same values as pb-x1.
+          # Auto-lock / DPMS / suspend timings (seconds). Battery →
+          # power-saver switching is handled natively by
+          # power-profiles-daemon BatteryAware (system-wide), not here.
+          # Same values as pb-x1.
           idle = {
             lockAfter = 300;
             dpmsAfter = 420;
             suspendAfter = 900;
-            powerSaverPercent = 40;
           };
 
           # EasyEffects per-host data — shared with kids on this host.

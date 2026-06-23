@@ -72,8 +72,7 @@ in
   # NOTE: `idle.*` is set inside `configurations.homeManager."${user}@${hostName}".module`
   # below, NOT here. idle.nix declares its options as HM module
   # options (per-HM-config) so multi-laptop hosts can each carry
-  # their own timeout policies and powerSaverPercent without
-  # singleton conflicts.
+  # their own timeout policies without singleton conflicts.
 
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
@@ -193,11 +192,6 @@ in
         # hibernate fails.
         criticalPercent = 10;
         criticalAction = "Hibernate";
-        # Switch to power-profiles-daemon "power-saver" at this
-        # percent on battery; restored when we go back above it.
-        # Implemented by the battery timer in flake-modules/idle.nix
-        # (HM swayidle/idle module).
-        powerSaverPercent = 40;
       };
 
       # Bootloader policy lives in flake-modules/boot.nix (imported
@@ -259,16 +253,13 @@ in
       # HM manages itself.
       programs.home-manager.enable = true;
 
-      # Auto-lock / DPMS / suspend timings (seconds), plus the
-      # power-saver-percent threshold mirrored from battery on the
-      # NixOS side (40% — see battery block in the NixOS module
-      # above). Declared here because idle.nix is HM-side and its
-      # options are scoped per-HM-config.
+      # Auto-lock / DPMS / suspend timings (seconds). (Battery →
+      # power-saver switching is handled natively by power-profiles-daemon
+      # BatteryAware — see flake-modules/battery.nix — not here.)
       idle = {
         lockAfter = 300;
         dpmsAfter = 420;
         suspendAfter = 900;
-        powerSaverPercent = 40;
       };
 
       # EasyEffects per-host data: preset directory, IRS directory,

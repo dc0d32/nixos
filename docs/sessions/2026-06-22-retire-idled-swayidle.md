@@ -160,3 +160,38 @@ Recovery still only restores if still on power-saver (never overrides a
 manual change). Verified with a mocked state-machine test. Remaining
 difference vs idled: 60s poll latency instead of event-driven (accepted;
 the operator kept the simple timer over a UPower watcher).
+
+## Follow-up: delete the battery script entirely — PPD does it natively
+
+Request: the %-based power-saver switch should apply even in the kids'
+sessions (it was a per-user HM timer, configured only for `p`).
+
+Investigating the system-level route surfaced a better answer:
+**power-profiles-daemon 0.30 has a native `BatteryAware` feature** (a
+writable D-Bus property, on by default, persisted in
+/var/lib/power-profiles-daemon/state.ini — which impermanence keeps). It
+automatically holds the power-saver profile when the battery is low, and
+because PPD is a system daemon it applies to **every user regardless of
+who is logged in** — exactly the requirement. It uses a proper profile
+*hold* that auto-restores on recovery, which is cleaner than idled's (or
+our) snapshot logic. This is the off-the-shelf solution that didn't
+exist when idled was written (it landed in PPD 0.30).
+
+Trigger: UPower's "low" level (`PercentageLow`, 20% in battery.nix). Not
+configurable in PPD itself — only via UPower. Operator chose to keep 20%
+(vs idled's 40%), leaving UPower's low-battery warning at the normal
+point.
+
+So the custom battery watcher — idled's, then the swayidle-side timer,
+then the stateful version — is **deleted entirely**. Removed from
+idle.nix: the script, the user service+timer, and the
+`idle.powerSaverPercent` option. Removed from battery.nix: the
+`battery.powerSaverPercent` option (documented that PPD BatteryAware now
+owns this; tune `PercentageLow` to move the trigger). Removed the
+`powerSaverPercent = 40` settings + stale comments from pb-x1 and
+pb-t480. Net: less code, and the behavior the operator actually wanted
+(system-wide, kids included) for free.
+
+Builds: pb-x1 system + all HM configs; m-pc/pb-t480 placeholder
+toplevels. `nix flake check --impure` passes. No custom battery units
+remain.
