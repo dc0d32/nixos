@@ -109,3 +109,39 @@ also removes a blanket keystroke-read (keylogger-grade) capability.
 2. Lock via `Super+Alt+L` and via idle — password must unlock (the
    `NoNewPrivileges` fix).
 3. Background audio (e.g. a song) holds off the idle lock.
+
+## Follow-up audit (same session): idled feature parity + a bridge fix
+
+Pulled idled's deleted source back from git and went module by module to
+confirm nothing was silently dropped.
+
+**Fully covered** by swayidle / the compositor / the pipewire bridge:
+idle detection, staged lock→dpms→suspend, DPMS resume, lock-before-sleep
+(swaylock daemonizes *after* acquiring the lock, so it replaces idled's
+`lock_settle_ms` hack), no-re-lock-from-elapsed-time, lid/power-key not
+counted as activity, input hotplug, and audio/video-keeps-awake.
+
+**Behavioral difference — battery power-saver:** idled was event-driven
+(UPower signal) and restored the *previously active* profile; the new
+timer polls every 60s and restores to `balanced` specifically. So up to
+60s latency, and a host normally on `performance` would be left on
+`balanced` after a low-battery dip. Accepted.
+
+**Genuine gaps (accepted, not closed):**
+- `org.freedesktop.ScreenSaver` D-Bus server is gone. Apps that inhibit
+  idle *only* via that API **and** produce no audio (silent slideshow,
+  some e-readers/Electron) won't hold off the lock. Everything with
+  audio is covered by the pipewire→wayland bridge; browsers/mpv use the
+  native wayland idle-inhibit protocol. Operator chose to leave it.
+- logind idle inhibitors (`systemd-inhibit --what=idle`) are no longer
+  honored — niri/swayidle respect the wayland idle-inhibit protocol, not
+  logind `BlockInhibited`. Niche; accepted.
+
+**Regression found & fixed:** the `wayland-pipewire-idle-inhibit` unit
+was sitting `failed` on the live system. `--idle-inhibitor wayland`
+newly needs `WAYLAND_DISPLAY`; the unit started before the compositor
+env was imported, failed fast 6× and tripped the start-limit into a
+stranded `failed` state. Fixed by adding
+`ConditionEnvironment = "WAYLAND_DISPLAY"` (the same guard HM's swayidle
+unit uses) so it waits cleanly instead of failing. Reset+restarted on
+the live host (now active) and fixed in idle.nix for future boots.

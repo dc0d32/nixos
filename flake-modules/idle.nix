@@ -176,6 +176,14 @@
         systemd.user.services.wayland-pipewire-idle-inhibit = {
           Unit = {
             Description = "PipeWire → Wayland idle-inhibit bridge";
+            # `--idle-inhibitor wayland` needs WAYLAND_DISPLAY in the
+            # unit env. Gate on it (same pattern as HM's swayidle unit):
+            # if the compositor env isn't imported yet the unit is
+            # cleanly skipped rather than failing fast 6× and tripping
+            # the start-limit into a stranded `failed` state — observed
+            # on the d-bus→wayland switch. graphical-session ordering
+            # provides the env on a normal boot.
+            ConditionEnvironment = "WAYLAND_DISPLAY";
             # Order after easyeffects so the PipeWire node graph has the
             # DSP filter chain in place before the bridge enumerates it;
             # enumerating mid-construction has been observed to kill the
