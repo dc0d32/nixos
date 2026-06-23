@@ -44,6 +44,22 @@
 # eval is fatal if it fails: silently skipping the pre-wipe is what
 # the previous attempt did, and that masked the bug.
 #
+# Placeholder hardware config: a brand-new host ships
+# hosts/<name>/hardware-configuration.nix as the all-zeros placeholder,
+# which carries a NIXOS_ALLOW_PLACEHOLDER assertion that aborts
+# evaluation of system.build.toplevel. That creates a chicken-and-egg
+# for a fresh install: you can't build the system until the hardware
+# config is real, but you can't generate the real one until the machine
+# is running. This script breaks the cycle by handing nixos-anywhere
+# `--generate-hardware-config nixos-generate-config <path>` whenever the
+# host's file is still the placeholder. nixos-anywhere then SSHes into
+# the target after kexec, runs `nixos-generate-config --show-hardware-
+# config --no-filesystems` (the --no-filesystems matters — disko owns
+# fileSystems/swapDevices), writes the result over the placeholder, and
+# only THEN builds toplevel — so the assertion never fires. The flag is
+# omitted once the file is real, so re-paving an already-provisioned
+# host respects its committed hardware-configuration.nix.
+#
 # This script is intentionally minimal beyond that — `nixos-anywhere
 # --help` documents every flag if you need to customize further.
 #
@@ -95,7 +111,35 @@ ssh "root@${TARGET}" "set -eux
     udevadm settle"
 echo
 
-exec nix run github:nix-community/nixos-anywhere -- \
+# If the host's hardware-configuration.nix is still the placeholder,
+# have nixos-anywhere regenerate it on the real hardware before the
+# build (see the header note). Detected by the NIXOS_ALLOW_PLACEHOLDER
+# assertion marker, which only the placeholder file carries.
+HW_CONFIG="${FLAKE_ROOT}/hosts/${HOSTNAME}/hardware-configuration.nix"
+NA_ARGS=()
+PLACEHOLDER=0
+if grep -q 'NIXOS_ALLOW_PLACEHOLDER' "$HW_CONFIG" 2>/dev/null; then
+    PLACEHOLDER=1
+    echo "==> ${HOSTNAME}: hardware-configuration.nix is still the placeholder"
+    echo "    nixos-anywhere will regenerate it on the target"
+    echo "    (nixos-generate-config --no-filesystems) before building."
+    echo
+    NA_ARGS+=(--generate-hardware-config nixos-generate-config "$HW_CONFIG")
+fi
+
+nix run github:nix-community/nixos-anywhere -- \
     --flake "${FLAKE_ROOT}#${HOSTNAME}" \
     --target-host "root@${TARGET}" \
+    ${NA_ARGS+"${NA_ARGS[@]}"} \
     "$@"
+
+# set -e guarantees we only reach here on a successful install.
+if [[ ${PLACEHOLDER} == 1 ]]; then
+    rel="${HW_CONFIG#"${FLAKE_ROOT}"/}"
+    echo
+    echo "==> ${rel} was regenerated from the real hardware and is now"
+    echo "    dirty in your working tree. Review and commit it so the flake"
+    echo "    builds without the placeholder next time:"
+    echo "        git add ${rel}"
+    echo "        git commit -m '${HOSTNAME}: real hardware-configuration.nix'"
+fi

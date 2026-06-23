@@ -133,9 +133,7 @@ out run:
 `install.sh` is a thin wrapper around `nixos-anywhere --flake
 .#<hostname> --target-host root@<target-ip>`. It:
 
-1. Builds the host's disko script + system closure on the local
-   machine.
-2. SSHes to the target and pre-wipes the primary disk
+1. SSHes to the target and pre-wipes the primary disk
    (`wipefs` + `sgdisk --zap-all` + zero first 16 MiB +
    `blockdev --flushbufs` + `partprobe` + `udevadm settle`). The
    `blockdev --flushbufs` step matters: on a repave the installer
@@ -143,9 +141,17 @@ out run:
    previous install, which survives mkfs and breaks disko's
    subvolume-creation mount with `vfat: Unknown parameter
    'subvol'`. Flushing the page cache forces fresh re-detection.
-3. Partitions + formats the target's disks per `disko.devices`.
-4. Copies the closure to the target and runs `nixos-install`.
-5. Reboots into the new system.
+2. If `hosts/<hostname>/hardware-configuration.nix` is still the
+   placeholder, hands nixos-anywhere `--generate-hardware-config
+   nixos-generate-config <path>` so it regenerates the file on the real
+   hardware (with `--no-filesystems`, since disko owns the filesystems)
+   *before* building — without this a fresh host can't build because the
+   placeholder assertion aborts `system.build.toplevel`. Skipped once
+   the file is real, so re-paves respect the committed config.
+3. Builds the host's disko script + system closure.
+4. Partitions + formats the target's disks per `disko.devices`.
+5. Copies the closure to the target and runs `nixos-install`.
+6. Reboots into the new system.
 
 Pre-flight on bare metal:
 
@@ -161,9 +167,14 @@ Pre-flight on bare metal:
 
 After first boot:
 
-1. Regenerate hardware-configuration.nix from the running kernel:
+1. Commit the regenerated hardware-configuration.nix. For a host that
+   was installed from the placeholder, `install.sh` already had
+   nixos-anywhere regenerate `hosts/<hostname>/hardware-configuration.nix`
+   on the real hardware (via `--generate-hardware-config`), so it is
+   sitting dirty in your working tree — just review and
+   `git add` + commit it. (To regenerate manually later:
    `sudo nixos-generate-config --no-filesystems --show-hardware-config
-   > hosts/<hostname>/hardware-configuration.nix`. Commit + push.
+   > hosts/<hostname>/hardware-configuration.nix`.)
 2. Bootstrap restic backup (if the host imports
    `flake.modules.nixos.backup`):
    `./scripts/init-backup.sh`. Prompts for the NAS account
