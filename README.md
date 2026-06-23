@@ -76,6 +76,10 @@ home-manager switch --flake .#'p@wsl-arm'
 # On the MacBook Air (macOS — userland only, no nixos-rebuild)
 home-manager switch --flake .#'p@pb-mb'
 
+# Generate + push the native-Windows dotfiles (run inside WSL; builds
+# on demand, independent of home-manager switch). See "Native Windows".
+hm_win
+
 # Update all inputs
 nix flake update
 
@@ -164,6 +168,49 @@ backup) are absent. `aarch64-darwin` is intentionally **not** added to
 itself, and `homeConfigurations` is published regardless, so leaving it
 out keeps `nix flake check` from carrying an un-buildable check on the
 Linux hosts.
+
+## Native Windows (`hm_win`)
+
+Nix can't run natively on Windows, so there's no home-manager there. But
+the *dotfiles* are just text, so `flake-modules/windows/` **generates**
+the native-Windows config from Nix (a PowerShell `$PROFILE`, a shared
+`starship.toml`, a Scoop install script, and a `winget` configuration)
+and a WSL-side command **`hm_win`** copies them into the Windows profile
+(`/mnt/c/Users/<you>/…`). It copies rather than symlinks (NTFS can't
+follow WSL links), backing up anything it replaces.
+
+Workflow:
+
+```sh
+# inside WSL — builds the bundle from your ~/nixos checkout and pushes it:
+hm_win
+```
+
+Generation is gated behind `hm_win` alone: the artifacts are a separate
+flake package (`packages.<system>.windows-dotfiles`), and `hm_win` is a
+thin wrapper that `nix build`s it on demand. A plain `home-manager
+switch` (`hm`/`nr`) installs only the small wrapper and never builds or
+regenerates any Windows content.
+
+`hm_win` finds the Windows profile by querying the Windows interop at
+runtime (`pwsh`/`cmd` — a plain shell query on your machine, so no
+`--impure`), which adapts to the real account name and an
+OneDrive-redirected Documents folder. If the interop isn't reachable it
+errors out asking you to set `HM_WIN_USER=<your-windows-username>`.
+
+Then, once, in PowerShell on Windows: run the generated
+`~\.config\nixwin\scoop-install.ps1` (installs the CLI toolkit + a Nerd
+Font via Scoop; `winget configure ~\.config\nixwin\winget.configuration.yaml`
+handles PowerShell 7 / Windows Terminal / Azure CLI), then restart the
+terminal.
+
+What's shared from one definition: the **starship prompt**
+(`flake.lib.starshipSettings`, also used by zsh), the **`terminal-help.md`**
+guide (the `tools` command renders it on both sides), and the alias set.
+`hm_win` also sets the Windows Terminal default **font** (RecMono Nerd
+Font) via a non-destructive `jq` merge, leaving all keybindings at their
+defaults. `hm_win` is imported only on the WSL hosts (it needs `/mnt/c`).
+Tools with no native Windows build (`lnav`, `tmux`) are omitted.
 
 ## Installing on real hardware
 
