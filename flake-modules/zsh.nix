@@ -69,6 +69,15 @@
           bindkey '^[[5D'   backward-word     # Ctrl+Left (legacy)
           bindkey '^[[5C'   forward-word      # Ctrl+Right (legacy)
 
+          # PageUp / PageDown — swallow them in the line editor so the
+          # terminal (or tmux) handles scrollback and zsh doesn't
+          # self-insert the stray `~` from the unbound ^[[5~ / ^[[6~
+          # escape sequences. `zle -N` a do-nothing widget and bind both.
+          _pager_noop() { }
+          zle -N _pager_noop
+          bindkey '^[[5~' _pager_noop         # PageUp
+          bindkey '^[[6~' _pager_noop         # PageDown
+
           # fzf-tab: must be sourced after compinit but before syntax-highlighting.
           # home-manager runs compinit and then sources initContent, so this is the
           # correct place. autosuggestions loads before initContent; that's fine —
