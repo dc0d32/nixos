@@ -50,6 +50,12 @@ let
       config.flake.modules.nixos.wsl
 
       config.flake.modules.nixos.nix-settings
+      # Real dynamic loader at /lib64/ld-linux-x86-64.so.2 so prebuilt
+      # "generic Linux" binaries run — specifically the VS Code
+      # Remote-WSL server's bundled node under ~/.vscode-server/.
+      # Without this, NixOS's stub loader rejects it and the WSL
+      # extension can't connect. See flake-modules/nix-ld.nix.
+      config.flake.modules.nixos.nix-ld
       config.flake.modules.nixos.system-utils
       config.flake.modules.nixos.users
       config.flake.modules.nixos.locale
