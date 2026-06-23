@@ -84,10 +84,14 @@ in
     # diffs through delta to match `git diff` output.
     programs.lazygit = {
       enable = true;
-      settings.git.paging = {
-        colorArg = "always";
-        pager = "delta --dark --paging=never";
-      };
+      # lazygit 0.61 replaced the single `git.paging` object with a
+      # `git.pagers` array. Use the new schema directly: home-manager
+      # writes this config as a read-only /nix/store symlink, so if the
+      # on-disk schema were stale lazygit would try to migrate it in
+      # place on launch and fail with "read-only file system".
+      settings.git.pagers = [
+        { pager = "delta --dark --paging=never"; }
+      ];
     };
   };
 }
