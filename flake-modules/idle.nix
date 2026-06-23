@@ -50,12 +50,28 @@
       # Battery → power-saver auto-switch (replaces idled's UPower watcher).
       # Polled by a user timer below; only emitted on hosts that set a
       # non-zero powerSaverPercent (i.e. laptops).
+      #
+      # Stateful, to faithfully match idled's watcher (which kept the
+      # snapshot in memory). A per-session snapshot file in
+      # $XDG_RUNTIME_DIR records the profile that was active when we
+      # entered saver mode:
+      #   * Descent (discharging, cap <= thresh): act ONCE. Snapshot the
+      #     current profile and switch to power-saver. While the snapshot
+      #     exists we never re-touch the profile, so a manual override
+      #     made below the threshold sticks (we don't fight the user).
+      #   * Ascent (charging, or cap >= thresh + hyst): restore the
+      #     snapshotted profile — but only if still on power-saver (if the
+      #     user moved it themselves, leave it) — then clear the snapshot.
+      # The runtime file is per-boot session state, exactly like idled's
+      # in-memory snapshot: a reboot mid-discharge just re-evaluates.
       powerSaverScript = pkgs.writeShellApplication {
         name = "battery-power-saver";
         runtimeInputs = [ pkgs.power-profiles-daemon pkgs.coreutils ];
         text = ''
           thresh=${toString cfg.powerSaverPercent}
           hyst=5
+          snap="''${XDG_RUNTIME_DIR:-/tmp}/battery-power-saver.snapshot"
+
           bat=""
           for d in /sys/class/power_supply/BAT*; do
             [ -e "$d" ] || continue
@@ -65,10 +81,29 @@
           cap=$(cat "$bat/capacity")
           status=$(cat "$bat/status")
           cur=$(powerprofilesctl get)
+
           if [ "$status" = "Discharging" ] && [ "$cap" -le "$thresh" ]; then
-            [ "$cur" = "power-saver" ] || powerprofilesctl set power-saver
+            # Descent: act once. Snapshot + switch only if not already
+            # managing saver mode (snapshot file absent).
+            if [ ! -e "$snap" ]; then
+              if [ "$cur" = "power-saver" ]; then
+                # Already in saver (user's own choice): restore to
+                # balanced later, don't change anything now.
+                printf 'balanced\n' > "$snap"
+              else
+                printf '%s\n' "$cur" > "$snap"
+                powerprofilesctl set power-saver
+              fi
+            fi
           elif [ "$status" != "Discharging" ] || [ "$cap" -ge "$((thresh + hyst))" ]; then
-            { [ "$cur" = "power-saver" ] && powerprofilesctl set balanced; } || true
+            # Ascent: restore the snapshotted profile, but only if we're
+            # still on power-saver (don't override a manual change).
+            if [ -e "$snap" ]; then
+              if [ "$cur" = "power-saver" ]; then
+                powerprofilesctl set "$(cat "$snap")"
+              fi
+              rm -f "$snap"
+            fi
           fi
         '';
       };

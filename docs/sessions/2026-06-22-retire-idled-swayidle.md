@@ -145,3 +145,18 @@ stranded `failed` state. Fixed by adding
 `ConditionEnvironment = "WAYLAND_DISPLAY"` (the same guard HM's swayidle
 unit uses) so it waits cleanly instead of failing. Reset+restarted on
 the live host (now active) and fixed in idle.nix for future boots.
+
+## Follow-up: tighten the battery power-saver to match idled
+
+The first replacement was a stateless poller, which differed from idled
+in two ways. Tightened by adding a per-session snapshot file
+($XDG_RUNTIME_DIR/battery-power-saver.snapshot, the file analogue of
+idled's in-memory snapshot):
+- Restores the **previously-active** profile (e.g. performance), not a
+  hardcoded "balanced".
+- Acts once on descent; while the snapshot exists it never re-touches
+  the profile, so a manual override below the threshold sticks.
+Recovery still only restores if still on power-saver (never overrides a
+manual change). Verified with a mocked state-machine test. Remaining
+difference vs idled: 60s poll latency instead of event-driven (accepted;
+the operator kept the simple timer over a UPower watcher).
