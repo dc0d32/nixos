@@ -1,5 +1,19 @@
-# zsh + companion shell tools (starship, fzf, zoxide, eza, dircolors,
-# ripgrep/fd/bat/jq/htop) — interactive shell environment.
+# zsh + companion shell tools (starship, fzf, zoxide, eza, atuin,
+# dircolors, ripgrep/fd/bat/jq/htop, plus a data-science / ML CLI
+# toolkit: duckdb, visidata, miller, qsv, gron, jless, dasel, lnav,
+# difftastic, glow, tealdeer, uv, numbat) — interactive shell
+# environment.
+#
+# Git tooling (delta as the diff pager, lazygit TUI, git-lfs) is wired
+# in flake-modules/git.nix, not here.
+#
+# These are dropped here (the existing "terminal tools" home) as a
+# pragmatic stop-gap; a future refactor will split them into a dedicated
+# `terminal-tools` workload bundle (see the refactor-workload-bundles
+# follow-up).
+#
+# Retire when: the user no longer wants zsh as their interactive shell or
+# wants the companion tools split out per-feature.
 #
 # Retire when: the user no longer wants zsh as their interactive shell or
 # wants the companion tools split out per-feature.
@@ -24,6 +38,7 @@
         gs = "git status";
         gd = "git diff";
         gl = "git log --oneline --graph --decorate";
+        lg = "lazygit";
       };
       initContent = ''
         bindkey -e
@@ -128,12 +143,45 @@
       enableZshIntegration = true;
     };
 
+    # Searchable, SQLite-backed shell history (Ctrl-R + up-arrow). The
+    # store at ~/.local/share/atuin is already carved out in
+    # flake-modules/impermanence.nix, so history survives the root wipe.
+    programs.atuin = {
+      enable = true;
+      enableZshIntegration = true;
+    };
+
     home.packages = with pkgs; [
       ripgrep
       fd
       bat
       jq
       htop
+
+      # ── Data-science / ML CLI toolkit ───────────────────────────
+      # Tabular data wrangling
+      duckdb # in-process SQL over CSV/TSV/JSON/Parquet
+      visidata # interactive TUI for tabular data (vd)
+      miller # awk/cut/join/stats for CSV/TSV/JSON (mlr)
+      qsv # fast CSV toolkit (stats/dedup/join/sample)
+      # JSON / structured data
+      gron # flatten JSON into greppable lines
+      jless # interactive JSON pager/viewer
+      dasel # query+convert JSON/YAML/TOML/CSV/XML
+      # Logs
+      lnav # log-file navigator with SQL over lines
+      # Git / diff — delta (pager), lazygit (TUI) and git-lfs are wired
+      # in flake-modules/git.nix. difftastic stays a standalone `difft`
+      # here: home-manager asserts only one differ may own git
+      # integration, and that slot is delta's.
+      difftastic # structural (AST) diff (difft)
+      # Python / ML
+      uv # fast Python package + venv manager
+      # Docs / help
+      glow # render markdown in the terminal
+      tealdeer # fast tldr cheatsheets (tldr)
+      # Misc
+      numbat # unit-aware scientific calculator
     ];
   };
 }

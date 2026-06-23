@@ -1,4 +1,5 @@
-# Git config — identity (name, email) and global ignores/aliases.
+# Git config — identity (name, email), global ignores/aliases, and the
+# git tooling layer: delta (diff pager), lazygit (TUI), git-lfs.
 #
 # Identity is set by literal values in the host bridge:
 #   git.name  = "Foo Bar";
@@ -51,9 +52,42 @@ in
           ci = "commit";
           br = "branch";
           lg = "log --oneline --graph --decorate --all";
+          # On-demand structural (AST) diff via difftastic, leaving
+          # delta as the default pager for plain `git diff`. difftastic
+          # is installed in flake-modules/zsh.nix.
+          dft = "-c diff.external=difft diff";
         };
       };
       ignores = [ ".DS_Store" "*.swp" ".direnv/" "result" "result-*" ];
+
+      # git-lfs: installs the binary AND registers the smudge/clean/
+      # process filters in git config, so `git lfs track`d artifacts
+      # (models, datasets) work without a manual per-repo `git lfs
+      # install`.
+      lfs.enable = true;
+    };
+
+    # delta — syntax-highlighted diff pager. enableGitIntegration wires
+    # it as core.pager / interactive.diffFilter; must be set explicitly
+    # (HM deprecated the implicit default).
+    programs.delta = {
+      enable = true;
+      enableGitIntegration = true;
+      options = {
+        navigate = true; # n / N to jump between diff hunks
+        line-numbers = true;
+        side-by-side = true;
+      };
+    };
+
+    # lazygit — terminal UI for git (aliased `lg` in zsh). Pipe its
+    # diffs through delta to match `git diff` output.
+    programs.lazygit = {
+      enable = true;
+      settings.git.paging = {
+        colorArg = "always";
+        pager = "delta --dark --paging=never";
+      };
     };
   };
 }
