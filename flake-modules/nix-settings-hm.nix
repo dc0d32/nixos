@@ -33,43 +33,69 @@
 #   the flake collapses to a single account (then merging this back into
 #   nix-settings.nix as a cross-class module makes more sense).
 { ... }:
+let
+  # Two-stage GC, shared by the Linux (systemd-user) and Darwin
+  # (launchd-agent) schedulers below so the policy never drifts. Stage 1
+  # sweeps all user-owned profiles by age, stage 2 enforces a
+  # 15-generation floor on the HM profile. Path to the HM profile is the
+  # standard XDG_STATE_HOME location used by home-manager since release
+  # 22.11; $HOME is expanded at runtime, not Nix-eval time, so the same
+  # script works for any user who imports this module.
+  gcScript = pkgs: pkgs.writeShellScript "nix-gc-twostage-user" ''
+    set -eu
+    echo "Stage 1: nix-collect-garbage --delete-older-than 14d"
+    ${pkgs.nix}/bin/nix-collect-garbage --delete-older-than 14d
+    echo "Stage 2: keep last 15 HM generations"
+    ${pkgs.nix}/bin/nix-env \
+      --profile "$HOME/.local/state/nix/profiles/home-manager" \
+      --delete-generations +15
+  '';
+in
 {
-  flake.modules.homeManager.nix-settings = { pkgs, ... }: {
-    systemd.user.services.nix-gc-twostage = {
-      Unit = {
-        Description = "Two-stage Nix GC (user): --delete-older-than 14d, then keep 15 newest HM generations";
-      };
-      Service = {
-        Type = "oneshot";
-        # Inline script: stage 1 sweeps all user-owned profiles by age,
-        # stage 2 enforces a 15-generation floor on the HM profile.
-        # Path to the HM profile is the standard XDG_STATE_HOME location
-        # used by home-manager since release 22.11; expand $HOME at
-        # runtime, not Nix-eval time, so the same unit works for any
-        # user who imports this module.
-        ExecStart = pkgs.writeShellScript "nix-gc-twostage-user" ''
-          set -eu
-          echo "Stage 1: nix-collect-garbage --delete-older-than 14d"
-          ${pkgs.nix}/bin/nix-collect-garbage --delete-older-than 14d
-          echo "Stage 2: keep last 15 HM generations"
-          ${pkgs.nix}/bin/nix-env \
-            --profile "$HOME/.local/state/nix/profiles/home-manager" \
-            --delete-generations +15
-        '';
-      };
-    };
-    systemd.user.timers.nix-gc-twostage = {
-      Unit = {
-        Description = "Weekly two-stage Nix GC (user)";
-      };
-      Timer = {
-        OnCalendar = "weekly";
-        Persistent = true;
-        RandomizedDelaySec = "1h";
-      };
-      Install = {
-        WantedBy = [ "timers.target" ];
-      };
-    };
-  };
+  flake.modules.homeManager.nix-settings = { pkgs, lib, ... }:
+    lib.mkMerge [
+      # ── Linux: systemd-user timer ────────────────────────────────
+      (lib.mkIf pkgs.stdenv.isLinux {
+        systemd.user.services.nix-gc-twostage = {
+          Unit = {
+            Description = "Two-stage Nix GC (user): --delete-older-than 14d, then keep 15 newest HM generations";
+          };
+          Service = {
+            Type = "oneshot";
+            ExecStart = "${gcScript pkgs}";
+          };
+        };
+        systemd.user.timers.nix-gc-twostage = {
+          Unit = {
+            Description = "Weekly two-stage Nix GC (user)";
+          };
+          Timer = {
+            OnCalendar = "weekly";
+            Persistent = true;
+            RandomizedDelaySec = "1h";
+          };
+          Install = {
+            WantedBy = [ "timers.target" ];
+          };
+        };
+      })
+
+      # ── Darwin: launchd user agent ───────────────────────────────
+      # launchd has no systemd-timer equivalent of Persistent= /
+      # RandomizedDelaySec=; StartCalendarInterval fires at a fixed
+      # wall-clock time and, like a Persistent= timer, catches up at
+      # the next opportunity if the Mac was asleep at the scheduled
+      # moment. Sunday 03:15 local mirrors the Linux "weekly" cadence.
+      (lib.mkIf pkgs.stdenv.isDarwin {
+        launchd.agents.nix-gc-twostage = {
+          enable = true;
+          config = {
+            ProgramArguments = [ "${gcScript pkgs}" ];
+            StartCalendarInterval = [
+              { Weekday = 0; Hour = 3; Minute = 15; }
+            ];
+          };
+        };
+      })
+    ];
 }

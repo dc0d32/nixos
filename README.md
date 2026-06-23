@@ -16,6 +16,7 @@ More machines (additional laptops + servers) will be added under
 flake.nix                     inputs + flake-parts substrate
 flake-modules/                dendritic feature modules (one per concern)
   hosts/pb-x1.nix             host bridge: primary laptop
+  hosts/pb-mb.nix             host bridge: MacBook Air M4 (standalone HM only)
   hosts/wsl.nix               host bridge: both WSL configurations
   <feature>.nix               each contributes flake.modules.{nixos,homeManager}.<feature>
   FusionLike/                 FreeCAD auto-startup mod (Init.py + InitGui.py)
@@ -72,6 +73,9 @@ home-manager switch --flake .#'p@wsl'
 sudo nixos-rebuild switch --flake .#wsl-arm
 home-manager switch --flake .#'p@wsl-arm'
 
+# On the MacBook Air (macOS — userland only, no nixos-rebuild)
+home-manager switch --flake .#'p@pb-mb'
+
 # Update all inputs
 nix flake update
 
@@ -117,6 +121,49 @@ and (2) the condition under which it can be deleted.
    `module` block (declared by `flake-modules/users.nix`).
 5. `git add` every new file (flake builds only see git-tracked
    files).
+
+## macOS (userland-only)
+
+The MacBook Air host (`pb-mb`) is **standalone home-manager only** —
+there is no `nixosConfiguration` and **nix-darwin is not used**. macOS
+stays the base OS; this flake only ever writes inside `$HOME`. That
+keeps the whole thing reversible to vanilla macOS with no repave.
+
+Bootstrap on a fresh Mac:
+
+```sh
+# 1. Install Nix (Determinate Systems installer — Apple-Silicon-aware,
+#    creates the /nix APFS volume and enables flakes out of the box).
+curl --proto '=https' --tlsv1.2 -sSf -L \
+  https://install.determinate.systems/nix | sh -s -- install
+
+# 2. Clone this flake and activate the user environment.
+git clone https://github.com/dc0d32/nixos ~/nixos && cd ~/nixos
+nix run home-manager/master -- switch --flake .#'p@pb-mb'
+
+# 3. Thereafter, routine updates:
+home-manager switch --flake .#'p@pb-mb'
+```
+
+Going back to stock macOS (no repave):
+
+```sh
+home-manager uninstall          # removes ~/.config/home-manager state,
+                                # profile, and dotfile symlinks
+sudo /nix/nix-installer uninstall   # removes /nix, _nixbld* users,
+                                # and the /etc/{zshrc,bashrc} hooks
+rm -rf ~/Library/Fonts/HomeManager  # the flake-managed font dir
+```
+
+`pb-mb` imports the cross-platform `dev` bundle plus `alacritty`,
+`vscode`, and `fonts` (which, on darwin, mirrors the face set into
+`~/Library/Fonts/HomeManager/` for Core Text). Linux-only features
+(Wayland desktop, audio, power/battery, biometrics, impermanence,
+backup) are absent. `aarch64-darwin` is intentionally **not** added to
+`flake-modules/systems.nix`: the closure can only be built on the Mac
+itself, and `homeConfigurations` is published regardless, so leaving it
+out keeps `nix flake check` from carrying an un-buildable check on the
+Linux hosts.
 
 ## Installing on real hardware
 
