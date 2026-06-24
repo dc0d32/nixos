@@ -1,12 +1,21 @@
 # Home-manager bundle: kid.
 #
 # Restricted desktop session for the pb-t480 kid accounts (m, s).
-# NOT a subset of the adult `desktop` bundle: kids get
-# `chrome` + `chrome-managed` (Family-Link-policy-locked Google
-# Chrome — see flake-modules/chrome-managed.nix for why we use
-# Chrome instead of Chromium), `zoom` for school meetings, and no
-# admin / network-secrets tooling (no ai-cli/build-deps/bitwarden/
-# vscode).
+# Built as `dev ++ [kid-desktop-specific]`: the kids get the full
+# TERMINAL dev/AI toolset (base + ai-cli + build-deps → gh, git, tmux,
+# direnv, nix-settings, opencode/copilot, gcc/python/node, …) but a
+# RESTRICTED desktop/GUI surface — `chrome` + `chrome-managed`
+# (Family-Link-policy-locked Google Chrome, see
+# flake-modules/chrome-managed.nix), `zoom` for school, and explicitly
+# NOT the adult desktop's credential/GUI-admin tooling (no bitwarden,
+# no vscode, no polkit-agent).
+#
+# Policy note (2026-06-23): kids previously had no dev tooling at all.
+# That was relaxed — m and s now do development + AI-assisted coding
+# from their own accounts, so the bundle composes `dev` rather than a
+# hand-picked CLI subset. The desktop restrictions (managed Chrome,
+# no password manager, kid-launcher, timekpr screen-time on the host)
+# are unchanged: kids are still kids on the GUI side.
 #
 # Kids DO get freecad and the user-side hardware-hacking tools
 # (esptool, picocom, dfu-util, flashrom) so they can flash RP2040 /
@@ -25,13 +34,14 @@
 # settings, NetworkManager system settings) is supposed to fail —
 # they should ask p.
 #
-# Members (parallel to base+desktop, intentionally):
-#   - alacritty, btop, fish, vim, zsh      minimal CLI surface
-#                                          (zsh is the login shell;
-#                                          fish is installed as an
-#                                          alternative — flip a single
-#                                          host with `shell = pkgs.fish;`
-#                                          in the host bridge)
+# Members = dev ++ the kid desktop set:
+#   dev (= base ++ ai-cli ++ build-deps):
+#     btop direnv fish gh git nix-settings tmux vim zsh
+#     + ai-cli (github-copilot-cli, opencode)
+#     + build-deps (gcc/make/cmake, python3, nodejs, tree-sitter,
+#       archive/transfer CLIs, …)
+#   kid desktop-specific:
+#   - alacritty                            terminal emulator
 #   - audio                                easyeffects daemon (passthrough
 #                                          unless host sets presets/IRS;
 #                                          ensures kids get the same
@@ -80,25 +90,24 @@
 #   chrome-managed can disappear.
 { config, ... }:
 {
-  flake.lib.bundles.homeManager.kid = with config.flake.modules.homeManager; [
-    alacritty
-    audio
-    bluetooth
-    btop
-    chrome
-    chrome-managed
-    desktop-extras
-    desktop-shell
-    file-manager
-    fish
-    fonts
-    hardware-hacking
-    idle
-    kid-launcher
-    lockscreen
-    niri
-    wallpaper
-    zoom
-    zsh
-  ];
+  flake.lib.bundles.homeManager.kid =
+    config.flake.lib.bundles.homeManager.dev
+    ++ (with config.flake.modules.homeManager; [
+      alacritty
+      audio
+      bluetooth
+      chrome
+      chrome-managed
+      desktop-extras
+      desktop-shell
+      file-manager
+      fonts
+      hardware-hacking
+      idle
+      kid-launcher
+      lockscreen
+      niri
+      wallpaper
+      zoom
+    ]);
 }

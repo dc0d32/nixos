@@ -16,10 +16,11 @@
 #         desktop bundle. Same shell / browsers / dev tooling so
 #         logging in as p on m-pc feels identical to logging in as p
 #         on pb-x1 / pb-t480.
-#   - m : kid (no wheel), restricted HM. Uses the `kid` bundle
+#   - m : kid (no wheel), restricted GUI HM. Uses the `kid` bundle
 #         (chrome with Family-Link-locking managed policies, zoom,
-#         freecad, no dev tooling). Mirrors what `m` already gets on
-#         pb-t480 so the two hosts feel identical to her.
+#         freecad, plus full terminal dev/AI tooling). Mirrors what
+#         `m` already gets on pb-t480 so the two hosts feel identical
+#         to her.
 #
 # Why a desktop in the family fleet:
 #   The kids' shared T480 (pb-t480) travels with them; m-pc is a

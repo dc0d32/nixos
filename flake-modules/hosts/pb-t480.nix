@@ -5,8 +5,8 @@
 #
 # Three NixOS users:
 #   - p : admin (wheel), full HM mirror of pb-x1
-#   - m : kid (no wheel), restricted HM (no dev tooling)
-#   - s : kid (no wheel), restricted HM (no dev tooling)
+#   - m : kid (no wheel), restricted GUI HM; full terminal dev/AI tooling
+#   - s : kid (no wheel), restricted GUI HM; full terminal dev/AI tooling
 #
 # Kids' graphical session is the same niri / desktop-shell stack as p so
 # things look familiar across users. They get google-chrome (with
@@ -97,11 +97,13 @@ let
       --no-pager
   '';
 
-  # Per-kid home-manager module. Uses the `kid` bundle: minimal CLI,
-  # google-chrome with Family-Link-locking managed policies (see
-  # flake-modules/chrome-managed.nix), zoom for school, full
-  # compositor stack, no dev tooling, no admin apps. `username`
-  # parameterises the home.* fields below.
+  # Per-kid home-manager module. Uses the `kid` bundle: full terminal
+  # dev/AI tooling (gh, git, opencode/copilot, build-deps, …) on a
+  # restricted GUI surface — google-chrome with Family-Link-locking
+  # managed policies (see flake-modules/chrome-managed.nix), zoom for
+  # school, full compositor stack, no admin/credential apps (no
+  # bitwarden/vscode/polkit-agent). `username` parameterises the
+  # home.* fields below.
   mkKidHmModule = username: {
     imports = config.flake.lib.bundles.homeManager.kid ++ [
       # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle
