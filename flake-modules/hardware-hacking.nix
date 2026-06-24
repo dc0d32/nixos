@@ -10,9 +10,11 @@
 #     robotics work). Retire individual rules when upstream nixpkgs
 #     udev packages cover them.
 #   - flake.modules.homeManager.hardware-hacking — user-space CLI tools
-#     only (usbutils, picocom, screen, esptool, dfu-util, flashrom).
-#     KiCad lives in its own module flake-modules/kicad.nix since
-#     2026-05-02 — see that file for why.
+#     only. Serial/USB + flashing (usbutils, picocom, screen, esptool,
+#     dfu-util, flashrom) PLUS the embedded dev toolchain to build &
+#     debug firmware (gcc-arm-embedded, gdb, openocd, probe-rs-tools,
+#     picotool, avrdude, arduino-cli). KiCad lives in its own module
+#     flake-modules/kicad.nix since 2026-05-02 — see that file for why.
 #
 # Pattern A enable: a host enables this feature by importing both
 # contributed modules from its host file. There is no top-level
@@ -99,6 +101,20 @@
       esptool # ESP8266 / ESP32 flash tool
       dfu-util # STM32 and other DFU devices
       flashrom # SPI flash read/write via CH341A and others
+
+      # ── Embedded development toolchain (compile + debug) ──────────
+      # The tools above only flash prebuilt firmware; these let you
+      # actually BUILD and DEBUG it from the terminal. Curated to the
+      # targets this repo's flash tools + udev rules already cover
+      # (ARM Cortex-M: STM32/RP2040/nRF; RP2040 specifically; AVR /
+      # classic Arduino), plus the Arduino CLI ecosystem that's the
+      # friendliest on-ramp.
+      gcc-arm-embedded # arm-none-eabi-{gcc,g++,gdb,…}: STM32/RP2040/nRF
+      openocd # on-chip debug + flashing over SWD/JTAG
+      probe-rs-tools # modern Rust probe tool (RP2040/STM32 flash+debug)
+      picotool # RP2040 UF2/info/reboot helper
+      avrdude # AVR programmer (Arduino Uno/Nano classic)
+      arduino-cli # Arduino ecosystem build/upload from the terminal
     ];
     # KiCad moved to flake-modules/kicad.nix on 2026-05-02 so that
     # bundles which want the flashing CLIs (e.g. the kid bundle on
