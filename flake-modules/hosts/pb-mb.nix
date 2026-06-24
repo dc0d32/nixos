@@ -28,11 +28,12 @@
 #
 # What it imports: the cross-platform `dev` bundle (shells, git, gh,
 # tmux, vim, btop, direnv, the ai-cli + build-deps tooling) plus a thin
-# GUI slice (alacritty, vscode) and the cross-platform `fonts` module
-# (which, on darwin, installs the face set into the profile and mirrors
-# it into ~/Library/Fonts/HomeManager/ for Core Text). Wayland desktop,
-# audio, bluetooth, power/battery, biometrics, disko/impermanence/backup
-# are Linux-only and deliberately absent.
+# GUI slice (vscode) and the cross-platform `fonts` module (which, on
+# darwin, installs the face set into the profile and mirrors it into
+# ~/Library/Fonts/HomeManager/ for Core Text). Wayland desktop, audio,
+# bluetooth, power/battery, biometrics, disko/impermanence/backup are
+# Linux-only and deliberately absent. No alacritty here — macOS ships
+# Terminal.app and the terminal of choice is the user's, not the flake's.
 #
 # Bootstrap on the Mac (after installing Nix + enabling flakes):
 #   nix run home-manager/master -- switch --flake .#'p@pb-mb'
@@ -70,10 +71,10 @@ in
     pkgs = hmPkgs;
     module = {
       imports = config.flake.lib.bundles.homeManager.dev ++ [
-        # Thin GUI slice. Both are cross-platform HM modules; the rest
+        # Thin GUI slice. vscode is a cross-platform HM module; the rest
         # of the desktop bundle (niri/waybar/mako/lockscreen/etc.) is
-        # Wayland-only and excluded.
-        config.flake.modules.homeManager.alacritty
+        # Wayland-only and excluded. alacritty is intentionally NOT here —
+        # macOS uses its native terminal.
         config.flake.modules.homeManager.vscode
         # Fonts: on darwin this installs the face set + mirrors it into
         # ~/Library/Fonts/HomeManager/. See flake-modules/fonts.nix.
