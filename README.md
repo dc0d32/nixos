@@ -174,8 +174,8 @@ Linux hosts.
 Nix can't run natively on Windows, so there's no home-manager there. But
 the *dotfiles* are just text, so `flake-modules/windows/` **generates**
 the native-Windows config from Nix (a PowerShell `$PROFILE`, a shared
-`starship.toml`, a Scoop install script, and a `winget` configuration)
-and a WSL-side command **`hm_win`** copies them into the Windows profile
+`starship.toml`, and a one-shot `setup.ps1` installer) and a WSL-side
+command **`hm_win`** copies them into the Windows profile
 (`/mnt/c/Users/<you>/…`). It copies rather than symlinks (NTFS can't
 follow WSL links), backing up anything it replaces.
 
@@ -198,11 +198,27 @@ runtime (`pwsh`/`cmd` — a plain shell query on your machine, so no
 OneDrive-redirected Documents folder. If the interop isn't reachable it
 errors out asking you to set `HM_WIN_USER=<your-windows-username>`.
 
-Then, once, in PowerShell on Windows: run the generated
-`~\.config\nixwin\scoop-install.ps1` (installs the CLI toolkit + a Nerd
-Font via Scoop; `winget configure ~\.config\nixwin\winget.configuration.yaml`
-handles PowerShell 7 / Windows Terminal / Azure CLI), then restart the
-terminal.
+Then, once, run this **one** command in PowerShell on Windows:
+
+```powershell
+~\.config\nixwin\setup.ps1
+```
+
+`setup.ps1` (1) `winget install`s the signed system apps (7-Zip /
+PowerShell 7 / Windows Terminal / Azure CLI) plus the few CLI packages
+whose Scoop builds bundle app-control-blocked launcher executables
+(`git` ships `git-bash.exe`/`pinentry.exe`, `uv` ships `uvw.exe`;
+`git-lfs` alongside git); (2) `uv tool install`s the pure-Python tools
+(`visidata`); (3) Scoop-installs the rest of the CLI toolkit + a Nerd
+Font; (4) removes any older Scoop copies of the winget-moved tools. Then
+restart the terminal.
+
+**Why this split:** corporate app-control (WDAC / AppLocker / Smart App
+Control) trusts winget's vendor-signed binaries in `Program Files` but
+blocks the unsigned *launcher* `.exe`s that a few Scoop packages bundle
+under the user profile. Single-binary tools (ripgrep, fd, bat, gh,
+delta, neovim, …) aren't affected and stay on Scoop, which tracks
+upstream more closely.
 
 What's shared from one definition: the **starship prompt**
 (`flake.lib.starshipSettings`, also used by zsh), the **`terminal-help.md`**
@@ -210,7 +226,9 @@ guide (the `tools` command renders it on both sides), and the alias set.
 `hm_win` also sets the Windows Terminal default **font** (RecMono Nerd
 Font) via a non-destructive `jq` merge, leaving all keybindings at their
 defaults. `hm_win` is imported only on the WSL hosts (it needs `/mnt/c`).
-Tools with no native Windows build (`lnav`, `tmux`) are omitted.
+Tools with no native Windows build (`lnav`, `tmux`) are omitted. On first
+launch the PowerShell profile and zsh both run a one-time
+`atuin import` to seed shell history.
 
 ## Installing on real hardware
 
