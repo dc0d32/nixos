@@ -23,7 +23,14 @@ in
           decorations = "none";
         };
         font = {
-          normal.family = "AdwaitaMono Nerd Font";
+          # Pin the style explicitly: some Nerd-Font RIBBI families
+          # (notably Adwaita Mono) confuse alacritty's face matcher into
+          # picking Italic when only the family is given. Naming the
+          # style forces the upright face.
+          normal = {
+            family = "FantasqueSansM Nerd Font";
+            style = "Regular";
+          };
           size = 10;
         };
         cursor.style.shape = "Beam";

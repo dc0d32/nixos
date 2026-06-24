@@ -1,13 +1,13 @@
 # Fonts — system font packages + fontconfig defaultFonts (NixOS) and
 # user-level rendering policy / font installation (home-manager). Also
 # sets the console (kernel framebuffer + TTY + Ly) font, which has to be
-# a PSF bitmap (AdwaitaMono can't render in the kernel console).
+# a PSF bitmap (FantasqueSansM can't render in the kernel console).
 #
 # Cross-class footprint:
 #   - flake.modules.nixos.fonts — installs Noto / Inter / JetBrains
-#     Mono / Adwaita Mono / nerd-fonts variants and sets defaultFonts
-#     per family (mono → AdwaitaMono, sans → Inter, etc.). Also
-#     sets console.font to Cozette (bitmap NF-patched).
+#     Mono / Fantasque Sans Mono / nerd-fonts variants and sets
+#     defaultFonts per family (mono → FantasqueSansM, sans → Inter, etc.).
+#     Also sets console.font to Cozette (bitmap NF-patched).
 #   - flake.modules.homeManager.fonts — cross-platform:
 #       · Linux  — turns on fontconfig in HM and drops a
 #                  10-rendering.conf with slight hinting + RGB-off.
@@ -32,8 +32,8 @@
 # individual attrs under `pkgs.nerd-fonts.<name>` in nixpkgs. Retire
 # this comment once we're well past that transition.
 #
-# Retire when: the chosen font stack (Adwaita Mono / Inter / Noto / nerd
-#   variants) changes substantially, OR NixOS upstream ships sane
+# Retire when: the chosen font stack (Fantasque Sans Mono / Inter / Noto
+#   / nerd variants) changes substantially, OR NixOS upstream ships sane
 #   default mono/sans/serif/emoji families and a fontconfig rendering
 #   policy that match what this module produces.
 { lib, ... }:
@@ -50,9 +50,9 @@ let
     jetbrains-mono
     nerd-fonts.jetbrains-mono
     nerd-fonts.fira-code
-    # AdwaitaMono — GNOME's monospace, Nerd-Font-patched. fontconfig
+    # FantasqueSansM — Fantasque Sans Mono, Nerd-Font-patched. fontconfig
     # (Linux) / Core Text (macOS) picks the variant by family name.
-    nerd-fonts.adwaita-mono
+    nerd-fonts.fantasque-sans-mono
   ];
 in
 {
@@ -60,9 +60,9 @@ in
     fonts = {
       packages = fontPkgs pkgs;
       fontconfig.defaultFonts = {
-        # AdwaitaMono first; fall back to JetBrainsMono if a client
+        # FantasqueSansM first; fall back to JetBrainsMono if a client
         # can't find the patched family (e.g. pre-patched tooling).
-        monospace = [ "AdwaitaMono Nerd Font" "JetBrainsMono Nerd Font" ];
+        monospace = [ "FantasqueSansM Nerd Font" "JetBrainsMono Nerd Font" ];
         sansSerif = [ "Inter" ];
         serif = [ "Noto Serif" ];
         emoji = [ "Noto Color Emoji" ];
@@ -72,7 +72,7 @@ in
     # Console font — shown in the kernel boot log, the text-mode TTYs
     # (Ctrl+Alt+F1…F6), and inherited by Ly (TUI display manager).
     # The kernel framebuffer console only renders PSF bitmap fonts,
-    # not TTF/OTF, so AdwaitaMono Nerd Font (used everywhere else in
+    # not TTF/OTF, so FantasqueSansM Nerd Font (used everywhere else in
     # the GUI) cannot be used here. Cozette is the closest spiritual
     # match: a bitmap font with Nerd Font glyph patches, so the
     # NF-only icons that appear in journalctl / Ly status lines
