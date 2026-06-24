@@ -8,7 +8,7 @@
 # (Family-Link-policy-locked Google Chrome, see
 # flake-modules/chrome-managed.nix), `zoom` for school, and explicitly
 # NOT the adult desktop's credential/GUI-admin tooling (no bitwarden,
-# no vscode, no polkit-agent).
+# no polkit-agent).
 #
 # Policy note (2026-06-23): kids previously had no dev tooling at all.
 # That was relaxed — m and s now do development + AI-assisted coding
@@ -107,6 +107,7 @@
       kid-launcher
       lockscreen
       niri
+      vscode
       wallpaper
       zoom
     ]);
