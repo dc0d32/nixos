@@ -32,9 +32,12 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 
-# --- Shell history: atuin (Ctrl+R) -------------------------------------
+# --- Shell history: atuin (Ctrl+R only) --------------------------------
+# `--disable-up-arrow` keeps the Up key as PSReadLine history search
+# (recall + edit the previous command) instead of atuin hijacking Up to
+# open its full-screen search UI. Ctrl+R still opens atuin.
 if (Get-Command atuin -ErrorAction SilentlyContinue) {
-    Invoke-Expression (& { (atuin init powershell | Out-String) })
+    Invoke-Expression (& { (atuin init powershell --disable-up-arrow | Out-String) })
     # One-time: seed atuin from PowerShell's existing PSReadLine history
     # (atuin starts empty and does not auto-absorb past history).
     $atuinMarker = Join-Path $HOME '.atuin_imported'

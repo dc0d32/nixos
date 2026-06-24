@@ -185,12 +185,16 @@
         enableZshIntegration = true;
       };
 
-      # Searchable, SQLite-backed shell history (Ctrl-R + up-arrow). The
-      # store at ~/.local/share/atuin is already carved out in
+      # Searchable, SQLite-backed shell history. Bound to Ctrl-R only —
+      # `--disable-up-arrow` keeps the Up key as plain zsh history
+      # navigation (recall the previous command on the line and edit it),
+      # instead of atuin hijacking Up to open its full-screen search UI.
+      # The store at ~/.local/share/atuin is already carved out in
       # flake-modules/impermanence.nix, so history survives the root wipe.
       programs.atuin = {
         enable = true;
         enableZshIntegration = true;
+        flags = [ "--disable-up-arrow" ];
       };
 
       home.packages = with pkgs; [
