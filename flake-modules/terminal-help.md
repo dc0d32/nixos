@@ -18,6 +18,13 @@ up on this machine. Most commands accept `--help` for more, and
 | `mkdir name` | Make a new folder |
 | `cp` · `mv` · `rm` | Copy · move/rename · delete files |
 
+## 🗂️  Visual file managers
+
+| Command | What it does |
+| --- | --- |
+| `yazi` | Fast file manager with previews — arrows to move, **q** to quit |
+| `vifm` | Two-pane file manager with vim keys (**:q** to quit) |
+
 ## 👀  Looking at files
 
 | Command | What it does |

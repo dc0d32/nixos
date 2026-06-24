@@ -92,6 +92,8 @@ let
     "tealdeer"
     "duckdb"
     "miller"
+    "yazi"
+    "vifm"
     "gh"
     "neovim"
     "starship"

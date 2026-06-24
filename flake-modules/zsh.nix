@@ -210,6 +210,10 @@
         jq
         htop
 
+        # ── Terminal file managers ──────────────────────────────────
+        yazi # blazing-fast Rust TUI file manager (yazi)
+        vifm # vi-keybinding dual-pane file manager (vifm)
+
         # ── Data-science / ML CLI toolkit ───────────────────────────
         # Tabular data wrangling
         duckdb # in-process SQL over CSV/TSV/JSON/Parquet
