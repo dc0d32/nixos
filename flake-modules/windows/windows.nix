@@ -102,10 +102,10 @@ let
   ];
 
   # Nerd Font to match the alacritty / Windows-Terminal face
-  # "RecMonoCasual Nerd Font" (from the `nerd-fonts` Scoop bucket). The
-  # `Recursive-NF` (normal) manifest installs that family; the `-Mono`
+  # "AdwaitaMono Nerd Font" (from the `nerd-fonts` Scoop bucket). The
+  # `AdwaitaMono-NF` (normal) manifest installs that family; the `-Mono`
   # variant would instead be named "… Nerd Font Mono".
-  scoopFonts = [ "Recursive-NF" ];
+  scoopFonts = [ "AdwaitaMono-NF" ];
 
   # Pure-Python tools with no winget/scoop package — installed via
   # `uv tool install` (uv itself comes from winget above). `vd` is the
@@ -333,7 +333,7 @@ let
         wt_found=1
         backup "$s"
         tmp="$(mktemp)"
-        if jq '.profiles.defaults.font.face = "RecMonoCasual Nerd Font"
+        if jq '.profiles.defaults.font.face = "AdwaitaMono Nerd Font"
                | .profiles.defaults.font.size = (.profiles.defaults.font.size // 11)' \
              "$s" > "$tmp" 2>/dev/null; then
           mv "$tmp" "$s"

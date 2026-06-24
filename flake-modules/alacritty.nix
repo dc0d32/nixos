@@ -23,7 +23,7 @@ in
           decorations = "none";
         };
         font = {
-          normal.family = "RecMonoCasual Nerd Font";
+          normal.family = "AdwaitaMono Nerd Font";
           size = 10;
         };
         cursor.style.shape = "Beam";
