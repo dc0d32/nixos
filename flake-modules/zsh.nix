@@ -119,6 +119,11 @@
           # On bare-metal NixOS, `hostname` matches a real
           # `nixosConfigurations.<name>` entry, so we just use it.
           #
+          # On macOS, `hostname` returns the FQDN (e.g. `pb-mb.lan`),
+          # which won't match the flake config name `pb-mb` — strip the
+          # domain (everything after the first dot). Harmless on Linux,
+          # where the name is already short.
+          #
           # On WSL, `hostname` is the random Windows machine name and
           # has nothing to do with our flake. All WSL instances share
           # one of two configs split only by CPU arch
@@ -137,7 +142,8 @@
                 *)       echo wsl ;;
               esac
             else
-              hostname
+              local h="$(hostname)"
+              echo "''${h%%.*}"   # strip any DNS domain (e.g. pb-mb.lan → pb-mb)
             fi
           }
 
