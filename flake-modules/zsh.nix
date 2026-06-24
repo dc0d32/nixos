@@ -1,6 +1,6 @@
 # zsh + companion shell tools (starship, fzf, zoxide, eza, atuin,
 # dircolors, ripgrep/fd/bat/jq/htop, plus a data-science / ML CLI
-# toolkit: duckdb, visidata, miller, qsv, gron, jless, dasel, lnav,
+# toolkit: duckdb, visidata, miller, gron, jless, dasel, lnav,
 # difftastic, glow, tealdeer, uv, numbat) — interactive shell
 # environment.
 #
@@ -209,7 +209,6 @@
         duckdb # in-process SQL over CSV/TSV/JSON/Parquet
         visidata # interactive TUI for tabular data (vd)
         miller # awk/cut/join/stats for CSV/TSV/JSON (mlr)
-        qsv # fast CSV toolkit (stats/dedup/join/sample)
         # JSON / structured data
         gron # flatten JSON into greppable lines
         jless # interactive JSON pager/viewer

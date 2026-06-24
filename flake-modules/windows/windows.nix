@@ -92,7 +92,6 @@ let
     "tealdeer"
     "duckdb"
     "miller"
-    "qsv"
     "gh"
     "neovim"
     "starship"

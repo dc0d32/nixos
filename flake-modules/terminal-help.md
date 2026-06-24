@@ -94,7 +94,7 @@ Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
 | --- | --- |
 | `duckdb` | Run SQL on CSV / JSON / Parquet files |
 | `vd file.csv` | Explore a table / spreadsheet interactively |
-| `mlr` · `qsv` | Slice and summarise CSV / TSV data |
+| `mlr` | Slice and summarise CSV / TSV data |
 | `jq` · `gron` · `jless` | Read and search JSON |
 | `dasel` | Convert between JSON / YAML / TOML / CSV |
 | `lnav file.log` | Explore log files (even with SQL) |
