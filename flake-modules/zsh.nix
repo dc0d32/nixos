@@ -79,6 +79,19 @@
           bindkey '^[[5~' _pager_noop         # PageUp
           bindkey '^[[6~' _pager_noop         # PageDown
 
+          # One-time: seed atuin from this shell's existing history (atuin
+          # starts empty and does not auto-absorb past history). The
+          # marker lives in atuin's data dir, which is persisted across
+          # the impermanence root-wipe, so this runs exactly once ever.
+          if command -v atuin >/dev/null 2>&1; then
+            _atuin_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/atuin"
+            if [[ ! -f "$_atuin_dir/.imported" ]]; then
+              atuin import auto >/dev/null 2>&1 || true
+              mkdir -p "$_atuin_dir" && touch "$_atuin_dir/.imported"
+            fi
+            unset _atuin_dir
+          fi
+
           # fzf-tab: must be sourced after compinit but before syntax-highlighting.
           # home-manager runs compinit and then sources initContent, so this is the
           # correct place. autosuggestions loads before initContent; that's fine —
