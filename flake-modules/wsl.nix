@@ -73,11 +73,35 @@
       services.xserver.videoDrivers = lib.mkForce [ ];
 
       # Make the wsl user's shell zsh so defaults line up with the
-      # rest of the flake. Force both the per-user shell AND the
-      # system default — the upstream WSL fork sets
-      # users.defaultUserShell to bash at mkDefault priority, which
-      # would otherwise collide with our users module setting zsh.
-      users.users.${config.wsl.defaultUser}.shell = lib.mkForce pkgs.zsh;
+      # rest of the flake. Force the per-user shell — the upstream WSL
+      # fork sets users.defaultUserShell to bash at mkDefault priority,
+      # which would otherwise collide with our users module setting zsh.
+      #
+      # `linger`: enable lingering for the login user so its
+      # `user@<uid>.service` — and the `dbus.socket` that instance
+      # starts — is always up, independent of an interactive login.
+      #
+      # Why this matters on WSL: `nixos-rebuild switch` ends with
+      # switch-to-configuration-ng re-exec'ing itself as each logind
+      # user to reload that user's systemd units. The child clears its
+      # environment (keeping only XDG_RUNTIME_DIR), so it does NOT
+      # inherit DBUS_SESSION_BUS_ADDRESS — it relies on libdbus's
+      # implicit `$XDG_RUNTIME_DIR/bus` lookup. If `/run/user/<uid>/bus`
+      # doesn't exist, libdbus falls back to X11 autolaunch and aborts
+      # with "Unable to autolaunch a dbus-daemon without a $DISPLAY",
+      # which surfaces as `user activation for p failed` and makes the
+      # whole switch exit non-zero (status 4). On a desktop the bus is
+      # there because the graphical session keeps `user@<uid>` running;
+      # WSL has no such session, so we pin the user manager up with
+      # lingering. (Bonus: systemd-user timers — nix-gc, etc. — then run
+      # without needing an active session.)
+      users.users.${config.wsl.defaultUser} = {
+        shell = lib.mkForce pkgs.zsh;
+        linger = true;
+      };
+
+      # Force the system default shell too (same upstream-fork
+      # mkDefault collision as above).
       users.defaultUserShell = lib.mkForce pkgs.zsh;
     };
   };
