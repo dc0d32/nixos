@@ -183,8 +183,16 @@ Workflow:
 
 ```sh
 # inside WSL — builds the bundle from your ~/nixos checkout and pushes it:
-hm_win
+hm_win            # deploy the dotfiles only (fast)
+hm_win --setup    # deploy, then run setup.ps1 (winget + Scoop installs)
 ```
+
+`hm_win` deploys the generated dotfiles into the Windows profile. Pass
+`--setup` (`-s`) to also run `setup.ps1` afterwards via the Windows
+PowerShell interop — that's off by default because deploying is fast and
+frequent while the installs are slow and idempotent (you only need them
+when the package list changed). You can also run `setup.ps1` yourself in
+PowerShell (the path is printed).
 
 Generation is gated behind `hm_win` alone: the artifacts are a separate
 flake package (`packages.<system>.windows-dotfiles`), and `hm_win` is a
