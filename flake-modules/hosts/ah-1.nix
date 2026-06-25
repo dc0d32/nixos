@@ -125,17 +125,13 @@ let
     # with legacy BIOS instead of OVMF, override boot.loader here or in
     # the regenerated hardware-configuration.nix.
 
-    # Service-account user. Throwaway initial password; rotate on
-    # first login.
-    users.users.${user} = {
-      isNormalUser = true;
-      description = user;
-      # `wheel` for sudo, `networkmanager` to manage NICs without
-      # sudo, `docker` is added by flake-modules/docker.nix off
-      # `users.primary`.
-      extraGroups = [ "wheel" "networkmanager" ];
+    # Service-account user. `docker` group is added by
+    # flake-modules/docker.nix off users.primary. initialPassword
+    # "changeme" — rotate on first login.
+    users.users.${user} = config.flake.lib.mkUser {
+      name = user;
+      admin = true;
       shell = pkgs.zsh;
-      initialPassword = "changeme";
     };
 
     # Base CLI (git/vim/curl/wget) comes from system-utils.nix.

@@ -14,8 +14,8 @@
 #
 # Members:
 #   impermanence backup gpu power networking nix-settings system-utils
-#   users fonts locale battery audio bluetooth boot file-manager
-#   login-ly niri lockscreen home-manager-bootstrap
+#   users fonts locale battery audio bluetooth boot kernel-latest
+#   file-manager login-ly niri lockscreen home-manager-bootstrap
 #
 # Published under flake.lib.bundles.nixos.workstation (lists live under
 # flake.lib because flake-parts only recognizes a fixed set of top-level
@@ -43,6 +43,7 @@
     audio
     bluetooth
     boot
+    kernel-latest
     file-manager
     login-ly
     niri

@@ -139,24 +139,17 @@ in
       # above as config.flake.modules.nixos.boot). Override individual
       # systemd-boot settings here with mkForce if this host needs to
       # diverge.
-      boot.kernelPackages = hmPkgs.linuxPackages_latest;
+      # kernelPackages = linuxPackages_latest comes from the workstation
+      # bundle (flake-modules/kernel-latest.nix); override here if needed.
 
-      # Primary user.
-      users.users.${user} = {
-        isNormalUser = true;
-        description = user;
-        # `input` group: vestigial. It was added for the old idled
-        # daemon's raw /dev/input access; niri + swaylock get input via
-        # logind/libseat, not this group, so it is now safe to drop.
-        # Retained for now to avoid an unrelated change; see
-        # docs/sessions/2026-06-22-retire-idled-swayidle.md.
-        extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" ];
+      # Primary user. initialPassword "changeme" — change on first login;
+      # the new hash survives the impermanence wipe via the /etc/shadow
+      # copy-sync. The old `input` group (idled-only) is dropped.
+      users.users.${user} = config.flake.lib.mkUser {
+        name = user;
+        admin = true;
+        extraGroups = [ "video" "audio" ];
         shell = hmPkgs.zsh;
-        # Throwaway initial password; mutableUsers stays true, so change
-        # it on first login with `passwd`. The new hash survives the
-        # impermanence root wipe via the /etc/shadow copy-sync in
-        # flake.modules.nixos.impermanence.
-        initialPassword = "changeme";
       };
 
       # Base CLI (git/vim/curl/wget) is provided system-wide by

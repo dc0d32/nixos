@@ -235,47 +235,28 @@ in
       # above as config.flake.modules.nixos.boot). Override individual
       # systemd-boot settings here with mkForce if the real hardware
       # turns out to be BIOS/legacy and needs grub instead.
-      boot.kernelPackages = hmPkgs.linuxPackages_latest;
+      # kernelPackages = linuxPackages_latest comes from the workstation
+      # bundle (flake-modules/kernel-latest.nix).
 
-      # All three accounts in one assignment (a single module-attrset
-      # literal can't have two `users.users = …` entries).
-      #   - p   : admin (wheel + networkmanager). Also in `timekpr`
-      #           so they can drive `timekpra` to grant ad-hoc time
-      #           or adjust per-kid policies at runtime.
-      #   - m,s : kid (no wheel, no sudo). They get
-      #           video/audio so the desktop session works,
-      #           `input` is vestigial (was for the old idled daemon's
-      #           /dev/input access; harmless now), and
-      #           `networkmanager` so they can connect to any wifi
-      #           AP themselves without an admin around — important
-      #           because the laptop travels (school, friends'
-      #           houses) and waiting for p to type a password
-      #           breaks the "kids can self-serve on this machine"
-      #           contract. NetworkManager group membership grants
-      #           connect/disconnect/add-AP for kids; only system-
-      #           wide config (e.g. dispatcher scripts, global
-      #           settings) still needs wheel.
-      #
-      # Throwaway initial passwords (mutableUsers stays true); change
-      # them on first login with `passwd`. New hashes survive the
-      # impermanence root wipe via the /etc/shadow copy-sync in
-      # flake.modules.nixos.impermanence.
+      # Accounts (mkUser adds networkmanager; admin adds wheel).
+      # initialPassword "changeme" — change on first login; survives the
+      # impermanence wipe via the /etc/shadow copy-sync.
+      #   - p   : admin + timekpr (can grant ad-hoc time at runtime).
+      #   - m,s : kid (no wheel). networkmanager lets them join wifi
+      #           themselves — the laptop travels (school, friends').
       users.users =
         {
-          ${primaryUser} = {
-            isNormalUser = true;
-            description = primaryUser;
-            extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" "timekpr" ];
+          ${primaryUser} = config.flake.lib.mkUser {
+            name = primaryUser;
+            admin = true;
+            extraGroups = [ "video" "audio" "timekpr" ];
             shell = hmPkgs.zsh;
-            initialPassword = "changeme";
           };
         }
-        // lib.genAttrs kidUsers (kid: {
-          isNormalUser = true;
-          description = kid;
-          extraGroups = [ "video" "audio" "input" "networkmanager" ];
+        // lib.genAttrs kidUsers (kid: config.flake.lib.mkUser {
+          name = kid;
+          extraGroups = [ "video" "audio" ];
           shell = hmPkgs.zsh;
-          initialPassword = "changeme";
         });
 
       # Base CLI (git/vim/curl/wget) comes from system-utils.nix; only

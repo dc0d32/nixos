@@ -223,37 +223,27 @@ in
       # on real hardware, override here:
       #   boot.loader.systemd-boot.enable = lib.mkForce false;
       #   boot.loader.grub = { enable = true; device = "/dev/sda"; };
-      boot.kernelPackages = hmPkgs.linuxPackages_latest;
+      # kernelPackages = linuxPackages_latest comes from the workstation
+      # bundle (flake-modules/kernel-latest.nix).
 
-      # Both accounts in one assignment.
-      #   - p : admin (wheel + networkmanager). In `timekpr` so they
-      #         can drive `timekpra` / `timekprc` to grant ad-hoc
-      #         time or adjust m's policy at runtime without sudo.
-      #   - m : kid (no wheel, no sudo). video/audio for the desktop
-      #         session, `input` is vestigial (was for idled; harmless),
-      #         `networkmanager` so she can join APs herself if/when
-      #         the wired connection is unavailable.
-      #
-      # Throwaway initial passwords (mutableUsers stays true); change
-      # them on first login with `passwd`. New hashes survive the
-      # impermanence root wipe via the /etc/shadow copy-sync in
-      # flake.modules.nixos.impermanence.
+      # Accounts (mkUser adds networkmanager; admin adds wheel).
+      # initialPassword "changeme" — change on first login; survives the
+      # impermanence wipe via the /etc/shadow copy-sync.
+      #   - p : admin + timekpr (can grant ad-hoc time at runtime).
+      #   - m : kid (no wheel).
       users.users =
         {
-          ${primaryUser} = {
-            isNormalUser = true;
-            description = primaryUser;
-            extraGroups = [ "wheel" "networkmanager" "video" "audio" "input" "timekpr" ];
+          ${primaryUser} = config.flake.lib.mkUser {
+            name = primaryUser;
+            admin = true;
+            extraGroups = [ "video" "audio" "timekpr" ];
             shell = hmPkgs.zsh;
-            initialPassword = "changeme";
           };
         }
-        // lib.genAttrs kidUsers (kid: {
-          isNormalUser = true;
-          description = kid;
-          extraGroups = [ "video" "audio" "input" "networkmanager" ];
+        // lib.genAttrs kidUsers (kid: config.flake.lib.mkUser {
+          name = kid;
+          extraGroups = [ "video" "audio" ];
           shell = hmPkgs.zsh;
-          initialPassword = "changeme";
         });
 
       # Base CLI (git/vim/curl/wget) comes from system-utils.nix.
