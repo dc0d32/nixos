@@ -4,15 +4,15 @@
 # compositor (niri), shell (waybar/mako/fuzzel/cliphist via
 # `desktop-shell`), lockscreen (swaylock-effects), browsers (firefox
 # as primary daily driver, chrome as fallback / for sites that
-# need a chromium engine), password manager (bitwarden), editor
-# with GUI (vscode), terminal (alacritty), audio DSP daemon
+# need a chromium engine), editor with GUI (vscode), terminal
+# (alacritty), audio DSP daemon
 # (easyeffects via the audio module — preset/IRS deployment is
 # host-controlled by setting `audio.presetsDir`/`irsDir`/`autoloads`
 # on the host bridge), and friends. Currently consumed by my
 # account on pb-x1 and pb-t480.
 #
 # = dev ++ [
-#     alacritty audio bitwarden bluetooth chrome desktop-extras
+#     alacritty audio bluetooth chrome desktop-extras
 #     desktop-shell file-manager fonts hardware-hacking idle
 #     lockscreen niri polkit-agent vscode wallpaper
 #   ]
@@ -41,7 +41,6 @@
     ++ (with config.flake.modules.homeManager; [
       alacritty
       audio
-      bitwarden
       bluetooth
       chrome
       desktop-extras

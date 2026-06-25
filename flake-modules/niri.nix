@@ -162,7 +162,7 @@
     # gtk theming, and the per-compositor branches in many apps).
     #
     # mkBefore so this env-propagation runs FIRST, before all the
-    # other spawn-at-startup entries (bitwarden, polkit-agent,
+    # other spawn-at-startup entries (polkit-agent,
     # waybar, mako, etc.) — those depend on the env having
     # been pushed.
     #

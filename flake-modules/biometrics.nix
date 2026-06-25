@@ -1,7 +1,5 @@
 # Biometrics — fingerprint reader (Synaptics Prometheus) baseline
-# + optional face auth (howdy via IR camera) + PAM stack reordering
-# + a Bitwarden polkit policy that pipes its unlock through the
-# stack.
+# + optional face auth (howdy via IR camera) + PAM stack reordering.
 #
 # Pattern A: hosts opt in by importing this module. Importing IS
 # enabling fingerprint. Face unlock is a SEPARATE per-host opt-in
@@ -199,20 +197,11 @@ in
               # Face-first for login/ly: leave room for
               # unix-early(11700) and gnome_keyring(12200).
               reorderFaceFirstLogin = mkReorder { howdyOrder = 12500; };
-              # Password-first for bitwarden.
-              reorderPasswordFirst = mkReorder { howdyOrder = 12950; };
             in
             {
               sudo = reorderFaceFirstSudo // { fprintAuth = lib.mkDefault true; };
               login = reorderFaceFirstLogin // { fprintAuth = lib.mkDefault true; };
               ly = reorderFaceFirstLogin // { fprintAuth = lib.mkDefault true; };
-
-              # Bitwarden biometric unlock: polkit calls this PAM
-              # service to verify the user before releasing the
-              # vault key. Password-first; biometrics as fallback.
-              # Retire if bitwarden-desktop ever ships its own PAM
-              # service file.
-              bitwarden = reorderPasswordFirst // { fprintAuth = lib.mkDefault true; };
             };
 
           # ── Camera autodetect (face-only) ───────────────────────
@@ -280,27 +269,7 @@ in
             '';
           };
 
-          # ── Bitwarden polkit policy ─────────────────────────────
-          # bitwarden-desktop is installed via home-manager, so its
-          # share/polkit-1 directory isn't picked up by the system
-          # polkit aggregation. Install the policy at the NixOS
-          # level so polkit can authorize biometric unlock.
-          # Retire when bitwarden-desktop moves to environment.
-          # systemPackages or NixOS polkit starts scanning HM
-          # packages.
-          security.polkit.extraConfig = ''
-            polkit.addRule(function (action, subject) {
-              if (action.id == "com.bitwarden.Bitwarden.unlock" && subject.active) {
-                return polkit.Result.AUTH_SELF;
-              }
-            });
-          '';
-
-          # Install the polkit policy from the bitwarden-desktop
-          # package system-wide.
-          environment.pathsToLink = [ "/share/polkit-1" ];
           environment.systemPackages = [
-            pkgs.bitwarden-desktop
             pkgs.v4l-utils # `v4l2-ctl` for users running `face-doctor` or debugging
 
             # Interactive enrollment helper. Wraps fprintd-enroll +

@@ -31,7 +31,7 @@
     # Both services.fprintd.enable and services.howdy.enable auto-wire
     # pam_fprintd + pam_howdy as `sufficient` into EVERY pam service,
     # including swaylock. biometrics.nix reorders those for
-    # sudo/login/ly/bitwarden but not swaylock, so the lockscreen used
+    # sudo/login/ly but not swaylock, so the lockscreen used
     # to inherit `fprintd → howdy → unix(try_first_pass) → deny`. With
     # no fingerprints enrolled and pam_howdy clobbering PAM_AUTHTOK
     # before the try_first_pass pam_unix, the correct password was

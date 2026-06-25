@@ -93,11 +93,6 @@
 
     nixpkgs.config.allowUnfree = lib.mkDefault true;
     nixpkgs.config.allowAliases = lib.mkDefault false;
-    # electron 39 is EOL on the 26.05 stable channel but still pinned by a
-    # few desktop apps. Allow it so graphical hosts build. Mirror of the
-    # HM-side allow in flake-modules/mk-pkgs.nix. Drop both when the apps
-    # move to a supported electron.
-    nixpkgs.config.permittedInsecurePackages = lib.mkDefault [ "electron-39.8.10" ];
     # Apply the flake-wide overlays. See overlays/default.nix.
     nixpkgs.overlays = import ../overlays;
   };

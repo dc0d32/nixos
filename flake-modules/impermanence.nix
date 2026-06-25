@@ -164,7 +164,6 @@
             ".config/google-chrome"
             ".config/chromium"
             ".config/BraveSoftware"
-            ".config/Bitwarden"
             ".config/Bitwarden CLI"
             ".config/FreeCAD"
             ".local/share/FreeCAD"
