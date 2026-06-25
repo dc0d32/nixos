@@ -5,13 +5,12 @@
   # ./flake-modules/ is a top-level module of this configuration,
   # auto-imported by `vic/import-tree`.
   #
-  # See docs/sessions/2026-04-30-dendritic-migration.md for the rationale
-  # and migration plan. While the migration is in progress, legacy
-  # NixOS/HM modules under ./modules/{nixos,home}/ continue to be
-  # consumed by ./flake-modules/hosts/*.nix until each feature is
-  # migrated into its own ./flake-modules/<feature>.nix.
+  # See docs/sessions/2026-04-30-dendritic-migration.md for the rationale.
+  # The migration is complete: every feature lives in its own
+  # ./flake-modules/<feature>.nix; there is no legacy ./modules/ tree.
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Pinned to the stable release channel (nixos-26.05), NOT unstable.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
@@ -21,7 +20,10 @@
     import-tree.url = "github:vic/import-tree";
 
     home-manager = {
-      url = "github:nix-community/home-manager";
+      # Track the matching home-manager release branch for the pinned
+      # stable nixpkgs (release-26.05 ↔ nixos-26.05). Mismatched HM/nixpkgs
+      # versions trip HM's release-compat assertion.
+      url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

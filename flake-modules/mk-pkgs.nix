@@ -26,6 +26,13 @@
     config = {
       allowUnfree = true;
       allowAliases = false;
+      # electron 39 is EOL on the 26.05 stable channel, but a few desktop
+      # apps (e.g. bitwarden-desktop) still pin it. Allow it so the adult
+      # desktop closure evaluates/builds. Mirror of the NixOS-side allow
+      # in flake-modules/nix-settings.nix. Revisit when those apps move to
+      # a supported electron (then drop this) — see the stable-migration
+      # session log.
+      permittedInsecurePackages = [ "electron-39.8.10" ];
     };
   };
 }
