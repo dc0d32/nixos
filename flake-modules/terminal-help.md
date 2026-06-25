@@ -102,10 +102,18 @@ Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
 | `duckdb` | Run SQL on CSV / JSON / Parquet files |
 | `vd file.csv` | Explore a table / spreadsheet interactively |
 | `mlr` | Slice and summarise CSV / TSV data |
-| `jq` · `gron` · `jless` | Read and search JSON |
+| `jq` · `jaq` · `gron` · `jless` | Read and search JSON (`jaq` = faster `jq`) |
 | `dasel` | Convert between JSON / YAML / TOML / CSV |
 | `lnav file.log` | Explore log files (even with SQL) |
 | `numbat` | A calculator that understands units |
+
+## 🌐  Web & files
+
+| Command | What it does |
+| --- | --- |
+| `xh URL` | Send an HTTP request and pretty-print the reply (e.g. `xh httpbin.org/get`) |
+| `ouch decompress file.zip` | (Un)pack almost any archive — zip, tar, gz, zst, 7z |
+| `curl` · `wget` | Download a file or call an API |
 
 ## 🐍  Building & coding
 
@@ -151,6 +159,7 @@ Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
 | --- | --- |
 | `btop`  (or `htop`) | Live view of CPU / memory / processes |
 | `tldr cmd` | Quick examples for any command |
+| `navi` | Browse & run command cheatsheets interactively |
 | `man cmd` | Full manual for a command |
 | `tools` | Show this page again |
 

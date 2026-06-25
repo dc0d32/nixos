@@ -62,13 +62,15 @@ let
     { name = "Azure CLI"; id = "Microsoft.AzureCLI"; }
   ];
 
-  # The only CLI packages moved to winget: their Scoop builds bundle
-  # launcher/helper .exe's that get blocked by app-control. `name` is the
-  # matching Scoop package, used by setup.ps1 to remove a stale Scoop copy.
+  # CLI packages installed via winget. Most are here because their Scoop
+  # builds bundle launcher/helper .exe's that app-control blocks; `gh` is
+  # here by preference. `name` is the matching Scoop package, used by
+  # setup.ps1 to remove a stale Scoop copy (e.g. an old scoop `gh`).
   wingetCli = [
     { name = "git"; id = "Git.Git"; } # git-bash.exe, pinentry.exe, …
     { name = "git-lfs"; id = "GitHub.GitLFS"; }
     { name = "uv"; id = "astral-sh.uv"; } # uvw.exe
+    { name = "gh"; id = "GitHub.cli"; } # GitHub CLI — winget by preference
   ];
 
   # Everything else stays on Scoop (single binaries, not launcher shims).
@@ -82,19 +84,22 @@ let
     "eza"
     "zoxide"
     "jq"
+    "jaq"
     "yq"
     "gron"
     "dasel"
+    "xh"
+    "ouch"
     "delta"
     "difftastic"
     "lazygit"
     "glow"
     "tealdeer"
+    "navi"
     "duckdb"
     "miller"
     "yazi"
     "vifm"
-    "gh"
     "neovim"
     "starship"
     "atuin"
@@ -139,7 +144,6 @@ let
     "dbrgn.tealdeer"
     "DuckDB.cli"
     "Miller.Miller"
-    "GitHub.cli"
     "Neovim.Neovim"
     "Starship.Starship"
     "Atuinsh.Atuin"

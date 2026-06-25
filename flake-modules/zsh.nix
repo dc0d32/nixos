@@ -222,7 +222,12 @@
         # JSON / structured data
         gron # flatten JSON into greppable lines
         jless # interactive JSON pager/viewer
+        jaq # faster jq drop-in (correctness + speed focused)
         dasel # query+convert JSON/YAML/TOML/CSV/XML
+        # HTTP
+        xh # friendly, fast HTTP client (HTTPie-style)
+        # Archives
+        ouch # one tool to (de)compress tar/zip/gz/zst/7z/…
         # Logs
         lnav # log-file navigator with SQL over lines
         # Git / diff — delta (pager), lazygit (TUI) and git-lfs are wired
@@ -235,6 +240,7 @@
         # Docs / help
         glow # render markdown in the terminal
         tealdeer # fast tldr cheatsheets (tldr)
+        navi # interactive cheatsheet launcher (navi)
         # Misc
         numbat # unit-aware scientific calculator
 
