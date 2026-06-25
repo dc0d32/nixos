@@ -106,27 +106,19 @@ let
       config.flake.modules.nixos.openssh
       config.flake.modules.nixos.docker
       config.flake.modules.nixos.boot
-      # Daily `nixos-rebuild switch --refresh --flake
-      # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
-      # reboot. See flake-modules/auto-upgrade.nix.
-      config.flake.modules.nixos.auto-upgrade
+    ]
+    # Daily auto-pull from origin/main (deployed-and-left homelab VM).
+    # See flake-modules/bundles/nixos-auto-deploy.nix.
+    ++ config.flake.lib.bundles.nixos.auto-deploy
+    ++ [
       # Auto-bootstraps the nas user's home-manager profile on first
       # boot of a fresh install. No-op once activated.
       config.flake.modules.nixos.home-manager-bootstrap
-      # Per-user oneshot that clones https://github.com/dc0d32/nixos
-      # into ~/nixos for the nas user (idempotent).
-      # See flake-modules/nixos-clone.nix.
-      config.flake.modules.nixos.nixos-clone
-      # Daily `home-manager switch` at 05:30 local for nas. Pulls
-      # fresh from github:dc0d32/nixos each run. See
-      # flake-modules/hm-auto-upgrade.nix.
-      config.flake.modules.nixos.hm-auto-upgrade
     ];
 
     nixpkgs.hostPlatform = lib.mkDefault system;
     networking.hostName = name;
     users.primary = user;
-    console.keyMap = "us";
 
     # Bootloader policy lives in flake-modules/boot.nix (imported as
     # config.flake.modules.nixos.boot above). If the VM is provisioned
@@ -146,13 +138,7 @@ let
       initialPassword = "changeme";
     };
 
-    # Minimal system package set; rest lives in home-manager.
-    environment.systemPackages = with pkgs; [
-      git
-      vim
-      curl
-      wget
-    ];
+    # Base CLI (git/vim/curl/wget) comes from system-utils.nix.
 
     system.stateVersion = stateVersion;
   };
@@ -166,11 +152,7 @@ let
 
     programs.home-manager.enable = true;
 
-    home.sessionVariables = {
-      EDITOR = "vim";
-      VISUAL = "vim";
-    };
-
+    # EDITOR/VISUAL default to "vim" via flake-modules/vim.nix.
     home.username = user;
     home.homeDirectory = "/home/${user}";
     home.stateVersion = stateVersion;
@@ -183,16 +165,7 @@ let
   ];
 in
 {
-  # Cross-host shared option values. All ah-N VMs share these.
-  git = {
-    name = "CHANGEME";
-    email = "CHANGEME@example.com";
-  };
-
-  locale = {
-    timezone = "America/Los_Angeles";
-    lang = "en_US.UTF-8";
-  };
+  # git identity + locale use module defaults now (git.nix, locale.nix).
 
   # NixOS configurations -- one per (name, system) pair.
   # All ah-N hosts are placeholders until their VMs are provisioned and

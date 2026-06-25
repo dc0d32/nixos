@@ -13,6 +13,12 @@
 {
   flake.modules.nixos.system-utils = { pkgs, ... }: {
     environment.systemPackages = with pkgs; [
+      # Base CLI on every host. Also installed per-user via home-manager
+      # for interactive accounts, but kept here so a recovery root shell
+      # (and every system account) has them regardless of HM activation.
+      git
+      vim
+
       # Partitioning / filesystems
       util-linux # fdisk, cfdisk, lsblk, blkid, mount, etc.
       parted

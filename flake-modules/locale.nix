@@ -21,11 +21,13 @@ in
   options.locale = {
     timezone = lib.mkOption {
       type = lib.types.str;
+      default = "America/Los_Angeles";
       example = "America/Los_Angeles";
       description = "IANA tz database identifier (e.g. \"America/Los_Angeles\").";
     };
     lang = lib.mkOption {
       type = lib.types.str;
+      default = "en_US.UTF-8";
       example = "en_US.UTF-8";
       description = "System default locale (LANG / LC_ALL).";
     };
@@ -34,5 +36,9 @@ in
   config.flake.modules.nixos.locale = { lib, ... }: {
     time.timeZone = lib.mkDefault cfg.timezone;
     i18n.defaultLocale = lib.mkDefault cfg.lang;
+    # Console keymap defaulted here too: every host that imports locale
+    # historically set `console.keyMap = "us"` in its bridge. mkDefault
+    # so a non-US host can override without mkForce.
+    console.keyMap = lib.mkDefault "us";
   };
 }

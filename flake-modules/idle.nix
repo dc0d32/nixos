@@ -55,17 +55,17 @@
       options.idle = {
         lockAfter = lib.mkOption {
           type = lib.types.int;
-          default = 900;
+          default = 300;
           description = "Seconds of inactivity before locking the screen.";
         };
         dpmsAfter = lib.mkOption {
           type = lib.types.int;
-          default = 1020;
+          default = 420;
           description = "Seconds of inactivity before powering off monitors.";
         };
         suspendAfter = lib.mkOption {
           type = lib.types.int;
-          default = 1800;
+          default = 900;
           description = "Seconds of inactivity before systemd suspend.";
         };
       };

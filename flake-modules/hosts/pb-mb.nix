@@ -84,13 +84,7 @@ in
       # HM manages itself.
       programs.home-manager.enable = true;
 
-      # Per-user session vars. Editor pinned to vim (flake-modules/vim.nix
-      # sets defaultEditor=true but some shells/terminals don't pick that
-      # up), matching the Linux hosts.
-      home.sessionVariables = {
-        EDITOR = "vim";
-        VISUAL = "vim";
-      };
+      # EDITOR/VISUAL default to "vim" via flake-modules/vim.nix.
 
       home.username = user;
       # macOS homes live under /Users, not /home.

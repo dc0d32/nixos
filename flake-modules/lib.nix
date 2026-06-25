@@ -6,7 +6,7 @@
 # We need multiple contributors:
 #   - `flake-modules/mk-pkgs.nix` defines `flake.lib.mkPkgs`
 #   - each `flake-modules/bundles/<x>.nix` defines
-#     `flake.lib.bundles.homeManager.<x>`
+#     `flake.lib.bundles.homeManager.<x>` or `flake.lib.bundles.nixos.<x>`
 # without fighting each other. Re-declare with attrset types deep
 # enough to cover both.
 #
@@ -27,6 +27,14 @@
             description = ''
               Named lists of home-manager modules. Each entry is a
               ready-to-splice import list for an HM configuration.
+            '';
+          };
+          options.nixos = lib.mkOption {
+            type = lib.types.lazyAttrsOf (lib.types.listOf lib.types.raw);
+            default = { };
+            description = ''
+              Named lists of NixOS modules. Each entry is a
+              ready-to-splice import list for a NixOS configuration.
             '';
           };
         };

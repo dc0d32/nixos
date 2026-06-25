@@ -110,55 +110,14 @@ let
     irsDir = null;
     autoloads = [ ];
   };
-
-  # Per-kid home-manager module. Identical shape to pb-t480's kid HM
-  # module (uses the `kid` bundle: chrome+managed, zoom, freecad,
-  # compositor stack, no dev tooling). Parameterised by username so
-  # the same factory can produce more kid HM configs later without
-  # change.
-  mkKidHmModule = username: {
-    imports = config.flake.lib.bundles.homeManager.kid ++ [
-      # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle
-      # no longer carries it. Kids on m-pc had it before, so preserve
-      # that here.
-      config.flake.modules.homeManager.freecad
-    ];
-
-    programs.home-manager.enable = true;
-    # pb-t480 kids — m's muscle memory across the two hosts shouldn't
-    # diverge.
-    idle = {
-      lockAfter = 300;
-      dpmsAfter = 420;
-      suspendAfter = 900;
-    };
-
-    audio = audioCfg;
-
-    home.sessionVariables = {
-      EDITOR = "vim";
-      VISUAL = "vim";
-    };
-
-    home.username = username;
-    home.homeDirectory = "/home/${username}";
-    home.stateVersion = stateVersion;
-  };
 in
 {
   # ── Top-level option values supplied by this host ────────────────
-  git = {
-    name = "CHANGEME";
-    email = "CHANGEME@example.com";
-  };
+  # git identity, locale/timezone and wallpaper interval use their module
+  # defaults now (git.nix, locale.nix, wallpaper.nix). Nothing to set.
 
   # NOTE: `gpu.driver` is set inside `configurations.nixos.${hostName}.module`
   # below, NOT here — see the same note in pb-x1.nix.
-
-  locale = {
-    timezone = "America/Los_Angeles";
-    lang = "en_US.UTF-8";
-  };
 
   # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
   # below, NOT here — see the same note in pb-x1.nix. Even though this is
@@ -168,10 +127,6 @@ in
 
   # NOTE: `audio.*` is set inside each HM module block below, NOT here.
   # Per-HM-config option scoping; same reasoning as pb-t480.
-
-  wallpaper = {
-    intervalMinutes = 30;
-  };
 
   # NOTE: `idle.*` is set inside each HM module block below, NOT here.
 
@@ -191,32 +146,7 @@ in
   # full daily allotment on pb-t480 if she switches between them. Not
   # great, but not worth solving today; revisit if/when m starts
   # actually exploiting it.
-  timekpr.users =
-    let
-      kidPolicy = {
-        allowedHoursByDay = {
-          mon = "06:00-22:00";
-          tue = "06:00-22:00";
-          wed = "06:00-22:00";
-          thu = "06:00-22:00";
-          fri = "06:00-23:00";
-          sat = "06:00-23:00";
-          sun = "06:00-22:00";
-        };
-        dailyBudgetMinutesByDay = {
-          mon = 240;
-          tue = 240;
-          wed = 240;
-          thu = 240;
-          fri = 240;
-          sat = 360;
-          sun = 360;
-        };
-      };
-    in
-    {
-      m = kidPolicy;
-    };
+  timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
@@ -243,73 +173,32 @@ in
           # zswap-style compression headroom.
           swapSize = "12G";
         })
-
-        # Root-rollback impermanence: wipe the btrfs `root` subvol back
-        # to the empty `root-blank` snapshot on every boot. Everything
-        # that should survive a reboot lives under /persist and is
-        # bind-mounted back by the upstream impermanence NixOS module.
-        config.flake.modules.nixos.impermanence
-        # Daily restic backup of /persist to nas.lan:/mnt/zrust/backup/restic/m-pc
-        # via SFTP. Bootstrap with scripts/init-backup.sh after fresh install.
-        config.flake.modules.nixos.backup
-
-        # Feature modules. Subset of pb-t480 with biometrics +
-        # hardware-hacking dropped (no fingerprint/IR on this box;
-        # m's robotics work happens on pb-t480, not here).
-        config.flake.modules.nixos.gpu
-        config.flake.modules.nixos.power
-        config.flake.modules.nixos.networking
-        config.flake.modules.nixos.nix-settings
-        config.flake.modules.nixos.system-utils
-        config.flake.modules.nixos.users
-        config.flake.modules.nixos.fonts
-        config.flake.modules.nixos.locale
-        # battery.nix imported even on this desktop — it provides the
-        # UPower hibernate-on-critical wiring we want. The
-        # battery-threshold writes are harmless no-ops where
-        # /sys/class/power_supply/BAT0 doesn't exist (tmpfiles `w+`
-        # ignores ENOENT). The swap partition is provisioned by the
-        # disko factory above.
-        config.flake.modules.nixos.battery
-        config.flake.modules.nixos.audio
-        config.flake.modules.nixos.bluetooth
-        config.flake.modules.nixos.boot
-        config.flake.modules.nixos.file-manager
-        config.flake.modules.nixos.login-ly
-        config.flake.modules.nixos.niri
-        # Lockscreen system-side wiring: security.pam.services.swaylock.
-        # m-pc deliberately does NOT import the biometrics module (no
-        # fingerprint reader, no IR camera); the lockscreen runs
-        # password-only because fprintAuth's pam_fprintd substack
-        # short-circuits to "ignore" on hosts without fprintd enabled.
-        # HM-side install (swaylock-effects + config) comes via the
-        # home-desktop bundle's `lockscreen` import.
-        config.flake.modules.nixos.lockscreen
+      ]
+      # Bare-metal graphical core (impermanence + backup + gpu + power +
+      # networking + nix-settings + system-utils + users + fonts + locale
+      # + battery + audio + bluetooth + boot + file-manager + login-ly +
+      # niri + lockscreen + home-manager-bootstrap). See
+      # flake-modules/bundles/nixos-workstation.nix. battery is in the
+      # core: on this battery-less desktop the charge-threshold writes are
+      # harmless no-ops (tmpfiles `w+` ignores ENOENT) but we keep the
+      # UPower hibernate-on-critical wiring. The lockscreen runs
+      # password-only here because no biometrics module is imported.
+      ++ config.flake.lib.bundles.nixos.workstation
+      # Daily auto-pull from origin/main (this is a deployed-and-left
+      # box). See flake-modules/bundles/nixos-auto-deploy.nix.
+      ++ config.flake.lib.bundles.nixos.auto-deploy
+      ++ [
+        # ── m-pc-specific extras ────────────────────────────────────
+        # Screen-time enforcement + Family-Link-locking Chrome policy
+        # for the kid account. biometrics/face-unlock/hardware-hacking
+        # are dropped (no fingerprint/IR on this box; m's robotics work
+        # is on pb-t480). steam was removed 2026-06-14.
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
-        # Daily `nixos-rebuild switch --refresh --flake
-        # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
-        # reboot. See flake-modules/auto-upgrade.nix.
-        config.flake.modules.nixos.auto-upgrade
-        # Auto-bootstraps each user's HM profile on first boot. One
-        # oneshot service per HM config matching `*@m-pc`. Removes
-        # the post-install `home-manager switch` step for p and m.
-        config.flake.modules.nixos.home-manager-bootstrap
-        # Per-user oneshot that clones https://github.com/dc0d32/nixos
-        # into ~/nixos for each HM user (idempotent).
-        # See flake-modules/nixos-clone.nix.
-        config.flake.modules.nixos.nixos-clone
-        # Daily `home-manager switch` at 05:30 local for every HM
-        # user on this host. Pulls fresh from github:dc0d32/nixos
-        # each run. See flake-modules/hm-auto-upgrade.nix.
-        config.flake.modules.nixos.hm-auto-upgrade
-        # NOT imported: config.flake.modules.nixos.steam
-        # Removed 2026-06-14 — not actively used; add back when needed.
       ];
 
       networking.hostName = hostName;
       users.primary = primaryUser;
-      console.keyMap = "us";
 
       # AMD Radeon Pro WX 2100 (GCN 1.1 / "Tonga") is driven by amdgpu
       # in mainline kernels. RADV (the Mesa Vulkan driver) supports
@@ -367,13 +256,7 @@ in
           initialPassword = "changeme";
         });
 
-      # Minimal system package set; rest lives in home-manager.
-      environment.systemPackages = with hmPkgs; [
-        git
-        vim
-        curl
-        wget
-      ];
+      # Base CLI (git/vim/curl/wget) comes from system-utils.nix.
 
       system.stateVersion = stateVersion;
     };
@@ -396,21 +279,9 @@ in
 
           programs.home-manager.enable = true;
 
-          # Auto-lock / DPMS / suspend timings (seconds). Same as
-          # pb-x1 / pb-t480 to keep p's experience uniform across
-          # hosts.
-          idle = {
-            lockAfter = 300;
-            dpmsAfter = 420;
-            suspendAfter = 900;
-          };
-
+          # idle timings and EDITOR/VISUAL are module defaults now
+          # (idle.nix 300/420/900, vim.nix "vim").
           audio = audioCfg;
-
-          home.sessionVariables = {
-            EDITOR = "vim";
-            VISUAL = "vim";
-          };
 
           home.username = primaryUser;
           home.homeDirectory = "/home/${primaryUser}";
@@ -423,7 +294,7 @@ in
         name = "${kid}@${hostName}";
         value = {
           pkgs = hmPkgs;
-          module = mkKidHmModule kid;
+          module = config.flake.lib.mkKidHmModule { username = kid; audio = audioCfg; };
         };
       })
       kidUsers);

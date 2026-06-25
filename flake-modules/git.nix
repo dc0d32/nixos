@@ -1,14 +1,9 @@
 # Git config — identity (name, email), global ignores/aliases, and the
 # git tooling layer: delta (diff pager), lazygit (TUI), git-lfs.
 #
-# Identity is set by literal values in the host bridge:
-#   git.name  = "Foo Bar";
-#   git.email = "foo@example.com";
-# Both are written into ~/.gitconfig at HM activation; values land in the
-# Nix store. This is fine for a public flake whose author identity is
-# already on the commit log, less fine for shared author values you'd
-# rather not publish — that case is what a future secrets framework would
-# address (see AGENTS.md: not yet wired).
+# Identity defaults to the "CHANGEME" placeholder (a public flake whose
+# real author identity is already on the commit log). Hosts that want a
+# different identity override `git.name` / `git.email` in their bridge.
 #
 # Cross-class footprint: home-manager only (one user per host).
 #
@@ -23,10 +18,12 @@ in
   options.git = {
     name = lib.mkOption {
       type = lib.types.str;
+      default = "CHANGEME";
       description = "Commit author name written into ~/.gitconfig.";
     };
     email = lib.mkOption {
       type = lib.types.str;
+      default = "CHANGEME@example.com";
       description = "Commit author email written into ~/.gitconfig.";
     };
   };

@@ -65,28 +65,17 @@ let
       config.flake.modules.nixos.system-utils
       config.flake.modules.nixos.users
       config.flake.modules.nixos.locale
-      # Daily `nixos-rebuild switch --refresh --flake
-      # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
-      # reboot. The `persistent` timer means a fresh `wsl --shutdown`
-      # / `wsl` cycle that misses 04:40 will trigger the upgrade on
-      # next boot — slightly noisy on a dev machine but keeps WSL
-      # in lockstep with the homelab. See flake-modules/auto-upgrade.nix.
-      config.flake.modules.nixos.auto-upgrade
+    ]
+    # Daily auto-pull from origin/main. The `persistent` timer means a
+    # `wsl --shutdown` / `wsl` cycle that misses 04:40 triggers on next
+    # boot — slightly noisy on a dev machine but keeps WSL in lockstep
+    # with the homelab. See flake-modules/bundles/nixos-auto-deploy.nix.
+    ++ config.flake.lib.bundles.nixos.auto-deploy
+    ++ [
       # Auto-bootstraps p's home-manager profile on first boot. WSL
       # systemd is somewhat constrained, but oneshot multi-user.target
       # services run fine.
       config.flake.modules.nixos.home-manager-bootstrap
-      # Per-user oneshot that clones https://github.com/dc0d32/nixos
-      # into ~/nixos for p (idempotent). On WSL the clone often
-      # already exists (this IS where you tend to develop the
-      # flake), so the ConditionPathExists guard makes it a no-op.
-      # See flake-modules/nixos-clone.nix.
-      config.flake.modules.nixos.nixos-clone
-      # Daily `home-manager switch` at 05:30 local for p. Pulls
-      # fresh from github:dc0d32/nixos each run, so any local edits
-      # in ~/nixos that haven't been pushed are NOT what gets
-      # activated. See flake-modules/hm-auto-upgrade.nix.
-      config.flake.modules.nixos.hm-auto-upgrade
     ];
 
     # WSL has no hardware-configuration.nix to set the platform for
@@ -99,13 +88,7 @@ let
     # default user itself. Shell is forced to zsh by
     # flake-modules/wsl.nix.
 
-    # Tiny system package set; rest lives in home-manager.
-    environment.systemPackages = with pkgs; [
-      git
-      vim
-      curl
-      wget
-    ];
+    # Base CLI (git/vim/curl/wget) comes from system-utils.nix.
 
     system.stateVersion = stateVersion;
   };
@@ -124,11 +107,7 @@ let
 
     programs.home-manager.enable = true;
 
-    home.sessionVariables = {
-      EDITOR = "vim";
-      VISUAL = "vim";
-    };
-
+    # EDITOR/VISUAL default to "vim" via flake-modules/vim.nix.
     home.username = user;
     home.homeDirectory = "/home/${user}";
     home.stateVersion = stateVersion;
@@ -140,17 +119,7 @@ let
   ];
 in
 {
-  # Shared per-feature-module options that this host wants to override.
-  # Both WSL hosts share these values, so set them once at the top level.
-  git = {
-    name = "CHANGEME";
-    email = "CHANGEME@example.com";
-  };
-
-  locale = {
-    timezone = "America/Los_Angeles";
-    lang = "en_US.UTF-8";
-  };
+  # git identity + locale use module defaults now (git.nix, locale.nix).
 
   # NixOS configurations — one per (name, system) pair.
   configurations.nixos = builtins.listToAttrs (map

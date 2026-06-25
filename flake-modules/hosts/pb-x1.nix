@@ -39,40 +39,16 @@ in
   # them up here would create a flake-parts singleton that conflicts
   # the moment a second host with different values shows up.
 
-  git = {
-    name = "CHANGEME";
-    email = "CHANGEME@example.com";
-  };
-
-  # NOTE: `gpu.driver` is set inside `configurations.nixos.${hostName}.module`
-  # below, NOT here. gpu.nix declares its option as a NixOS module
-  # option (per-NixOS-config) so multi-host setups can each pick their
-  # own driver without singleton conflicts.
-
-  locale = {
-    timezone = "America/Los_Angeles";
-    lang = "en_US.UTF-8";
-  };
-
-  # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
-  # below, NOT here. battery.nix declares its options as NixOS module
-  # options (per-NixOS-config) so multi-laptop hosts can each carry
-  # their own thresholds without singleton conflicts.
-
-  # NOTE: `audio.*` is set inside `configurations.homeManager."${user}@${hostName}".module`
-  # below, NOT here. audio.nix declares its options as HM module
-  # options (per-HM-config) so multi-laptop hosts can each carry
-  # their own presetsDir / irsDir / autoloads without singleton
-  # conflicts.
-
-  wallpaper = {
-    intervalMinutes = 30;
-  };
-
-  # NOTE: `idle.*` is set inside `configurations.homeManager."${user}@${hostName}".module`
-  # below, NOT here. idle.nix declares its options as HM module
-  # options (per-HM-config) so multi-laptop hosts can each carry
-  # their own timeout policies without singleton conflicts.
+  # git identity, locale/timezone and wallpaper interval all use their
+  # module defaults now (git.nix → CHANGEME, locale.nix →
+  # America/Los_Angeles + en_US.UTF-8, wallpaper.nix → 30min), so there
+  # are no top-level option values to set on this host.
+  #
+  # NOTE: `gpu.driver` and `battery.*` are set inside
+  # `configurations.nixos.${hostName}.module`, and `audio.*` / `idle.*`
+  # inside `configurations.homeManager."${user}@${hostName}".module` —
+  # NOT here. Those options are declared per-(NixOS|HM)-config so
+  # multi-host setups don't collide on a flake-parts singleton.
 
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
@@ -100,73 +76,38 @@ in
         # boot.kernelPackages only if < 5.19 (conditional mkDefault, no
         # conflict with our explicit linuxPackages_latest below).
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-x1-yoga-7th-gen
-        # Root-rollback impermanence: wipe the btrfs `root` subvol back
-        # to the empty `root-blank` snapshot on every boot. Everything
-        # that should survive a reboot lives under /persist and is
-        # bind-mounted back by the upstream impermanence NixOS module.
-        # The disko bare-metal factory already creates root-blank and the
-        # persist subvol, so this Just Works after nixos-rebuild boot.
-        config.flake.modules.nixos.impermanence
-        # Daily restic backup of /persist to nas.lan:/mnt/zrust/backup/restic/pb-x1
-        # via SFTP. Timer at 03:00 with AC-gate (no AC → skip, retry next
-        # fire). Bootstrap with scripts/init-backup.sh after fresh install.
-        config.flake.modules.nixos.backup
-        # Migrated dendritic feature modules (NixOS side).
+      ]
+      # Bare-metal graphical core: impermanence, backup, gpu, power,
+      # networking, nix-settings, system-utils, users, fonts, locale,
+      # battery, audio, bluetooth, boot, file-manager, login-ly, niri,
+      # lockscreen, home-manager-bootstrap. See
+      # flake-modules/bundles/nixos-workstation.nix.
+      ++ config.flake.lib.bundles.nixos.workstation
+      ++ [
+        # ── pb-x1-specific extras ───────────────────────────────────
+        # USB/serial/JTAG udev rules + device groups for the primary
+        # user's PCB / firmware work.
         config.flake.modules.nixos.hardware-hacking
-        config.flake.modules.nixos.gpu
-        config.flake.modules.nixos.power
-        config.flake.modules.nixos.networking
-        config.flake.modules.nixos.nix-settings
-        config.flake.modules.nixos.system-utils
-        config.flake.modules.nixos.users
-        config.flake.modules.nixos.fonts
-        config.flake.modules.nixos.locale
-        config.flake.modules.nixos.battery
-        config.flake.modules.nixos.audio
+        # Fingerprint (Synaptics) + PAM stack reordering.
         config.flake.modules.nixos.biometrics
-        # Face unlock — howdy + IR emitter + camera autodetect.
-        # Opt-in companion to biometrics since 2026-05-16: howdy
-        # is ~1.2 GiB DL on its own, so hosts that want fingerprint
-        # only can omit this and skip the howdy closure.
+        # Face unlock — howdy + IR emitter + camera autodetect. Opt-in
+        # companion to biometrics (~1.2 GiB howdy closure); pb-x1 has IR
+        # hardware so it's wired here.
         config.flake.modules.nixos.face-unlock
-        config.flake.modules.nixos.bluetooth
-        config.flake.modules.nixos.boot
-        config.flake.modules.nixos.file-manager
-        config.flake.modules.nixos.login-ly
-        config.flake.modules.nixos.niri
-        # Lockscreen system-side wiring: security.pam.services.swaylock
-        # (the unlock prompt accepts the user's password; fprintAuth = true
-        # so on biometric hosts the fingerprint sensor also unlocks). HM-
-        # side install (swaylock-effects + config) comes via the home-
-        # desktop bundle's `lockscreen` import. pb-x1 has the biometrics
-        # module imported above, so the swaylock PAM stack auto-includes
-        # the fprintd substack and the indicator turns blue on touch.
-        config.flake.modules.nixos.lockscreen
-        # Auto-bootstraps p's home-manager profile on first boot of
-        # any fresh install via a oneshot systemd service. No-op on
-        # already-bootstrapped systems (the unit's ConditionPathExists
-        # check skips it once ~/.local/state/nix/profiles/home-manager
-        # exists). Same module also handles multi-user hosts.
-        config.flake.modules.nixos.home-manager-bootstrap
 
-        # NOT imported on pb-x1: config.flake.modules.nixos.auto-upgrade,
-        # config.flake.modules.nixos.nixos-clone, and
-        # config.flake.modules.nixos.hm-auto-upgrade.
-        # This is the active dev box: a 04:40 nixos-rebuild timer
-        # racing in-progress edits is more annoying than it's worth,
-        # the ~/nixos clone already exists (you ARE editing it here),
-        # and 05:30 auto-`home-manager switch` from github: would
-        # blow away local HM iteration. `sudo nixos-rebuild switch
-        # --flake .#pb-x1` and `home-manager switch --flake .#'p@pb-x1'`
-        # are already part of the workflow here. To opt in later,
-        # add the corresponding import lines above. See
-        # flake-modules/{auto-upgrade,nixos-clone,hm-auto-upgrade}.nix.
+        # NOT imported on pb-x1: the auto-deploy bundle (auto-upgrade,
+        # nixos-clone, hm-auto-upgrade). This is the active dev box — a
+        # 04:40 nixos-rebuild timer racing in-progress edits and a 05:30
+        # `home-manager switch` from github: that blows away local HM
+        # iteration are more annoying than useful. `sudo nixos-rebuild
+        # switch --flake .#pb-x1` and `home-manager switch --flake
+        # .#'p@pb-x1'` are the workflow here. To opt in later, append
+        # `config.flake.lib.bundles.nixos.auto-deploy`.
       ];
 
       # Host identity + base packages + primary user.
       networking.hostName = hostName;
       users.primary = user;
-      console.keyMap = "us";
 
       # GPU: Intel Iris Xe iGPU (Tiger Lake / Alder Lake on this
       # generation of X1 Yoga). See flake-modules/gpu.nix for what
@@ -218,15 +159,8 @@ in
         initialPassword = "changeme";
       };
 
-      # Extra system packages specific to this host. Most packages live
-      # in home-manager; reserve this for things that must exist at the
-      # system level (early boot tools, recovery shell tools).
-      environment.systemPackages = with hmPkgs; [
-        git
-        vim
-        curl
-        wget
-      ];
+      # Base CLI (git/vim/curl/wget) is provided system-wide by
+      # flake-modules/system-utils.nix; nothing host-specific to add.
 
       system.stateVersion = stateVersion;
     };
@@ -253,14 +187,8 @@ in
       # HM manages itself.
       programs.home-manager.enable = true;
 
-      # Auto-lock / DPMS / suspend timings (seconds). (Battery →
-      # power-saver switching is handled natively by power-profiles-daemon
-      # BatteryAware — see flake-modules/battery.nix — not here.)
-      idle = {
-        lockAfter = 300;
-        dpmsAfter = 420;
-        suspendAfter = 900;
-      };
+      # idle timings are module defaults now (idle.nix 300/420/900;
+      # battery -> power-saver is power-profiles-daemon BatteryAware).
 
       # EasyEffects per-host data: preset directory, IRS directory,
       # and the per-sink autoload rules. Declared here (per-HM-config)
@@ -287,15 +215,7 @@ in
         ];
       };
 
-      # Per-user session vars. Editor pinned to vim because
-      # flake-modules/vim.nix sets defaultEditor=true but some shells
-      # / terminals don't pick that up via update-alternatives.
-      # (neovim was the previous setting; it moved out of home-base
-      # on 2026-05-02 — see flake-modules/vim.nix header.)
-      home.sessionVariables = {
-        EDITOR = "vim";
-        VISUAL = "vim";
-      };
+      # EDITOR/VISUAL default to "vim" via flake-modules/vim.nix.
 
       home.username = user;
       home.homeDirectory = "/home/${user}";

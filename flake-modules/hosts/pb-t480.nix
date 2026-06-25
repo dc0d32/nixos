@@ -96,76 +96,16 @@ let
       --output=short-iso \
       --no-pager
   '';
-
-  # Per-kid home-manager module. Uses the `kid` bundle: full terminal
-  # dev/AI tooling (gh, git, opencode/copilot, build-deps, …) on a
-  # restricted GUI surface — google-chrome with Family-Link-locking
-  # managed policies (see flake-modules/chrome-managed.nix), zoom for
-  # school, full compositor stack, no admin/credential apps (no
-  # bitwarden/vscode/polkit-agent). `username` parameterises the
-  # home.* fields below.
-  mkKidHmModule = username: {
-    imports = config.flake.lib.bundles.homeManager.kid ++ [
-      # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle
-      # no longer carries it. Kids on pb-t480 had it before, so
-      # preserve that here.
-      config.flake.modules.homeManager.freecad
-    ];
-
-    programs.home-manager.enable = true;
-    # Auto-lock / DPMS / suspend timings (seconds). Battery →
-    # power-saver switching is handled natively by power-profiles-daemon
-    # BatteryAware (system-wide, applies to every user), not per-user.
-    idle = {
-      lockAfter = 300;
-      dpmsAfter = 420;
-      suspendAfter = 900;
-    };
-
-    # EasyEffects per-host data — shared with p on this host.
-    audio = audioCfg;
-
-    home.sessionVariables = {
-      EDITOR = "vim";
-      VISUAL = "vim";
-    };
-
-    home.username = username;
-    home.homeDirectory = "/home/${username}";
-    home.stateVersion = stateVersion;
-  };
 in
 {
   # ── Top-level option values supplied by this host ────────────────
-  git = {
-    name = "CHANGEME";
-    email = "CHANGEME@example.com";
-  };
-
-  # NOTE: `gpu.driver` is set inside `configurations.nixos.${hostName}.module`
-  # below, NOT here — see the same note in pb-x1.nix.
-
-  locale = {
-    timezone = "America/Los_Angeles";
-    lang = "en_US.UTF-8";
-  };
-
-  # NOTE: `battery.*` is set inside `configurations.nixos.${hostName}.module`
-  # below, NOT here — see the same note in pb-x1.nix.
-
-  # NOTE: `audio.*` is set inside each HM module block below, NOT
-  # here. audio.nix declares its options as HM module options
-  # (per-HM-config) so multi-laptop hosts can each carry their own
-  # presetsDir / irsDir / autoloads without singleton conflicts.
-  # The shared per-host audio config is factored into the `audioCfg`
-  # binding in the `let` block above.
-
-  wallpaper = {
-    intervalMinutes = 30;
-  };
-
-  # NOTE: `idle.*` is set inside each HM module block below, NOT
-  # here — see the same note in pb-x1.nix.
+  # git identity, locale/timezone and wallpaper interval use their module
+  # defaults now (git.nix, locale.nix, wallpaper.nix). Nothing to set.
+  #
+  # NOTE: `gpu.driver` + `battery.*` are set inside
+  # `configurations.nixos.${hostName}.module`, and `audio.*` / `idle.*`
+  # inside each HM module block below (per-(NixOS|HM)-config scoping; the
+  # shared `audioCfg` lives in the `let` block above).
 
   # Chrome managed-policy file applied to
   # /etc/opt/chrome/policies/managed/ on this host. See
@@ -196,33 +136,7 @@ in
   # p is unrestricted (not listed in timekpr.users) but IS in the
   # `timekpr` group below so they can drive timekpra/timekprc to
   # grant ad-hoc time or change limits at runtime.
-  timekpr.users =
-    let
-      kidPolicy = {
-        allowedHoursByDay = {
-          mon = "06:00-22:00";
-          tue = "06:00-22:00";
-          wed = "06:00-22:00";
-          thu = "06:00-22:00";
-          fri = "06:00-23:00";
-          sat = "06:00-23:00";
-          sun = "06:00-22:00";
-        };
-        dailyBudgetMinutesByDay = {
-          mon = 240;
-          tue = 240;
-          wed = 240;
-          thu = 240;
-          fri = 240;
-          sat = 360;
-          sun = 360;
-        };
-      };
-    in
-    {
-      m = kidPolicy;
-      s = kidPolicy;
-    };
+  timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
@@ -253,91 +167,35 @@ in
         # modules, firmware, T480 quirks). Pulls in things like
         # thinkpad_acpi, microcode, sane TLP-vs-PPD defaults, etc.
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t480
-
-        # Root-rollback impermanence: wipe the btrfs `root` subvol back
-        # to the empty `root-blank` snapshot on every boot. Everything
-        # that should survive a reboot lives under /persist and is
-        # bind-mounted back by the upstream impermanence NixOS module.
-        config.flake.modules.nixos.impermanence
-        # Daily restic backup of /persist to nas.lan:/mnt/zrust/backup/restic/pb-t480
-        # via SFTP. Bootstrap with scripts/init-backup.sh after fresh install.
-        config.flake.modules.nixos.backup
-
-        # Feature modules.
-        config.flake.modules.nixos.gpu
-        config.flake.modules.nixos.power
-        config.flake.modules.nixos.networking
-        config.flake.modules.nixos.nix-settings
-        config.flake.modules.nixos.system-utils
-        config.flake.modules.nixos.users
-        config.flake.modules.nixos.fonts
-        config.flake.modules.nixos.locale
-        config.flake.modules.nixos.battery
-        # Audio: PipeWire/ALSA/Pulse/RTKit + WirePlumber 100% volume
-        # cap. No host-specific EasyEffects presets/IRS/autoloads
-        # set yet for the T480 — the HM-side daemon launches in
-        # passthrough mode (no preset loaded). Author T480 presets
-        # later and wire them via `audio.presetsDir` /
-        # `audio.autoloads` here.
-        config.flake.modules.nixos.audio
-        config.flake.modules.nixos.bluetooth
-        config.flake.modules.nixos.boot
-        config.flake.modules.nixos.file-manager
-        # hardware-hacking (NixOS half) — udev rules for USB-serial /
-        # JTAG / DFU / RP2040 / ESP32, and dialout/plugdev/uucp group
-        # membership for users.primary AND every entry in
-        # hardware-hacking.extraUsers (set below for the kids' robotics
-        # work). Imported here only on this host because pb-x1 has its
-        # own primary-only setup and ah-1 is headless.
+      ]
+      # Bare-metal graphical core (impermanence + backup + gpu + power +
+      # networking + nix-settings + system-utils + users + fonts + locale
+      # + battery + audio + bluetooth + boot + file-manager + login-ly +
+      # niri + lockscreen + home-manager-bootstrap). See
+      # flake-modules/bundles/nixos-workstation.nix.
+      ++ config.flake.lib.bundles.nixos.workstation
+      # Daily auto-pull from origin/main (deployed-and-left family
+      # laptop). See flake-modules/bundles/nixos-auto-deploy.nix.
+      ++ config.flake.lib.bundles.nixos.auto-deploy
+      ++ [
+        # ── pb-t480-specific extras ─────────────────────────────────
+        # hardware-hacking (NixOS half) — udev rules + dialout/plugdev/
+        # uucp membership for users.primary AND hardware-hacking.extraUsers
+        # (set below to grant the kids device access for robotics work).
         config.flake.modules.nixos.hardware-hacking
-        config.flake.modules.nixos.login-ly
-        # Fingerprint (Synaptics) + face auth (howdy via IR camera)
-        # + PAM stack reordering. The IR camera path is autodetected
-        # at boot by howdy-camera-autodetect; the static fallback
-        # /dev/video2 only matters before that service runs.
-        config.flake.modules.nixos.biometrics
-        # Face unlock — howdy + IR emitter + camera autodetect.
-        # Opt-in companion to biometrics since 2026-05-16; pb-t480
+        # Fingerprint (Synaptics) + face auth (howdy via IR camera) + PAM
+        # reorder. face-unlock is the opt-in howdy/IR companion; the T480
         # has IR hardware and used face unlock historically.
+        config.flake.modules.nixos.biometrics
         config.flake.modules.nixos.face-unlock
-        config.flake.modules.nixos.niri
-        # Lockscreen system-side wiring: security.pam.services.swaylock
-        # (fprintAuth = true so the fingerprint sensor unlocks alongside
-        # the password prompt; face unlock on the lockscreen is gone
-        # post-quickshell-retreat — swaylock doesn't speak howdy). HM-
-        # side install (swaylock-effects + config) comes via the home-
-        # desktop / home-kid bundles' `lockscreen` import.
-        config.flake.modules.nixos.lockscreen
+        # Screen-time enforcement + Family-Link-locking Chrome policy.
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
-        # Daily `nixos-rebuild switch --refresh --flake
-        # github:dc0d32/nixos` at 04:40 local with 30min jitter, no
-        # reboot. See flake-modules/auto-upgrade.nix.
-        config.flake.modules.nixos.auto-upgrade
-        # Auto-bootstraps each user's home-manager profile on first
-        # boot via a oneshot systemd service per HM config matching
-        # `*@pb-t480`. Removes the post-install
-        # `home-manager switch --flake .#'<user>@pb-t480'` step for
-        # p, m, and s.
-        config.flake.modules.nixos.home-manager-bootstrap
-        # Per-user oneshot that clones https://github.com/dc0d32/nixos
-        # into ~/nixos for every HM-enabled user (idempotent;
-        # ConditionPathExists guard skips users who already have a
-        # clone). See flake-modules/nixos-clone.nix.
-        config.flake.modules.nixos.nixos-clone
-        # Daily `home-manager switch` at 05:30 local (30min after
-        # nixos-upgrade.timer's window) for every HM user on this
-        # host. Pulls the activation package fresh from
-        # github:dc0d32/nixos each run, mirroring system.autoUpgrade.
-        # See flake-modules/hm-auto-upgrade.nix.
-        config.flake.modules.nixos.hm-auto-upgrade
-        # NOT imported: config.flake.modules.nixos.steam
-        # Removed 2026-06-14 — not actively used; add back when needed.
+        # NOT imported: steam (removed 2026-06-14).
       ];
 
       networking.hostName = hostName;
       users.primary = primaryUser;
-      console.keyMap = "us";
 
       # GPU driver is a guess — revisit after generating real hardware
       # config. T480 SKUs ship with Intel UHD 620 alone, or Intel +
@@ -420,14 +278,9 @@ in
           initialPassword = "changeme";
         });
 
-      # System packages: minimal set + the kid-activity wrapper for p.
-      environment.systemPackages = with hmPkgs; [
-        git
-        vim
-        curl
-        wget
-        familyActivity
-      ];
+      # Base CLI (git/vim/curl/wget) comes from system-utils.nix; only
+      # the host-specific kid-activity wrapper is added here.
+      environment.systemPackages = [ familyActivity ];
 
       system.stateVersion = stateVersion;
     };
@@ -458,23 +311,11 @@ in
 
           programs.home-manager.enable = true;
 
-          # Auto-lock / DPMS / suspend timings (seconds). Battery →
-          # power-saver switching is handled natively by
-          # power-profiles-daemon BatteryAware (system-wide), not here.
-          # Same values as pb-x1.
-          idle = {
-            lockAfter = 300;
-            dpmsAfter = 420;
-            suspendAfter = 900;
-          };
+          # idle timings + EDITOR/VISUAL are module defaults now
+          # (idle.nix 300/420/900, vim.nix "vim").
 
           # EasyEffects per-host data — shared with kids on this host.
           audio = audioCfg;
-
-          home.sessionVariables = {
-            EDITOR = "vim";
-            VISUAL = "vim";
-          };
 
           home.username = primaryUser;
           home.homeDirectory = "/home/${primaryUser}";
@@ -487,7 +328,7 @@ in
         name = "${kid}@${hostName}";
         value = {
           pkgs = hmPkgs;
-          module = mkKidHmModule kid;
+          module = config.flake.lib.mkKidHmModule { username = kid; audio = audioCfg; };
         };
       })
       kidUsers);
