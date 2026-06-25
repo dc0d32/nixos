@@ -1,0 +1,50 @@
+name: flake check
+
+# Server-side gate. The secondary hosts (pb-t480, m-pc, ah-1, wsl)
+# auto-upgrade from origin/main daily (flake-modules/auto-upgrade.nix), so
+# a broken main bricks their next 24h of upgrades. This runs the same
+# `nix flake check` the local pre-push hook does, but on GitHub — catching
+# anything pushed with --no-verify or from a machine without the hook.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: flake-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `nix flake check` realizes every host's system closure + each
+      # user's HM activation package — multiple GB. GitHub runners ship
+      # ~14 GB free; reclaim the bundled toolchains we don't use first.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup
+          df -h /
+
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          # Pull niri (and friends) from the same binary caches the
+          # flake's NixOS module trusts, so CI doesn't compile them from
+          # source. niri key verified against the niri-flake source.
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: nix flake check
+        # NIXOS_ALLOW_PLACEHOLDER + --impure: the placeholder hosts (m-pc,
+        # ah-1) assert on system.build.toplevel unless the env var is set,
+        # and `nix flake check` walks every nixosConfiguration regardless
+        # of which subset ends up in `checks`. Same invocation as the
+        # local pre-push smoke build (flake-modules/dev-shell.nix). Only
+        # builds the runner's native arch (x86_64-linux); wsl-arm is
+        # evaluated but not built here.
+        run: NIXOS_ALLOW_PLACEHOLDER=1 nix flake check --impure --print-build-logs

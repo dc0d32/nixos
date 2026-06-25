@@ -1,0 +1,37 @@
+name: update flake.lock
+
+# Reinstates the lapsed "weekly bump" cadence. Opens a PR running
+# `nix flake update` every Saturday; on the stable channel this mostly
+# carries nixos-26.05 security/bugfix backports plus the non-follows
+# inputs (niri-flake, nixos-hardware, …). The in-repo lock is the single
+# source every host auto-upgrades against, so bumping it here + letting
+# the `flake check` workflow validate the PR keeps the fleet patched
+# without hand-running `nix flake update` on the dev box.
+
+on:
+  schedule:
+    - cron: "0 6 * * 6" # Saturdays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/update-flake-lock@main
+        with:
+          pr-title: "flake.lock: weekly input bump"
+          pr-labels: dependencies
+          pr-body: |
+            Automated `nix flake update`.
+
+            Review the input diff and wait for the **flake check** run to
+            pass before merging.
+
+            NOTE: PRs opened with the default `GITHUB_TOKEN` do not
+            trigger other workflows, so `flake check` may not start
+            automatically on this PR. To auto-run CI on the bump PR, set
+            `token:` above to a PAT / GitHub App token with `repo` +
+            `workflow` scope; otherwise close-and-reopen the PR (or push
+            an empty commit) to kick the check.
