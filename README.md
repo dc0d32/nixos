@@ -1,14 +1,18 @@
 # dc0d32 / nixos
 
 Personal declarative config for NixOS (full system) and home-manager.
+Tracks the **stable** nixpkgs channel (currently `nixos-26.05`).
 Configured hosts:
 
 - `pb-x1` — primary dev laptop (Lenovo X1 Yoga gen 7, x86_64-linux).
+- `pb-t480` — kids' shared laptop (Lenovo ThinkPad T480, x86_64-linux).
+- `m-pc` — kid desktop (Compaq Pro 4300 SFF, x86_64-linux).
+- `ah-1` — homelab service-host VM (x86_64-linux, headless).
 - `wsl` — NixOS inside WSL2 on x86_64 Windows.
 - `wsl-arm` — NixOS inside WSL2 on Windows on ARM (aarch64-linux).
+- `pb-mb` — MacBook Air M4 (standalone home-manager only).
 
-More machines (additional laptops + servers) will be added under
-`flake-modules/hosts/<name>.nix`.
+New machines are added under `flake-modules/hosts/<name>.nix`.
 
 ## Layout
 
@@ -19,10 +23,10 @@ flake-modules/                dendritic feature modules (one per concern)
   hosts/pb-mb.nix             host bridge: MacBook Air M4 (standalone HM only)
   hosts/wsl.nix               host bridge: both WSL configurations
   <feature>.nix               each contributes flake.modules.{nixos,homeManager}.<feature>
+  bundles/                    named module import lists (flake.lib.bundles.*)
   FusionLike/                 FreeCAD auto-startup mod (Init.py + InitGui.py)
 hosts/pb-x1/                  hardware-configuration.nix + audio presets/IRS dirs
 overlays/                     custom overlays (each documents why and when to delete)
-packages/                     custom package definitions
 docs/                         design notes and AI session history (see docs/sessions/)
 ```
 
@@ -52,8 +56,8 @@ Design choices:
 - **Home Manager is standalone** (not wired into NixOS as a module).
 - **Everything declarative**: no separate dotfiles repo. User configs
   live under `flake-modules/<feature>.nix`.
-- **Compositor**: niri. **Shell**: zsh. **Editor**: neovim.
-  **Terminal**: alacritty.
+- **Compositor**: niri. **Shell**: zsh. **Editor**: vim.
+  **Terminal**: alacritty (native Terminal.app on macOS).
 - **No secrets module yet** — added later if needed (sops-nix or agenix).
 
 ## Day-to-day
@@ -225,7 +229,7 @@ restart the terminal.
 Control) trusts winget's vendor-signed binaries in `Program Files` but
 blocks the unsigned *launcher* `.exe`s that a few Scoop packages bundle
 under the user profile. Single-binary tools (ripgrep, fd, bat, gh,
-delta, neovim, …) aren't affected and stay on Scoop, which tracks
+delta, …) aren't affected and stay on Scoop, which tracks
 upstream more closely.
 
 What's shared from one definition: the **starship prompt**

@@ -85,10 +85,10 @@ errors.
 
 - `flake.nix` — inputs and flake-parts entry; imports the dendritic tree.
 - `flake-modules/` — every feature module; one concern per file.
+- `flake-modules/bundles/` — named import lists (`flake.lib.bundles.{nixos,homeManager}.*`).
 - `flake-modules/hosts/pb-x1.nix` — host bridge for the primary
   laptop: imports + per-host option values.
 - `hosts/pb-x1/` — `hardware-configuration.nix` and host-specific
   asset directories (audio presets, IRS).
 - `overlays/` — package overrides; see Conventions.
-- `packages/` — custom package definitions.
 - `README.md` — user-facing layout, install, day-to-day commands.

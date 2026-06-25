@@ -14,7 +14,6 @@ flake-modules/                     dendritic feature modules
   <feature>.nix                    each contributes flake.modules.{nixos,homeManager}.<feature>
 hosts/<name>/                      per-host assets (hardware-config, audio presets, …)
 overlays/                          custom overlays
-packages/                          custom packages
 scripts/
   install.sh                       nixos-anywhere wrapper for fresh installs
   init-backup.sh                   bootstrap restic backup on a host
