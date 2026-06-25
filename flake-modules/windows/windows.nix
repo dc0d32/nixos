@@ -103,11 +103,13 @@ let
     "sd"
   ];
 
-  # Nerd Font to match the alacritty / Windows-Terminal face
-  # "FantasqueSansM Nerd Font" (from the `nerd-fonts` Scoop bucket). The
-  # `FantasqueSansMono-NF` (normal) manifest installs that family; the
-  # `-Mono` variant would instead be named "… Nerd Font Mono".
-  scoopFonts = [ "FantasqueSansMono-NF" ];
+  # Nerd Font for the Windows-Terminal face "FantasqueSansM Nerd Font
+  # Mono" (from the `nerd-fonts` Scoop bucket). The `-Mono` manifest
+  # installs the single-cell-width family; the plain `FantasqueSansMono-NF`
+  # manifest installs "FantasqueSansM Nerd Font" (non-Mono), whose patched
+  # glyphs keep their original 1.5–2× advance and break the terminal grid
+  # (overlapping/clipped letters) — same bug we hit on Linux/alacritty.
+  scoopFonts = [ "FantasqueSansMono-NF-Mono" ];
 
   # Pure-Python tools with no winget/scoop package — installed via
   # `uv tool install` (uv itself comes from winget above). `vd` is the
@@ -399,7 +401,7 @@ let
         wt_found=1
         backup "$s"
         tmp="$(mktemp)"
-        if jq '.profiles.defaults.font.face = "FantasqueSansM Nerd Font"
+        if jq '.profiles.defaults.font.face = "FantasqueSansM Nerd Font Mono"
                | .profiles.defaults.font.size = (.profiles.defaults.font.size // 11)' \
              "$s" > "$tmp" 2>/dev/null; then
           mv "$tmp" "$s"

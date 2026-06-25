@@ -23,12 +23,20 @@ in
           decorations = "none";
         };
         font = {
-          # Pin the style explicitly: some Nerd-Font RIBBI families
+          # Use the "… Nerd Font Mono" family, NOT the bare
+          # "FantasqueSansM Nerd Font". The non-Mono patched family keeps
+          # the Nerd glyphs at their original (often 1.5–2×) advance
+          # width, which doesn't match alacritty's fixed terminal cell —
+          # the result is overlapping letters and gaps. The Mono variant
+          # forces every glyph (icons included) into a single cell, so
+          # the grid stays aligned.
+          #
+          # Pin the style explicitly too: some Nerd-Font RIBBI families
           # (notably Adwaita Mono) confuse alacritty's face matcher into
           # picking Italic when only the family is given. Naming the
           # style forces the upright face.
           normal = {
-            family = "FantasqueSansM Nerd Font";
+            family = "FantasqueSansM Nerd Font Mono";
             style = "Regular";
           };
           size = 10;

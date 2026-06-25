@@ -60,9 +60,15 @@ in
     fonts = {
       packages = fontPkgs pkgs;
       fontconfig.defaultFonts = {
-        # FantasqueSansM first; fall back to JetBrainsMono if a client
-        # can't find the patched family (e.g. pre-patched tooling).
-        monospace = [ "FantasqueSansM Nerd Font" "JetBrainsMono Nerd Font" ];
+        # FantasqueSansM **Mono** first; fall back to JetBrainsMono if a
+        # client can't find the patched family (e.g. pre-patched
+        # tooling). The Mono variant forces every glyph — including the
+        # Nerd icons — into a single fixed-width cell; the bare
+        # "FantasqueSansM Nerd Font" leaves the patched glyphs at their
+        # original (often 1.5–2×) advance, which breaks monospace
+        # alignment (overlapping/clipped letters) in terminals and other
+        # cell-grid clients.
+        monospace = [ "FantasqueSansM Nerd Font Mono" "JetBrainsMono Nerd Font" ];
         sansSerif = [ "Inter" ];
         serif = [ "Noto Serif" ];
         emoji = [ "Noto Color Emoji" ];
