@@ -48,6 +48,12 @@ let
       # WSL glue — first so its mkForce overrides win against any
       # baseline default brought in by a shared module.
       config.flake.modules.nixos.wsl
+      # Recover the per-user systemd manager from the systemd 260
+      # cgroup-reuse EBUSY regression (#41278) that otherwise makes
+      # every `wsl` launch print "Failed to start the systemd user
+      # session". Retire once systemd >= 261. See
+      # flake-modules/wsl-user-manager-fix.nix.
+      config.flake.modules.nixos.wsl-user-manager-fix
 
       config.flake.modules.nixos.nix-settings
       # Real dynamic loader at /lib64/ld-linux-x86-64.so.2 so prebuilt
