@@ -36,7 +36,7 @@
 #   from any host in the repo (e.g. all hardware hacking moves to a
 #   dedicated bench machine outside this flake).
 {
-  flake.modules.nixos.hardware-hacking = { config, lib, ... }: {
+  flake.modules.nixos.hardware-hacking = { config, lib, pkgs, ... }: {
     options.hardware-hacking.extraUsers = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -65,28 +65,40 @@
         in
         lib.genAttrs targets (_: { extraGroups = groups; });
 
+      # `plugdev` is referenced by the udev rules below and by the
+      # accounts' extraGroups, but NixOS does not create it by default —
+      # declare it so those references resolve instead of silently
+      # leaving devices root-owned (a stealth "needs sudo to flash").
+      users.groups.plugdev = { };
+
       services.udev.extraRules = ''
-        # CP210x USB-serial (common on ESP32/ESP8266 devboards)
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0666", GROUP="dialout"
+        # TAG+="uaccess": grant the user with the active local (seat)
+        # session a per-login ACL on the device, so flashing/debugging
+        # NEVER needs sudo and works for whoever is physically at the
+        # machine (incl. the kids), independent of group membership.
+        # GROUP=/MODE= are a fallback for non-seat (e.g. SSH) sessions.
+        #
+        # USB-serial bridges. The kernel already puts the resulting
+        # /dev/ttyUSB*,ttyACM* in group "dialout"; these also open the
+        # raw usb node and add the uaccess ACL.
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="10c4", MODE="0660", GROUP="dialout", TAG+="uaccess"  # Silicon Labs CP210x
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", MODE="0660", GROUP="dialout", TAG+="uaccess"  # QinHeng CH34x/CH910x
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", MODE="0660", GROUP="dialout", TAG+="uaccess"  # FTDI
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", MODE="0660", GROUP="dialout", TAG+="uaccess"  # Espressif native USB (ESP32-S2/S3/C3)
 
-        # CH340/CH341 USB-serial
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", MODE="0666", GROUP="dialout"
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="5523", MODE="0666", GROUP="dialout"
-
-        # FTDI FT232
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0666", GROUP="dialout"
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", MODE="0666", GROUP="dialout"
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6011", MODE="0666", GROUP="dialout"
-
-        # ESP32-S3 / ESP32-C3 native USB (JTAG + CDC)
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", MODE="0666", GROUP="dialout"
-
-        # STM32 DFU
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df11", MODE="0666", GROUP="plugdev"
-
-        # Raspberry Pi RP2040 (UF2 bootloader)
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0666", GROUP="plugdev"
+        # Boards / programmers flashed or debugged over raw USB.
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # Raspberry Pi RP2040 (UF2/picotool/debugprobe)
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # STM32 DFU + ST-Link
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="0d28", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # ARM mbed / DAPLink (BBC micro:bit)
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="2341", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # Arduino
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="239a", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # Adafruit
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="1366", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # SEGGER J-Link
       '';
+
+      # OpenOCD ships a comprehensive, maintained udev ruleset for debug
+      # probes (ST-Link, J-Link, CMSIS-DAP, FTDI-JTAG, …) with uaccess +
+      # plugdev — so we don't hand-maintain every programmer's VID:PID.
+      services.udev.packages = [ pkgs.openocd ];
     };
   };
 
