@@ -16,8 +16,9 @@
 #   - nix-settings  user-profile GC policy (mirrors NixOS-side
 #                   nix-settings; see flake-modules/nix-settings-hm.nix)
 #   - tmux          terminal multiplexer
-#   - vim           base editor (replaced neovim 2026-05-02; the neovim
-#                   module is dormant on disk for one-line revert)
+#   - vim           base editor + source of EDITOR/VISUAL (replaced
+#                   neovim 2026-05-02; the neovim module was removed
+#                   entirely 2026-06-25)
 #   - zsh           login shell (default across all hosts; the
 #                   2026-05 fish-default cutover was reverted, fish
 #                   stays installed but zsh is the default again)

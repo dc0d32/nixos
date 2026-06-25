@@ -10,5 +10,4 @@
 #   - flake-modules/mk-pkgs.nix (the shared HM-side `pkgs` factory each
 #     host bridge calls via `config.flake.lib.mkPkgs`).
 [
-  (import ./nvim-treesitter-pin.nix)
 ]

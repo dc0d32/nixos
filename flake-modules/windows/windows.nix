@@ -74,8 +74,6 @@ let
   ];
 
   # Everything else stays on Scoop (single binaries, not launcher shims).
-  # neovim included deliberately: Scoop tracks upstream nvim more closely
-  # than winget and eases tree-sitter / plugin setup.
   scoopApps = [
     "ripgrep"
     "fd"
@@ -100,7 +98,6 @@ let
     "miller"
     "yazi"
     "vifm"
-    "neovim"
     "starship"
     "atuin"
     "ruff"
