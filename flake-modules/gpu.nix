@@ -42,9 +42,13 @@
         # Modern name in nixpkgs; also export hardware.graphics for
         # compatibility. mkDefault so WSL / headless hosts can disable
         # cleanly even when this module is imported.
+        #
+        # No enable32Bit: 32-bit GL libs were only needed for Steam,
+        # which has been removed from this flake. If Steam returns,
+        # nixpkgs' programs.steam sets hardware.graphics.enable32Bit =
+        # true itself, so there's no need to carry it here.
         hardware.graphics = {
           enable = lib.mkDefault true;
-          enable32Bit = lib.mkDefault true;
         };
 
         # ---------- Intel ----------

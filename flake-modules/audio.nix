@@ -83,7 +83,15 @@ in
     services.pipewire = {
       enable = true;
       alsa.enable = true;
-      alsa.support32Bit = true;
+      # No alsa.support32Bit: the only consumer of 32-bit audio was
+      # Steam, which has been removed from this flake. If Steam ever
+      # comes back, nixpkgs' programs.steam auto-sets
+      # services.pipewire.alsa.support32Bit (and
+      # hardware.graphics.enable32Bit) itself, so don't re-add it by
+      # hand. Dropping it also avoids building the whole i686 pipewire
+      # stack (ffado → scons → a python env with pandas/pybind11,
+      # libcamera → pybind11) from source, since cache.nixos.org doesn't
+      # populate the i686 variant.
       pulse.enable = true;
       jack.enable = lib.mkDefault false;
       wireplumber.extraConfig."99-volume-limit" = {

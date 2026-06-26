@@ -191,7 +191,7 @@ in
         # Screen-time enforcement + Family-Link-locking Chrome policy.
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
-        # NOT imported: steam (removed 2026-06-14).
+        # (The steam module was deleted from the flake 2026-06-25.)
       ];
 
       networking.hostName = hostName;

@@ -192,7 +192,7 @@ in
         # Screen-time enforcement + Family-Link-locking Chrome policy
         # for the kid account. biometrics/face-unlock/hardware-hacking
         # are dropped (no fingerprint/IR on this box; m's robotics work
-        # is on pb-t480). steam was removed 2026-06-14.
+        # is on pb-t480). (The steam module was deleted 2026-06-25.)
         config.flake.modules.nixos.timekpr
         config.flake.modules.nixos.chrome-managed
       ];
