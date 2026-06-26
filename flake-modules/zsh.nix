@@ -263,5 +263,16 @@
           '';
         })
       ];
+
+      # DuckDB CLI init file. `duckdb -ui` (and any function that lives in
+      # an official extension) needs the `ui` extension auto-fetched on
+      # demand; DuckDB ships with autoinstall/autoload OFF, so a bare
+      # `duckdb -ui` errors with "start_ui is not in the catalog". Turning
+      # both on for known (signed, official) extensions makes the UI — and
+      # httpfs/json/etc. — just work. Read from ~/.duckdbrc on every launch.
+      home.file.".duckdbrc".text = ''
+        SET autoinstall_known_extensions = 1;
+        SET autoload_known_extensions = 1;
+      '';
     };
 }

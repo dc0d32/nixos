@@ -200,6 +200,12 @@
             # and GTK apps key off this; losing it resets a long tail
             # of small UX state on every boot.
             ".config/dconf"
+            # DuckDB extension cache. flake.modules.homeManager.zsh ships
+            # duckdb + a ~/.duckdbrc that auto-installs known extensions
+            # (so `duckdb -ui` works). Downloaded extensions land here;
+            # without this entry every boot re-downloads `ui`/`httpfs`/…
+            # on first use and breaks DuckDB entirely when offline.
+            ".duckdb"
           ];
         };
 
