@@ -81,18 +81,33 @@
         # USB-serial bridges. The kernel already puts the resulting
         # /dev/ttyUSB*,ttyACM* in group "dialout"; these also open the
         # raw usb node and add the uaccess ACL.
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="10c4", MODE="0660", GROUP="dialout", TAG+="uaccess"  # Silicon Labs CP210x
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", MODE="0660", GROUP="dialout", TAG+="uaccess"  # QinHeng CH34x/CH910x
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", MODE="0660", GROUP="dialout", TAG+="uaccess"  # FTDI
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", MODE="0660", GROUP="dialout", TAG+="uaccess"  # Espressif native USB (ESP32-S2/S3/C3)
+        #
+        # NOTE: comments must be on their own line. `udevadm verify`
+        # (run at build time by the udev-rules derivation) rejects a
+        # trailing `# …` after rule tokens with "a comma between tokens
+        # is expected", failing the whole build.
+        # Silicon Labs CP210x
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="10c4", MODE="0660", GROUP="dialout", TAG+="uaccess"
+        # QinHeng CH34x/CH910x
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", MODE="0660", GROUP="dialout", TAG+="uaccess"
+        # FTDI
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", MODE="0660", GROUP="dialout", TAG+="uaccess"
+        # Espressif native USB (ESP32-S2/S3/C3)
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", MODE="0660", GROUP="dialout", TAG+="uaccess"
 
         # Boards / programmers flashed or debugged over raw USB.
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # Raspberry Pi RP2040 (UF2/picotool/debugprobe)
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # STM32 DFU + ST-Link
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="0d28", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # ARM mbed / DAPLink (BBC micro:bit)
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="2341", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # Arduino
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="239a", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # Adafruit
-        SUBSYSTEM=="usb", ATTRS{idVendor}=="1366", MODE="0660", GROUP="plugdev", TAG+="uaccess"  # SEGGER J-Link
+        # Raspberry Pi RP2040 (UF2/picotool/debugprobe)
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+        # STM32 DFU + ST-Link
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+        # ARM mbed / DAPLink (BBC micro:bit)
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="0d28", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+        # Arduino
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="2341", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+        # Adafruit
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="239a", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+        # SEGGER J-Link
+        SUBSYSTEM=="usb", ATTRS{idVendor}=="1366", MODE="0660", GROUP="plugdev", TAG+="uaccess"
       '';
 
       # OpenOCD ships a comprehensive, maintained udev ruleset for debug
