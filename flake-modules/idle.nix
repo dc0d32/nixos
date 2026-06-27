@@ -9,8 +9,9 @@
 # `configurations.homeManager.<id>.module` block.
 #
 # Battery → power-saver auto-switching is NOT here: it's handled
-# system-wide by TLP on laptops (automatic AC↔battery power policy), so it
-# applies regardless of who is logged in — see flake-modules/tlp.nix.
+# system-wide on laptops by flake-modules/power-profile-auto.nix (a UPower
+# watcher driving power-profiles-daemon from a battery%/AC matrix), so it
+# applies regardless of who is logged in.
 #
 # Why HM-side options (not flake-parts top-level): the idle daemon
 # is a per-user service writing per-user config. With more than one

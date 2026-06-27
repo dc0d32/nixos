@@ -146,3 +146,43 @@ no manual cleanup needed, and it converges the boot path too.
 Verified: pb-x1/pb-t480/m-pc build green; `nix flake check --impure`
 passes; generated calls confirmed for users m/p/s
 (`deshadow_file /home/<u>/.zsh_history /persist/home/<u>/.zsh_history`).
+
+## Pivot (same session): battery%-aware matrix needs PPD + a watcher, not TLP
+
+The user then specified an exact policy that TLP cannot express — a
+four-state matrix gated on a 20% battery threshold:
+
+|              | on AC       | on battery  |
+|--------------|-------------|-------------|
+| battery ≥20% | performance | balanced    |
+| battery <20% | balanced    | power-saver |
+
+plus charge-stop at 80% (already configured). No maintained tool does
+*percentage-based* profile switching (PPD/tuned/TLP/auto-cpufreq are all
+AC-vs-battery only), but the matrix maps cleanly onto PPD's three named
+profiles. So TLP was removed and replaced with:
+
+- **New `flake-modules/power-profile-auto.nix`** — enables
+  power-profiles-daemon and adds a small UPower-driven watcher:
+  - script reads `OnBattery` + DisplayDevice `Percentage` via `busctl`
+    (aggregates the T480's dual battery; handles USB-C PD/docks),
+    computes the matrix, and `powerprofilesctl set`s the result (only when
+    it differs);
+  - `power-profile-auto.service` (oneshot) + `.timer`
+    (OnBootSec=30s, OnUnitActiveSec=60s) for the discharge-time 20%
+    crossing, + a `power_supply` udev rule for instant AC plug/unplug;
+  - a polkit rule granting root the `switch-profile`/`hold-profile`
+    actions (PPD's defaults only allow *active* sessions, so the root
+    service would otherwise be denied).
+  - Imported by the laptop bridges (pb-x1, pb-t480) only.
+- TLP module deleted; PPD re-enabled (per-laptop, via this module);
+  comments in niri/battery/power/idle/impermanence/pb-x1 updated back to
+  the PPD+watcher reality.
+
+Why this is latch-safe: the watcher re-asserts the correct profile on
+every power event and every 60 s, and PPD's state dir stays out of
+impermanence — a stale `power-saver` can never persist.
+
+Verified: pb-x1/pb-t480/m-pc build green; `nix flake check --impure`
+passes; live read-only test on pb-t480 (AC, 76%) computes `performance`
+as specified; polkit/udev artifacts confirmed.

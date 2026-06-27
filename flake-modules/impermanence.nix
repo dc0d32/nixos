@@ -373,13 +373,15 @@
             "/var/lib/docker"
             "/var/lib/libvirt"
             "/var/lib/colord"
-            # NOTE: no power-daemon state dir is persisted, by design. Power
-            # management is TLP (flake-modules/tlp.nix), which is fully
-            # deterministic from /etc config + AC state — there is no
-            # user-selectable runtime profile to persist or latch. (This
-            # replaced power-profiles-daemon, whose persisted active profile
-            # could stick at `power-saver` across reboots and cap the CPU at
-            # min frequency — the bug that motivated the switch to TLP.)
+            # NOTE: power-profiles-daemon's state dir
+            # (/var/lib/power-profiles-daemon) is deliberately NOT persisted.
+            # PPD re-applies its persisted active profile on every restart
+            # with no auto-restore, so a stale `power-saver` could otherwise
+            # stick across reboots and cap the CPU at min frequency. Letting
+            # it evaporate to the balanced default each boot — with
+            # flake-modules/power-profile-auto.nix re-asserting the correct
+            # profile from the battery%/AC matrix within seconds — means the
+            # latch can never stick.
             # tpm2-tss "owner" persistent objects index (TPM2 LUKS
             # unlock + future signing keys).
             "/var/lib/tpm2-tss"

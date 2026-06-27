@@ -11,23 +11,22 @@
 #     /dev/disk/by-partlabel/disk-main-swap automatically so
 #     hibernate-resume "just works" — no resume_offset, no per-host
 #     kernelParam pin.
-#   * Active power management ("conserve on battery") is provided by TLP
-#     on laptops — see flake-modules/tlp.nix. TLP switches CPU EPP, turbo,
-#     PCIe ASPM and Wi-Fi power saving automatically on AC↔battery events.
-#     (Charge thresholds and hibernate-on-critical, below, stay owned by
-#     this module; TLP is configured not to touch thresholds.)
+#   * Active power management ("conserve on battery") is provided on
+#     laptops by flake-modules/power-profile-auto.nix: power-profiles-daemon
+#     driven by a small UPower watcher implementing a battery%/AC matrix
+#     (AC&≥20%→performance, AC&<20%→balanced, BAT&≥20%→balanced,
+#     BAT&<20%→power-saver). Charge thresholds and hibernate-on-critical,
+#     below, stay owned by *this* module.
 #
-#     Historical note: power-profiles-daemon used to be enabled here, on
-#     the mistaken belief it auto-switched to power-saver on low battery.
-#     It does not — verified against the 0.30 source, its "BatteryAware"
-#     only swaps the intel_pstate EPP hint within the *balanced* profile
+#     Note on PPD: bare power-profiles-daemon does NOT switch profiles on
+#     its own — verified against the 0.30 source, its "BatteryAware" only
+#     swaps the intel_pstate EPP hint within the *balanced* profile
 #     (balance_performance on AC / balance_power on battery); there is no
-#     PercentageLow→power-saver trigger anywhere in PPD. Worse, PPD
-#     persisted its active profile and re-applied it on every restart with
-#     no auto-restore, so a stray `powerprofilesctl set power-saver`
-#     latched the CPU at EPP=power (~min freq) on a healthy battery. PPD
-#     was dropped fleet-wide in favour of TLP, which is deterministic from
-#     /etc config + AC state and has no latchable runtime profile.
+#     PercentageLow→power-saver trigger in PPD. That is exactly why the
+#     watcher exists. The watcher also defuses PPD's latch footgun (a stale
+#     persisted profile capping the CPU): it re-asserts the correct profile
+#     on every power event and every 60 s, and PPD state is not persisted
+#     (flake-modules/impermanence.nix).
 #
 # Pattern A: hosts opt in by importing this module. Hosts without a
 # battery (desktops, VMs) simply don't import it.

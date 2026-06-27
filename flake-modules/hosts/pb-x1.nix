@@ -85,10 +85,11 @@ in
       ++ config.flake.lib.bundles.nixos.workstation
       ++ [
         # ── pb-x1-specific extras ───────────────────────────────────
-        # TLP — automatic AC/battery power management (laptop-only; not in
-        # the workstation bundle since m-pc is a desktop). Replaces the
-        # former power-profiles-daemon. See flake-modules/tlp.nix.
-        config.flake.modules.nixos.tlp
+        # Battery-aware power-profile auto-switching (laptop-only; not in
+        # the workstation bundle since m-pc is a desktop). Enables PPD and
+        # drives its profile from the battery%/AC matrix. See
+        # flake-modules/power-profile-auto.nix.
+        config.flake.modules.nixos.power-profile-auto
         # USB/serial/JTAG udev rules + device groups for the primary
         # user's PCB / firmware work.
         config.flake.modules.nixos.hardware-hacking
@@ -185,7 +186,8 @@ in
       programs.home-manager.enable = true;
 
       # idle timings are module defaults now (idle.nix 300/420/900;
-      # battery power policy is handled by TLP — see flake-modules/tlp.nix).
+      # battery power policy is handled on laptops by
+      # flake-modules/power-profile-auto.nix).
 
       # EasyEffects per-host data: preset directory, IRS directory,
       # and the per-sink autoload rules. Declared here (per-HM-config)
