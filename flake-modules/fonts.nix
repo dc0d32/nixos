@@ -15,9 +15,10 @@
 #                  installs none.
 #       · Darwin — there is no NixOS side, and macOS uses Core Text
 #                  (not fontconfig), so HM installs the same font
-#                  package set into the profile and symlinks every
+#                  package set into the profile and copies every
 #                  face into ~/Library/Fonts/HomeManager/ where Core
-#                  Text picks them up. fontconfig is skipped.
+#                  Text picks them up (copies, not symlinks — Core Text
+#                  ignores symlinked font files). fontconfig is skipped.
 #
 # The shared face list lives in the `fontPkgs` factory below so the
 # NixOS and Darwin sides never drift. Console-only `cozette` is NOT in
@@ -131,41 +132,24 @@ in
         '';
       })
 
-      # ── Darwin: install faces + symlink into ~/Library/Fonts ──────
+      # ── Darwin: install faces into the HM profile ────────────────
       # No NixOS side on macOS, and Core Text (not fontconfig) is the
-      # font subsystem. Installing the faces into the HM profile is not
-      # enough — macOS only scans a fixed set of font directories — so
-      # an activation step mirrors every face into the user's
-      # ~/Library/Fonts/HomeManager/ scan dir. Confining to a dedicated
-      # subdir keeps the set self-contained and reversible: deleting
-      # that one directory removes every flake-managed font and never
-      # touches /Library/Fonts or the macOS system faces.
+      # font subsystem. Putting the faces in `home.packages` is enough:
+      # home-manager's built-in Darwin font handling rsyncs every face
+      # from the profile into ~/Library/Fonts/HomeManager/ (the
+      # `.home-manager-fonts-version` onChange hook, `rsync -acL` =
+      # real-file copies, `--delete` for idempotent pruning). Core Text
+      # scans that dir and picks the faces up.
+      #
+      # We deliberately do NOT hand-roll an activation that links/copies
+      # into the same dir: an earlier custom `linkDarwinFonts` step did
+      # `ln -sf` and, because it ran on every activation while the HM
+      # rsync only runs on font-set changes, it kept clobbering HM's
+      # good copies with symlinks — which Core Text silently ignores, so
+      # zero faces registered (`system_profiler SPFontsDataType` listed
+      # none). Relying on the HM built-in avoids that fight entirely.
       (lib.mkIf pkgs.stdenv.isDarwin {
         home.packages = fontPkgs pkgs;
-
-        home.activation.linkDarwinFonts =
-          let
-            # Single tree of all faces so the activation script has one
-            # root to walk regardless of how many font drvs there are.
-            fontEnv = pkgs.symlinkJoin {
-              name = "pb-mb-fonts";
-              paths = fontPkgs pkgs;
-            };
-          in
-          lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-            fontDir="$HOME/Library/Fonts/HomeManager"
-            # rm -rf + recreate is the simplest idempotent sync: stale
-            # faces from a previously-larger set never linger.
-            $DRY_RUN_CMD rm -rf $VERBOSE_ARG "$fontDir"
-            $DRY_RUN_CMD mkdir -p $VERBOSE_ARG "$fontDir"
-            # -L follows symlinkJoin's links so -type f matches the real
-            # face files; .ttc covers Noto CJK's TrueType collections.
-            # ln is pinned to coreutils so $VERBOSE_ARG (a GNU-style long
-            # option) is always accepted, never macOS's BSD ln.
-            ${pkgs.findutils}/bin/find -L "${fontEnv}/share/fonts" -type f \
-              \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.ttc' \) \
-              -exec $DRY_RUN_CMD ${pkgs.coreutils}/bin/ln -sf $VERBOSE_ARG {} "$fontDir/" \;
-          '';
       })
     ];
 }
