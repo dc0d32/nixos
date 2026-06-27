@@ -8,10 +8,9 @@
 # Each HM config sets `idle = { … };` inside its own
 # `configurations.homeManager.<id>.module` block.
 #
-# Battery → power-saver auto-switching is NOT here: power-profiles-daemon
-# 0.30+ does it natively (the BatteryAware feature, on by default), and
-# being a system daemon it applies to every user — see flake-modules/
-# battery.nix.
+# Battery → power-saver auto-switching is NOT here: it's handled
+# system-wide by TLP on laptops (automatic AC↔battery power policy), so it
+# applies regardless of who is logged in — see flake-modules/tlp.nix.
 #
 # Why HM-side options (not flake-parts top-level): the idle daemon
 # is a per-user service writing per-user config. With more than one

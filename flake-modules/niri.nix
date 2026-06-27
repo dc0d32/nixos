@@ -3,7 +3,8 @@
 # NixOS class:
 #   - enables programs.niri, pulls in companion CLI tools
 #   - wires xdg-portal to the gtk + wlr backends
-#   - brings up dbus + polkit + power-profiles-daemon + upower
+#   - brings up dbus + polkit + upower (power management itself is TLP on
+#     laptops / kernel governor on desktops — not power-profiles-daemon)
 #   - disables the niri-flake polkit agent so our hyprpolkitagent
 #     (HM-side) doesn't race with it
 #
@@ -91,7 +92,14 @@
 
     services.dbus.enable = true;
     security.polkit.enable = true;
-    services.power-profiles-daemon.enable = lib.mkDefault true;
+    # NOTE: no power-profiles-daemon. Power management is handled by TLP on
+    # laptops (flake-modules/tlp.nix, imported by the laptop bridges) and by
+    # the kernel governor + thermald on the m-pc desktop. PPD was dropped
+    # fleet-wide: it never auto-switched profiles (its BatteryAware only
+    # tweaks EPP within `balanced`), nothing on niri consumed its D-Bus API,
+    # and a stray `power-saver` selection could latch the CPU at min freq.
+    # nixos-hardware auto-enables TLP on the ThinkPads once PPD is off
+    # (`tlp.enable = mkDefault (!power-profiles-daemon.enable)`).
 
     # UPower daemon — provides org.freedesktop.UPower over system
     # dbus for waybar's battery module (and any other consumer that

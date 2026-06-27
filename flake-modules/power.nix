@@ -37,9 +37,12 @@
       IdleAction = lib.mkDefault "ignore";
     };
 
-    # Power management: tlp if laptop, otherwise auto-cpufreq is fine
-    # either way. mkDefault so WSL / hosts can override without
-    # ceremony.
+    # CPU/AC-vs-battery power policy is NOT decided here: laptops import
+    # flake-modules/tlp.nix (TLP owns governor/EPP/turbo per power source);
+    # the m-pc desktop just rides the kernel's default intel_pstate
+    # governor. This module only provides the two universally-safe knobs:
+    # thermald (Intel thermal daemon) and the generic powerManagement
+    # bringup. mkDefault so a host can override without ceremony.
     services.thermald.enable = lib.mkDefault true;
     powerManagement.enable = lib.mkDefault true;
 

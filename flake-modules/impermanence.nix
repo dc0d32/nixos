@@ -369,12 +369,17 @@
             # them empty as needed.
             "/var/lib/fprint"
             "/var/lib/iwd"
-            # libvirt / docker / colord / power-profiles persistence —
-            # cheap to list speculatively.
+            # libvirt / docker / colord — cheap to list speculatively.
             "/var/lib/docker"
             "/var/lib/libvirt"
             "/var/lib/colord"
-            "/var/lib/power-profiles-daemon"
+            # NOTE: no power-daemon state dir is persisted, by design. Power
+            # management is TLP (flake-modules/tlp.nix), which is fully
+            # deterministic from /etc config + AC state — there is no
+            # user-selectable runtime profile to persist or latch. (This
+            # replaced power-profiles-daemon, whose persisted active profile
+            # could stick at `power-saver` across reboots and cap the CPU at
+            # min frequency — the bug that motivated the switch to TLP.)
             # tpm2-tss "owner" persistent objects index (TPM2 LUKS
             # unlock + future signing keys).
             "/var/lib/tpm2-tss"
@@ -465,6 +470,74 @@
         # update-users-groups sees the persisted passwords. (deps is a
         # list option — this merges with upstream's [ "specialfs" ].)
         system.activationScripts.users.deps = [ "restorePersistedAuth" ];
+
+        # ── De-shadow impermanence userFiles ───────────────────────────
+        # /home is its own btrfs subvol that survives the root rollback,
+        # yet impermanence ALSO bind-mounts these per-user dotfiles from
+        # ${cfg.persistRoot} (so they land in the restic backup, which only
+        # covers /persist). If a real file is ever written directly into a
+        # user's home before that bind mount is established — e.g. a kid
+        # logs in and zsh creates ~/.zsh_history while the persist-*.service
+        # is failing — impermanence's mount-file REFUSES to mount over the
+        # pre-existing regular file and the unit fails ("A file already
+        # exists at …!"). It is self-perpetuating: no mount ⇒ the shell
+        # keeps writing the real file ⇒ the next boot / `nixos-rebuild
+        # switch` fails again with a non-zero activation exit.
+        #
+        # switch-to-configuration runs activation scripts BEFORE it
+        # (re)starts units, so relocating any shadowing file here — merged
+        # into ${cfg.persistRoot} so no history is lost — makes the switch
+        # self-heal. We then restart any persist-* unit we just unblocked
+        # so the bind mount comes up within the same activation (this also
+        # converges the boot path, where the unit fails early and this
+        # script runs afterwards). userFiles is meant for append-style text
+        # (shell history), so the merge is a line-union: order-stable, with
+        # exact duplicate lines dropped.
+        system.activationScripts.deshadowPersistedHomeFiles = {
+          deps = [ "specialfs" ];
+          text =
+            let
+              relocate = home: file:
+                "deshadow_file ${lib.escapeShellArg "${home}/${file}"} "
+                + "${lib.escapeShellArg "${cfg.persistRoot}${home}/${file}"}\n";
+              calls = lib.concatStrings (lib.mapAttrsToList
+                (_: u: lib.concatMapStrings (relocate u.home) cfg.userFiles)
+                normalUsers);
+            in
+            ''
+              deshadow_file() {
+                target="$1"; src="$2"
+                # Already the bind mount, or no shadow, or an HM symlink? skip.
+                if ${pkgs.util-linux}/bin/mountpoint -q "$target" 2>/dev/null; then return 0; fi
+                if [ ! -e "$target" ]; then return 0; fi
+                if [ -L "$target" ] || [ ! -f "$target" ]; then return 0; fi
+                ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$src")"
+                if [ -e "$src" ]; then
+                  tmp=$(${pkgs.coreutils}/bin/mktemp)
+                  if ${pkgs.coreutils}/bin/cat "$src" "$target" \
+                       | ${pkgs.gawk}/bin/awk '!seen[$0]++' > "$tmp" \
+                     && ${pkgs.coreutils}/bin/cp -f "$tmp" "$src"; then
+                    ${pkgs.coreutils}/bin/rm -f "$tmp" "$target"
+                  else
+                    ${pkgs.coreutils}/bin/rm -f "$tmp"
+                    echo "deshadow: merge failed for $target, left in place" >&2
+                    return 0
+                  fi
+                else
+                  ${pkgs.coreutils}/bin/cp -a "$target" "$src" && ${pkgs.coreutils}/bin/rm -f "$target"
+                fi
+                echo "deshadow: relocated shadow $target into $src"
+              }
+              ${calls}
+              # Re-establish any bind mounts the relocations just unblocked,
+              # so this same activation finishes clean.
+              for u in $(${pkgs.systemd}/bin/systemctl list-units --type=service \
+                           --state=failed --no-legend --plain 'persist-*' 2>/dev/null \
+                           | ${pkgs.gawk}/bin/awk '{print $1}'); do
+                ${pkgs.systemd}/bin/systemctl restart "$u" 2>/dev/null || true
+              done
+            '';
+        };
 
         # Save the live database back to /persist promptly on any change
         # (passwd, gpasswd, usermod, …) …

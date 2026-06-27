@@ -11,17 +11,23 @@
 #     /dev/disk/by-partlabel/disk-main-swap automatically so
 #     hibernate-resume "just works" — no resume_offset, no per-host
 #     kernelParam pin.
-#   * Automatic "power-saver on low battery" is handled NATIVELY by
-#     power-profiles-daemon 0.30+ (the BatteryAware feature, on by
-#     default and persisted in /var/lib/power-profiles-daemon — which
-#     impermanence keeps). PPD is a system daemon, so the switch applies
-#     to every user (kids included) regardless of who is logged in, via
-#     a clean profile hold that auto-restores when the battery recovers.
-#     It triggers at UPower's "low" level (PercentageLow, set below), so
-#     there is nothing to hand-roll here. This replaced an earlier custom
-#     watcher (in idled, then briefly a swayidle-side timer) — do NOT
-#     reintroduce one; just tune PercentageLow if the trigger point needs
-#     to move.
+#   * Active power management ("conserve on battery") is provided by TLP
+#     on laptops — see flake-modules/tlp.nix. TLP switches CPU EPP, turbo,
+#     PCIe ASPM and Wi-Fi power saving automatically on AC↔battery events.
+#     (Charge thresholds and hibernate-on-critical, below, stay owned by
+#     this module; TLP is configured not to touch thresholds.)
+#
+#     Historical note: power-profiles-daemon used to be enabled here, on
+#     the mistaken belief it auto-switched to power-saver on low battery.
+#     It does not — verified against the 0.30 source, its "BatteryAware"
+#     only swaps the intel_pstate EPP hint within the *balanced* profile
+#     (balance_performance on AC / balance_power on battery); there is no
+#     PercentageLow→power-saver trigger anywhere in PPD. Worse, PPD
+#     persisted its active profile and re-applied it on every restart with
+#     no auto-restore, so a stray `powerprofilesctl set power-saver`
+#     latched the CPU at EPP=power (~min freq) on a healthy battery. PPD
+#     was dropped fleet-wide in favour of TLP, which is deterministic from
+#     /etc config + AC state and has no latchable runtime profile.
 #
 # Pattern A: hosts opt in by importing this module. Hosts without a
 # battery (desktops, VMs) simply don't import it.

@@ -179,6 +179,10 @@ in
       ++ config.flake.lib.bundles.nixos.auto-deploy
       ++ [
         # ── pb-t480-specific extras ─────────────────────────────────
+        # TLP — automatic AC/battery power management (laptop-only; not in
+        # the workstation bundle since m-pc is a desktop). Replaces the
+        # former power-profiles-daemon. See flake-modules/tlp.nix.
+        config.flake.modules.nixos.tlp
         # hardware-hacking (NixOS half) — udev rules + dialout/plugdev/
         # uucp membership for users.primary AND hardware-hacking.extraUsers
         # (set below to grant the kids device access for robotics work).
