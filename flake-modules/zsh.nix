@@ -232,6 +232,8 @@
 
         comma # run uninstalled programs: `, cowsay hi` (uses nix-index)
 
+        nh # friendly nixos-rebuild / home-manager wrapper (`nh os switch`)
+
         # nix-search-tv + fzf: `ns` fuzzy-search nixpkgs with live preview
         (writeShellApplication {
           name = "ns";

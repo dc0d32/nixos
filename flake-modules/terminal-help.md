@@ -131,8 +131,13 @@ Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
 
 ## 🧰  Ready-made project shells
 
-Start a project with its tools already set up — `nix flake init -t ~/nixos#NAME`,
-then `direnv allow`. The right toolchain loads every time you `cd` in.
+Start a project with its tools already set up:
+
+```sh
+mkdir myproj && cd myproj
+nix flake init -t ~/nixos#python   # pick a template (table below)
+direnv allow                       # tools auto-load on every cd from now
+```
 
 | Template | For |
 | --- | --- |
@@ -142,6 +147,15 @@ then `direnv allow`. The right toolchain loads every time you `cd` in.
 | `docker` · `openwrt` · `paper` | Containers, router firmware, typst/LaTeX |
 
 `nix flake show ~/nixos` lists them all.
+
+## 🔁  Rebuild & update
+
+| Command | What it does |
+| --- | --- |
+| `nr` | Rebuild this machine (system + your apps) |
+| `hm` | Rebuild just your apps (no sudo) |
+| `nh os switch ~/nixos` | Same, pretty diff; `nh home switch ~/nixos` for apps |
+| `nix flake update` | Pull newest versions before a rebuild |
 
 ## 🔌  Hardware hacking *(where enabled)*
 
