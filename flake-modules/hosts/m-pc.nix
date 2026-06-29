@@ -148,6 +148,13 @@ in
   # actually exploiting it.
   timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
+  # Shared cross-host daily budget via the docker-host control plane (LAN).
+  # Same budget pool as pb-t480. See flake-modules/timekpr-sync.nix.
+  timekpr-sync = {
+    serverUrl = "http://apphost.lan:8780";
+    users = kidUsers;
+  };
+
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
     # placeholder = true: hosts/m-pc/hardware-configuration.nix is the
@@ -194,6 +201,10 @@ in
         # are dropped (no fingerprint/IR on this box; m's robotics work
         # is on pb-t480). (The steam module was deleted 2026-06-25.)
         config.flake.modules.nixos.timekpr
+        # Cross-host shared-budget agent — reports usage to the central
+        # control plane and applies the shared remaining. See
+        # flake-modules/timekpr-sync.nix.
+        config.flake.modules.nixos.timekpr-sync
         config.flake.modules.nixos.chrome-managed
       ];
 

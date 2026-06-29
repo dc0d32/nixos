@@ -138,6 +138,14 @@ in
   # grant ad-hoc time or change limits at runtime.
   timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
+  # Shared cross-host daily budget: report usage to and pull the shared
+  # remaining from the docker-host control plane (LAN). Same budget pool
+  # as m-pc, so a kid gets one total/day across both machines.
+  timekpr-sync = {
+    serverUrl = "http://apphost.lan:8780";
+    users = kidUsers;
+  };
+
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
     # placeholder = false: real hardware-configuration.nix has been
@@ -195,6 +203,10 @@ in
         config.flake.modules.nixos.face-unlock
         # Screen-time enforcement + Family-Link-locking Chrome policy.
         config.flake.modules.nixos.timekpr
+        # Cross-host shared-budget agent — reports usage to the central
+        # control plane and applies the shared remaining. See
+        # flake-modules/timekpr-sync.nix.
+        config.flake.modules.nixos.timekpr-sync
         config.flake.modules.nixos.chrome-managed
         # (The steam module was deleted from the flake 2026-06-25.)
       ];
