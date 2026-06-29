@@ -179,9 +179,29 @@
       programs.fzf = {
         enable = true;
         enableZshIntegration = true;
+        # Live preview: directories tree via eza, files via bat. Speeds
+        # up Ctrl-T / **<tab> picks and zoxide jumps. (eza/bat are in
+        # home.packages below; programs.eza is enabled in this module.)
+        defaultCommand = "fd --hidden";
+        changeDirWidgetCommand = "fd --type d";
+        fileWidgetCommand = "fd --type f";
+        defaultOptions = [
+          "--preview 'if [ -d {} ]; then eza --tree --level=1 --color=always --icons=always {}; else bat --color=always {}; fi'"
+        ];
       };
 
       programs.zoxide = {
+        enable = true;
+        enableZshIntegration = true;
+        # `cd` becomes zoxide; first arg-free `cd` still works, and
+        # frecency jumps via `cd <partial>`.
+        options = [ "--cmd cd" ];
+      };
+
+      # comma — run any program from nixpkgs without installing it
+      # (`, cowsay hi`). Needs a package index; programs.nix-index keeps
+      # nix-locate's database warm for both comma and command-not-found.
+      programs.nix-index = {
         enable = true;
         enableZshIntegration = true;
       };
@@ -209,6 +229,15 @@
         bat
         jq
         htop
+
+        comma # run uninstalled programs: `, cowsay hi` (uses nix-index)
+
+        # nix-search-tv + fzf: `ns` fuzzy-search nixpkgs with live preview
+        (writeShellApplication {
+          name = "ns";
+          runtimeInputs = [ fzf nix-search-tv ];
+          text = builtins.readFile "${nix-search-tv.src}/nixpkgs.sh";
+        })
 
         # ── Terminal file managers ──────────────────────────────────
         yazi # blazing-fast Rust TUI file manager (yazi)
@@ -274,5 +303,9 @@
         SET autoinstall_known_extensions = 1;
         SET autoload_known_extensions = 1;
       '';
+
+      # nh (nix-helper, installed via dev-shell) reads NH_FLAKE so
+      # `nh os switch` / `nh home switch` don't need a flake path arg.
+      home.sessionVariables.NH_FLAKE = "$HOME/nixos";
     };
 }
