@@ -40,6 +40,8 @@ up on this machine. Most commands accept `--help` for more, and
 | `fd name` | Find files by name |
 | `rg word` | Search *inside* files for some text |
 | `fzf` | Fuzzy-pick anything (see shortcuts below) |
+| `ns` | Fuzzy-search nixpkgs for a program (live preview) |
+| `, prog` | Run a program once without installing, e.g. `, cowsay hi` |
 | `tldr cmd` | Quick examples for a command, e.g. `tldr tar` |
 
 ## ⌨️  Keyboard shortcuts
@@ -126,6 +128,20 @@ Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
 | `curl` · `wget` · `rsync` | Download / copy files over the network |
 | `dig` · `nmap` · `iperf3` | DNS lookup / port scan / network speed test |
 | `tar` · `zip` · `unzip` · `zstd` | Pack and unpack archives |
+
+## 🧰  Ready-made project shells
+
+Start a project with its tools already set up — `nix flake init -t ~/nixos#NAME`,
+then `direnv allow`. The right toolchain loads every time you `cd` in.
+
+| Template | For |
+| --- | --- |
+| `python` · `inference` · `slm` | Python, ML one-offs, small language models |
+| `datasci` | duckdb/polars + web-scraping tools |
+| `systems` · `embedded` | C/C++ & Rust; ARM + platformio firmware |
+| `docker` · `openwrt` · `paper` | Containers, router firmware, typst/LaTeX |
+
+`nix flake show ~/nixos` lists them all.
 
 ## 🔌  Hardware hacking *(where enabled)*
 
