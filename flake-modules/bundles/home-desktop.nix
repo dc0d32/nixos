@@ -45,6 +45,7 @@
       chrome
       desktop-extras
       desktop-shell
+      electronics
       file-manager
       fonts
       idle

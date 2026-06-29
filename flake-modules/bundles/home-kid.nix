@@ -100,6 +100,7 @@
       chrome-managed
       desktop-extras
       desktop-shell
+      electronics
       file-manager
       fonts
       hardware-hacking
