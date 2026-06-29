@@ -157,6 +157,11 @@
             local host="$(_flake_host)"
             nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
           }
+
+          # nh (nix-helper) flake target — set here too (not just
+          # home.sessionVariables) so running shells get it without a
+          # re-login. `nh os switch` / `nh home switch` then need no path.
+          export NH_FLAKE="$HOME/nixos"
         '';
       };
 
