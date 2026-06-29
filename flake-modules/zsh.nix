@@ -16,7 +16,7 @@
 # wants the companion tools split out per-feature.
 { config, ... }:
 {
-  flake.modules.homeManager.zsh = { pkgs, ... }:
+  flake.modules.homeManager.zsh = { pkgs, inputs, ... }:
     let
       # The terminal guide shown by `tools`. Kept as an external Markdown
       # file (terminal-help.md) rather than inline — it spans the whole
@@ -24,6 +24,12 @@
       helpDoc = ./terminal-help.md;
     in
     {
+      # nix-index-database ships a weekly-updated prebuilt nix-index DB and
+      # wraps nix-index/nix-locate against it, so comma + command-not-found
+      # work immediately with no local `nix-index` build. Must NOT also add
+      # `nix-index` or `comma` to home.packages (the module owns both).
+      imports = [ inputs.nix-index-database.homeModules.default ];
+
       programs.zsh = {
         enable = true;
         autocd = true;
@@ -204,12 +210,14 @@
       };
 
       # comma — run any program from nixpkgs without installing it
-      # (`, cowsay hi`). Needs a package index; programs.nix-index keeps
-      # nix-locate's database warm for both comma and command-not-found.
+      # (`, cowsay hi`). The nix-index-database HM module installs a comma
+      # wrapped against its prebuilt DB; programs.nix-index keeps nix-locate
+      # warm for command-not-found too. No `nix-index` build needed locally.
       programs.nix-index = {
         enable = true;
         enableZshIntegration = true;
       };
+      programs.nix-index-database.comma.enable = true;
 
       programs.eza = {
         enable = true;
@@ -234,8 +242,6 @@
         bat
         jq
         htop
-
-        comma # run uninstalled programs: `, cowsay hi` (uses nix-index)
 
         nh # friendly nixos-rebuild / home-manager wrapper (`nh os switch`)
 

@@ -86,6 +86,16 @@
     # deprecated and requires home-manager-as-NixOS-module. The NixOS
     # module exposes the same per-user functionality natively.
     impermanence.url = "github:nix-community/impermanence";
+
+    # nix-index-database — weekly-updated prebuilt nix-index database, so
+    # `comma` (`, cowsay hi`) and command-not-found work out of the box
+    # without each host running the slow `nix-index` to build the DB
+    # locally. The HM module wraps nix-index against this DB. Wired in
+    # flake-modules/zsh.nix.
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:
