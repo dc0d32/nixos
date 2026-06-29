@@ -94,6 +94,38 @@ nix flake check
 nix fmt
 ```
 
+## Project dev shells (templates)
+
+Per-project toolchains live as flake templates. Scaffold one into a new
+or empty project, then let direnv auto-load it on `cd`:
+
+```sh
+# Scaffold (writes flake.nix + .envrc into the current dir)
+nix flake init -t ~/nixos#python      # uv + ruff + basedpyright
+direnv allow                          # auto-loads the shell from then on
+
+# List available templates + descriptions
+nix flake show ~/nixos
+```
+
+| template | toolchain |
+| --- | --- |
+| `python` | uv, ruff, basedpyright, ipython |
+| `inference` | uv + PyPI torch/transformers (CUDA/MPS one-offs) |
+| `slm` | llama.cpp + uv (transformers, vllm) — run/dissect small LMs |
+| `systems` | C/C++ (clang, cmake, ninja, gdb) + Rust (cargo, rust-analyzer) |
+| `embedded` | arm-none-eabi, platformio, openocd, probe-rs, picotool |
+| `docker` | buildx, compose, dive, hadolint, skopeo |
+| `openwrt` | OpenWrt buildroot host deps |
+| `datasci` | duckdb + uv (polars/pandas/pyarrow + scrapy/trafilatura/warcio) |
+| `paper` | typst, tinymist, tectonic, pandoc |
+
+Templates track nixpkgs-unstable independently of the pinned 26.05
+system channel and ship no `flake.lock` — each project locks fresh on
+first init. Python-flavoured ones pull ML/web wheels from PyPI via uv
+rather than nix. They are defined in `flake-modules/templates.nix`;
+sources live under `templates/`.
+
 ## Adding a feature
 
 1. Create `flake-modules/<feature>.nix` that contributes to
