@@ -422,6 +422,19 @@ let
         echo "  (Windows Terminal settings.json not found; skipped font)"
       fi
 
+      # Ensure uv's tool-bin dir is on the Windows PATH, so executables
+      # from `uv tool install` resolve in new shells. setup.ps1 already
+      # does this, but only under --setup; run it here too so a plain
+      # deploy (the `nh win switch` path) keeps PATH current. Best-effort:
+      # needs the Windows interop + uv (from winget) — a box without uv
+      # yet simply skips.
+      if [ -n "$psexe" ]; then
+        echo "hm_win: uv tool update-shell (Windows PATH)"
+        "$psexe" -NoProfile -NonInteractive -Command \
+          'if (Get-Command uv -ErrorAction SilentlyContinue) { uv tool update-shell }' \
+          2>/dev/null || true
+      fi
+
       setup_win="$(wslpath -w "$nixwin/setup.ps1")"
       if [ "$run_setup" -eq 1 ]; then
         if [ -z "$psexe" ]; then
