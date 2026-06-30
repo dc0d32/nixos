@@ -175,20 +175,28 @@
           # machine name — so inject the _flake_host value explicitly via
           # `-H <host>` (os) / `-c <user@host>` (home). On bare metal those
           # match nh's own auto-detection, so this is a no-op there and the
-          # fix on WSL. Also adds `nh win switch` → hm_win (Windows
-          # dotfiles), available only where the windows module is imported
-          # (WSL). Anything else (search, clean, os boot, …) passes through.
+          # fix on WSL. Also maps the Windows dotfiles deploy (hm_win) onto
+          # nh, available only where the windows module is imported (WSL):
+          #   nh win switch  → hm_win --setup  (full apply: dotfiles +
+          #                    winget/Scoop/uv installs, parity with
+          #                    `nh os switch`)
+          #   nh win deploy  → hm_win          (fast: just redeploy the
+          #                    Nix-generated dotfiles)
+          # Anything else (search, clean, os boot, …) passes through.
           nh() {
             local host action
             case "$1" in
               win)
                 shift
-                [[ "$1" == switch ]] && shift
                 if ! command -v hm_win >/dev/null 2>&1; then
                   echo "nh win: hm_win is not available on this host (WSL only)." >&2
                   return 1
                 fi
-                hm_win "$@"
+                case "$1" in
+                  switch) shift; hm_win --setup "$@" ;;
+                  deploy) shift; hm_win "$@" ;;
+                  *) hm_win "$@" ;;
+                esac
                 ;;
               os)
                 shift
