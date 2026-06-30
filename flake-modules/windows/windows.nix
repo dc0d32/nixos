@@ -30,7 +30,7 @@
 #
 # Retire when: a native-Windows Nix/home-manager appears (unlikely), OR
 #   the native-Windows environment is no longer wanted.
-{ lib, ... }:
+{ lib, config, ... }:
 let
   # ── Shared prompt (also consumed by flake-modules/zsh.nix) ──────────
   starshipSettings = {
@@ -116,7 +116,12 @@ let
   # Pure-Python tools with no winget/scoop package — installed via
   # `uv tool install` (uv itself comes from winget above). `vd` is the
   # visidata TUI; matches the Linux toolkit, which gets it from nixpkgs.
-  uvTools = [ "visidata" ];
+  # graphrag/graphifyy come from the shared `flake.lib.aiUvTools` list
+  # (defined in flake-modules/ai-cli.nix) so Windows and the Linux
+  # ai-cli bundle install the same AI tools from one definition. On
+  # Linux those go through home-manager's uv activation; here they ride
+  # setup.ps1's existing uv step.
+  uvTools = [ "visidata" ] ++ config.flake.lib.aiUvTools;
 
   # Migration aid: winget IDs of CLI tools that an EARLIER version of this
   # setup installed via winget, but which now belong on Scoop. setup.ps1

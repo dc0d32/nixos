@@ -206,6 +206,15 @@
             # without this entry every boot re-downloads `ui`/`httpfs`/…
             # on first use and breaks DuckDB entirely when offline.
             ".duckdb"
+            # uv-installed tools (flake.modules.homeManager.ai-cli installs
+            # graphrag/graphifyy via `uv tool install`). `.local/share/uv`
+            # holds the per-tool venvs + uv's managed Python; `.local/bin`
+            # holds the launcher scripts. BOTH must persist — if only the
+            # venvs survive, the ai-cli install-if-missing check sees the
+            # tool as present and never recreates the wiped ~/.local/bin
+            # launcher, so the command vanishes after a boot.
+            ".local/share/uv"
+            ".local/bin"
           ];
         };
 
