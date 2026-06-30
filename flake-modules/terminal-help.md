@@ -154,7 +154,8 @@ direnv allow                       # tools auto-load on every cd from now
 | --- | --- |
 | `nr` | Rebuild this machine (system + your apps) |
 | `hm` | Rebuild just your apps (no sudo) |
-| `nh os switch ~/nixos` | Same, pretty diff; `nh home switch ~/nixos` for apps |
+| `nh os switch` | Same as `nr`, with a pretty diff; `nh home switch` for just apps |
+| `nh win switch` | *(WSL)* Deploy the Windows dotfiles, like `hm_win`; add `--setup` to also install winget/Scoop/uv tools |
 | `nix flake update` | Pull newest versions before a rebuild |
 
 ## 🔌  Hardware hacking *(where enabled)*

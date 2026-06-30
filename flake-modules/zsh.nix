@@ -168,6 +168,63 @@
           # home.sessionVariables) so running shells get it without a
           # re-login. `nh os switch` / `nh home switch` then need no path.
           export NH_FLAKE="$HOME/nixos"
+
+          # nh wrapper: make `nh os|home switch` target the SAME flake host
+          # as nr/hm. Plain nh derives the configuration name from the
+          # system hostname, which on WSL is the (irrelevant) Windows
+          # machine name — so inject the _flake_host value explicitly via
+          # `-H <host>` (os) / `-c <user@host>` (home). On bare metal those
+          # match nh's own auto-detection, so this is a no-op there and the
+          # fix on WSL. Also adds `nh win switch` → hm_win (Windows
+          # dotfiles), available only where the windows module is imported
+          # (WSL). Anything else (search, clean, os boot, …) passes through.
+          nh() {
+            local host action
+            case "$1" in
+              win)
+                shift
+                [[ "$1" == switch ]] && shift
+                if ! command -v hm_win >/dev/null 2>&1; then
+                  echo "nh win: hm_win is not available on this host (WSL only)." >&2
+                  return 1
+                fi
+                hm_win "$@"
+                ;;
+              os)
+                shift
+                host="$(_flake_host)"
+                case "$1" in
+                  switch | boot | test | build)
+                    if [[ " $* " == *" -H "* || " $* " == *" --hostname "* ]]; then
+                      command nh os "$@"
+                    else
+                      action="$1"; shift
+                      command nh os "$action" --hostname "$host" "$@"
+                    fi
+                    ;;
+                  *) command nh os "$@" ;;
+                esac
+                ;;
+              home)
+                shift
+                host="$(_flake_host)"
+                case "$1" in
+                  switch | build)
+                    if [[ " $* " == *" -c "* || " $* " == *" --configuration "* ]]; then
+                      command nh home "$@"
+                    else
+                      action="$1"; shift
+                      command nh home "$action" --configuration "$USER@$host" "$@"
+                    fi
+                    ;;
+                  *) command nh home "$@" ;;
+                esac
+                ;;
+              *)
+                command nh "$@"
+                ;;
+            esac
+          }
         '';
       };
 
