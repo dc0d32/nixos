@@ -27,8 +27,12 @@
 #
 # uv itself comes from flake-modules/zsh.nix (Linux) / winget (Windows); the
 # script calls it by its absolute store path so it works even where the zsh
-# module isn't imported. nix-ld (flake-modules/nix-ld.nix) lets uv's managed
-# Python run on NixOS.
+# module isn't imported. The activation pins uv to the nixpkgs Python
+# (UV_PYTHON) and forbids uv's managed-Python downloads
+# (UV_PYTHON_DOWNLOADS=never): those managed interpreters are generic-linux
+# binaries that can't run on NixOS without nix-ld, and the nix Python
+# satisfies both tools' version constraints, so ai-cli works on every host
+# without depending on nix-ld being imported.
 #
 # API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc) are NOT installed here.
 # These tools authenticate via gh (`gh auth login`) or read keys from the
@@ -66,6 +70,14 @@ in
 
       home.activation.aiUvTools = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         uv=${pkgs.uv}/bin/uv
+        # Pin uv to the nixpkgs Python (3.13, satisfies graphrag's
+        # >=3.11,<3.14 and graphifyy's >=3.10) and forbid uv from
+        # downloading its own managed CPython -- those are generic-linux,
+        # dynamically-linked binaries that can't run on NixOS without
+        # nix-ld (see nix.dev/permalink/stub-ld). Using the nix Python
+        # makes this work on every host regardless of nix-ld.
+        export UV_PYTHON=${pkgs.python3}/bin/python3
+        export UV_PYTHON_DOWNLOADS=never
         installed="$("$uv" tool list 2>/dev/null || true)"
         for tool in ${lib.escapeShellArgs aiUvTools}; do
           if printf '%s\n' "$installed" | ${pkgs.gnugrep}/bin/grep -q "^$tool "; then
