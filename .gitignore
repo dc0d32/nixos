@@ -7,6 +7,11 @@ result-*
 .claude/settings.local.json
 node_modules/
 
+# graphify code-graph output (graphify-out/graph.json, graph.html,
+# report, memory/). Regenerated from source via `graphify update .`;
+# a local-only artifact, never tracked (standing instruction).
+graphify-out/
+
 # git-hooks.nix shellHook materializes a .pre-commit-config.yaml symlink
 # pointing into the nix store. Local-only artifact; not part of the flake.
 .pre-commit-config.yaml
