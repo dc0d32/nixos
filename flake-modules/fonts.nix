@@ -4,9 +4,9 @@
 # a PSF bitmap (FantasqueSansM can't render in the kernel console).
 #
 # Cross-class footprint:
-#   - flake.modules.nixos.fonts — installs Noto / Inter / JetBrains
-#     Mono / Fantasque Sans Mono / nerd-fonts variants and sets
-#     defaultFonts per family (mono → FantasqueSansM, sans → Inter, etc.).
+#   - flake.modules.nixos.fonts — installs Noto / Inter / Fantasque
+#     Sans Mono (Nerd-Font-patched) and sets defaultFonts per family
+#     (mono → FantasqueSansM, sans → Inter, etc.).
 #     Also sets console.font to Cozette (bitmap NF-patched).
 #   - flake.modules.homeManager.fonts — cross-platform:
 #       · Linux  — turns on fontconfig in HM and drops a
@@ -48,11 +48,10 @@ let
     noto-fonts-color-emoji # renamed from noto-fonts-emoji
     noto-fonts-cjk-sans
     inter
-    jetbrains-mono
-    nerd-fonts.jetbrains-mono
-    nerd-fonts.fira-code
-    # FantasqueSansM — Fantasque Sans Mono, Nerd-Font-patched. fontconfig
-    # (Linux) / Core Text (macOS) picks the variant by family name.
+    # FantasqueSansM — Fantasque Sans Mono, Nerd-Font-patched. The single
+    # coding + icon font used everywhere (terminals, waybar, editors).
+    # fontconfig (Linux) / Core Text (macOS) picks the variant by family
+    # name.
     nerd-fonts.fantasque-sans-mono
   ];
 in
@@ -61,15 +60,15 @@ in
     fonts = {
       packages = fontPkgs pkgs;
       fontconfig.defaultFonts = {
-        # FantasqueSansM **Mono** first; fall back to JetBrainsMono if a
-        # client can't find the patched family (e.g. pre-patched
-        # tooling). The Mono variant forces every glyph — including the
-        # Nerd icons — into a single fixed-width cell; the bare
-        # "FantasqueSansM Nerd Font" leaves the patched glyphs at their
-        # original (often 1.5–2×) advance, which breaks monospace
-        # alignment (overlapping/clipped letters) in terminals and other
-        # cell-grid clients.
-        monospace = [ "FantasqueSansM Nerd Font Mono" "JetBrainsMono Nerd Font" ];
+        # FantasqueSansM **Mono** — the single coding/icon font. The Mono
+        # variant forces every glyph — including the Nerd icons — into a
+        # single fixed-width cell; the bare "FantasqueSansM Nerd Font"
+        # leaves the patched glyphs at their original (often 1.5–2×)
+        # advance, which breaks monospace alignment (overlapping/clipped
+        # letters) in terminals and other cell-grid clients. No secondary
+        # coding font: if a glyph is truly absent fontconfig falls back to
+        # the system defaults (Noto) automatically.
+        monospace = [ "FantasqueSansM Nerd Font Mono" ];
         sansSerif = [ "Inter" ];
         serif = [ "Noto Serif" ];
         emoji = [ "Noto Color Emoji" ];
