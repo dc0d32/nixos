@@ -60,15 +60,24 @@
             warning = 30;
             critical = 15;
           };
-          format = "{capacity}% {icon}";
-          format-charging = "{capacity}% ";
-          format-icons = [ "" "" "" "" "" ];
+          # MD battery glyphs (same icon family + size as wifi/brightness
+          # below) enlarged via a pango span so the icon is clearly a
+          # battery at a glance; number stays normal size.
+          format = "{capacity}% <span size='x-large'>{icon}</span>";
+          format-charging = "{capacity}% <span size='x-large'>󰂄</span>";
+          format-icons = [ "󰁺" "󰁼" "󰁾" "󰂀" "󰁹" ];
         };
         network = {
-          format-wifi = "{essid} ({signalStrength}%) ";
-          format-ethernet = "{ifname} ";
-          format-disconnected = "⚠";
+          # Signal shown as wifi bars (format-icons is selected by
+          # signalStrength 0-100), not a bare "%", so it reads as wifi
+          # at a glance. Click opens nmtui to pick/manage networks.
+          format-wifi = "{essid} <span size='x-large'>{icon}</span>";
+          format-ethernet = "<span size='x-large'>󰈁</span> {ifname}";
+          format-disconnected = "<span size='x-large'>󰤮</span>";
+          format-icons = [ "󰤯" "󰤟" "󰤢" "󰤥" "󰤨" ];
           tooltip-format = "{ifname}: {ipaddr}";
+          tooltip-format-wifi = "{essid} ({signalStrength}%)\n{ifname}: {ipaddr}";
+          on-click = "${pkgs.alacritty}/bin/alacritty --title nmtui -e ${pkgs.networkmanager}/bin/nmtui";
         };
         bluetooth = {
           format-on = "";
@@ -86,14 +95,20 @@
           on-click = "${pkgs.pwvucontrol}/bin/pwvucontrol";
         };
         backlight = {
-          format = "{percent}% ";
+          # Brightness icon (sun) so the number reads as brightness at a
+          # glance; the glyph fills as the level rises and is enlarged via
+          # a pango span. Scroll to adjust.
+          format = "{percent}% <span size='x-large'>{icon}</span>";
+          format-icons = [ "󰃞" "󰃟" "󰃠" ];
+          on-scroll-up = "${pkgs.brightnessctl}/bin/brightnessctl set +5%";
+          on-scroll-down = "${pkgs.brightnessctl}/bin/brightnessctl set 5%-";
         };
         tray = { spacing = 8; };
       };
       style = ''
         * {
-          font-family: "JetBrains Mono", "Symbols Nerd Font", monospace;
-          font-size: 12px;
+          font-family: "FantasqueSansM Nerd Font", monospace;
+          font-size: 13px;
           min-height: 0;
         }
         window#waybar {
