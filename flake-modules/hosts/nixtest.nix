@@ -53,6 +53,13 @@ let
       # New homelab modules under test.
       config.flake.modules.nixos.nfs-client
       config.flake.modules.nixos.caddy
+      # Imported inert (no host config set) purely to eval-validate them on
+      # this throwaway host; each is a no-op until its options are set.
+      config.flake.modules.nixos.secrets
+      config.flake.modules.nixos.zfs-storage
+      config.flake.modules.nixos.sanoid
+      config.flake.modules.nixos.nfs-server
+      config.flake.modules.nixos.samba
 
       # Bootstrap the nas user's HM profile on first boot.
       config.flake.modules.nixos.home-manager-bootstrap
