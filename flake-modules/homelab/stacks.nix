@@ -129,25 +129,41 @@
             message = "homelab.domain must be set when any stack is exposed.";
           }];
 
-        # One oneshot per placed stack: docker compose up -d in its dir.
-        systemd.services = lib.mapAttrs'
-          (name: r: lib.nameValuePair "stack-${name}" {
-            description = "homelab compose stack: ${name}";
-            wantedBy = [ "multi-user.target" ];
-            after = [ "docker.service" "network-online.target" ];
-            requires = [ "docker.service" ];
-            wants = [ "network-online.target" ];
-            path = [ pkgs.docker pkgs.docker-compose ];
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
-              WorkingDirectory = r.composeDir;
-              ExecStart = "${compose} up -d --remove-orphans";
-              ExecStop = "${compose} down";
-              TimeoutStartSec = "600";
-            };
-          })
-          resolved;
+        # One compose-up oneshot per UNIQUE composeDir. Stacks that share a
+        # compose project (e.g. cyberchef + it-tools live in the same dir)
+        # must NOT get two units — two concurrent `docker compose up` on the
+        # same project race on network/container creation and one fails
+        # (observed in the ursa rehearsal: stack-it-tools failed while its
+        # container was already up via stack-cyberchef). Keying by composeDir
+        # collapses them to a single unit named after the dir; each stack
+        # still gets its own vhost below.
+        #
+        # TimeoutStartSec is generous (30m): on a fresh host EVERY stack
+        # pulls images at once and saturates the link — a 10m timeout tripped
+        # several units in the rehearsal that succeeded fine when pulled
+        # serially. The runbook additionally suggests pre-pulling.
+        systemd.services =
+          let
+            composeDirs = lib.unique (lib.mapAttrsToList (_: r: r.composeDir) resolved);
+          in
+          lib.listToAttrs (map
+            (dir: lib.nameValuePair "stack-${baseNameOf dir}" {
+              description = "homelab compose stack: ${baseNameOf dir}";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "docker.service" "network-online.target" ];
+              requires = [ "docker.service" ];
+              wants = [ "network-online.target" ];
+              path = [ pkgs.docker pkgs.docker-compose ];
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                WorkingDirectory = dir;
+                ExecStart = "${compose} up -d --remove-orphans";
+                ExecStop = "${compose} down";
+                TimeoutStartSec = "1800";
+              };
+            })
+            composeDirs);
 
         # Native Caddy vhosts for exposed stacks (auto-enable Caddy if any).
         services.caddy.enable = lib.mkDefault (exposed != { });
