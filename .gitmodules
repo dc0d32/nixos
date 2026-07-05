@@ -1,0 +1,3 @@
+[submodule "docs/homelab"]
+	path = docs/homelab
+	url = https://github.com/dc0d32/homelab.git
