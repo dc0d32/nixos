@@ -16,14 +16,16 @@
 #
 # Rebuild from inside the VM:
 #   sudo nixos-rebuild switch --flake .#nixtest
-#   home-manager switch --flake .#'nas@nixtest'
+#   home-manager switch --flake .#'p@nixtest'
 #
 # Retire when:
 #   * Phase 0 is proven and the real hosts (andromeda/ursa) exist — delete
 #     this file and hosts/nixtest/.
 { config, ... }:
 let
-  user = "nas";
+  # Operator/login user is `p` (the human). `nas` is reserved as an NFS
+  # service account only, not a login — so homelab hosts log in as `p`.
+  user = "p";
   name = "nixtest";
   system = "x86_64-linux";
   stateVersion = "25.11";
@@ -61,7 +63,7 @@ let
       config.flake.modules.nixos.nfs-server
       config.flake.modules.nixos.samba
 
-      # Bootstrap the nas user's HM profile on first boot.
+      # Bootstrap the p user's HM profile on first boot.
       config.flake.modules.nixos.home-manager-bootstrap
     ];
 
@@ -96,7 +98,7 @@ let
   };
 
   hmModule = {
-    imports = config.flake.lib.bundles.homeManager.base;
+    imports = config.flake.lib.bundles.homeManager.homelab;
     programs.home-manager.enable = true;
     home.username = user;
     home.homeDirectory = "/home/${user}";
