@@ -120,11 +120,34 @@
           type = lib.types.str;
           default = "/persist";
           description = ''
-            Mountpoint of the persistent btrfs subvol. Defaults to
+            Mountpoint of the persistent subvol/dataset. Defaults to
             /persist; only override if a host needs to relocate it
             (very rarely useful — the path is referenced by
             environment.persistence."<x>" and by the backup module
             with the same default).
+          '';
+        };
+
+        backend = lib.mkOption {
+          type = lib.types.enum [ "btrfs" "zfs" ];
+          default = "btrfs";
+          description = ''
+            Root-rollback backend. "btrfs" (default) rolls the btrfs
+            `root` subvol back to the `root-blank` snapshot the
+            bare-metal disko factory made. "zfs" runs
+            `zfs rollback -r <zfsRootDataset>@blank` in initrd — used by
+            the homelab nodes on the zfs-bare-metal layout. Must match
+            the disko factory the host installed with.
+          '';
+        };
+
+        zfsRootDataset = lib.mkOption {
+          type = lib.types.str;
+          default = "rpool/root";
+          description = ''
+            The ZFS root dataset to roll back (only used when
+            backend = "zfs"). The `@blank` snapshot on it is created by
+            the zfs-bare-metal disko factory at install time.
           '';
         };
 
@@ -235,87 +258,111 @@
         # Publish the signal. Importing IS enabling.
         impermanence.enable = lib.mkDefault true;
 
-        # ── btrfs root-rollback in initrd ──────────────────────────
-        # systemd-stage-1 initrd: required for the systemd.services
-        # entry below to fire before sysroot mount. The legacy
-        # script-stage-1 initrd can't run a systemd unit at all.
+        # ── root-rollback in initrd (btrfs subvol OR zfs dataset) ──
+        # systemd-stage-1 initrd: required for the rollback service to
+        # fire before sysroot mount. The legacy script-stage-1 initrd
+        # can't run a systemd unit at all.
         boot.initrd.systemd.enable = lib.mkDefault true;
 
-        # btrfs-progs in initrd so the rollback script can mount the
-        # top-level subvol and run `btrfs subvolume snapshot/delete`.
-        boot.initrd.systemd.initrdBin = [ pkgs.btrfs-progs ];
+        # The rollback tool in initrd: btrfs-progs (btrfs) or zfs (zfs).
+        boot.initrd.systemd.initrdBin =
+          if cfg.backend == "zfs" then [ pkgs.zfs ] else [ pkgs.btrfs-progs ];
 
-        boot.initrd.systemd.services.rollback = {
-          description = "Rollback btrfs root subvol to root-blank";
-          wantedBy = [ "initrd.target" ];
-          # Must finish BEFORE sysroot is mounted from subvol=root.
-          # systemd-initrd uses sysroot.mount for that. We don't list
-          # the device unit explicitly because the unit name encodes
-          # systemd-escape-mangled partlabels which vary by host /
-          # encryption / disk; sysroot.mount has its own dependency
-          # graph on the right device and we just need to fire before
-          # it, regardless of how it gets unblocked.
-          before = [ "sysroot.mount" ];
-          unitConfig.DefaultDependencies = "no";
-          serviceConfig.Type = "oneshot";
-          script = ''
-            set -euo pipefail
-            mkdir -p /btrfs_tmp
+        boot.initrd.systemd.services.rollback =
+          if cfg.backend == "zfs" then
+            let
+              pool = builtins.head (lib.splitString "/" cfg.zfsRootDataset);
+            in
+            {
+              description = "Rollback ZFS root dataset ${cfg.zfsRootDataset} to @blank";
+              wantedBy = [ "initrd.target" ];
+              # After the root pool is imported, before / is mounted.
+              after = [ "zfs-import-${pool}.service" ];
+              before = [ "sysroot.mount" ];
+              path = [ pkgs.zfs ];
+              unitConfig.DefaultDependencies = "no";
+              serviceConfig.Type = "oneshot";
+              # `zfs rollback -r` discards any snapshots of the root
+              # dataset newer than @blank (there are none — only /persist
+              # + the data pool are snapshotted). No old_roots archive on
+              # zfs: recovery of forgotten state relies on /persist +
+              # sanoid snapshots of the persist/data datasets.
+              script = ''
+                zfs rollback -r ${cfg.zfsRootDataset}@blank
+              '';
+            }
+          else
+            {
+              description = "Rollback btrfs root subvol to root-blank";
+              wantedBy = [ "initrd.target" ];
+              # Must finish BEFORE sysroot is mounted from subvol=root.
+              # systemd-initrd uses sysroot.mount for that. We don't list
+              # the device unit explicitly because the unit name encodes
+              # systemd-escape-mangled partlabels which vary by host /
+              # encryption / disk; sysroot.mount has its own dependency
+              # graph on the right device and we just need to fire before
+              # it, regardless of how it gets unblocked.
+              before = [ "sysroot.mount" ];
+              unitConfig.DefaultDependencies = "no";
+              serviceConfig.Type = "oneshot";
+              script = ''
+                set -euo pipefail
+                mkdir -p /btrfs_tmp
 
-            # Mount the btrfs top-level (subvolid=5) so we can see +
-            # edit the subvol tree. Try the LUKS-opened mapper first
-            # (encrypted hosts), then the partlabel (plaintext hosts).
-            # Whichever exists is what disko produced.
-            if [ -b /dev/mapper/cryptroot ]; then
-              mount -t btrfs -o subvol=/ /dev/mapper/cryptroot /btrfs_tmp
-            else
-              mount -t btrfs -o subvol=/ \
-                /dev/disk/by-partlabel/disk-main-nixos /btrfs_tmp
-            fi
-
-            # Archive whatever is currently in `root` under
-            # /btrfs_tmp/old_roots/<timestamp>/ so a wedged debugging
-            # session has a chance to recover anything the operator
-            # forgot to declare in environment.persistence. Cleaned up
-            # below if it's older than 30 days.
-            if [ -e /btrfs_tmp/root ]; then
-              mkdir -p /btrfs_tmp/old_roots
-              timestamp=$(date --date="@$(stat -c %Y /btrfs_tmp/root)" "+%Y-%m-%dT%H:%M:%S" 2>/dev/null || echo unknown)
-              mv /btrfs_tmp/root "/btrfs_tmp/old_roots/$timestamp" || \
-                btrfs subvolume delete /btrfs_tmp/root || true
-            fi
-
-            # Prune old archives (>30 days) so the disk doesn't fill
-            # up with forgotten rollbacks. -mtime tolerates clock skew
-            # on a host that hasn't synced NTP yet (first boot).
-            if [ -d /btrfs_tmp/old_roots ]; then
-              for old in $(find /btrfs_tmp/old_roots/ -maxdepth 1 -mindepth 1 -mtime +30 2>/dev/null); do
-                btrfs subvolume delete "$old" || true
-              done
-            fi
-
-            # Restore a fresh writable copy of `root` from the RO
-            # `root-blank` snapshot the disko factory created at
-            # install time. If root-blank is missing (host is not yet
-            # migrated to a disko factory that creates it), abort
-            # cleanly and let the existing root mount through — the
-            # operator can run the migration script and try again.
-            if [ ! -e /btrfs_tmp/root-blank ]; then
-              echo "rollback: /btrfs_tmp/root-blank missing; restoring archived root in place" >&2
-              if [ -d /btrfs_tmp/old_roots ]; then
-                last=$(ls -1t /btrfs_tmp/old_roots | head -1 || true)
-                if [ -n "$last" ]; then
-                  btrfs subvolume snapshot \
-                    "/btrfs_tmp/old_roots/$last" /btrfs_tmp/root
+                # Mount the btrfs top-level (subvolid=5) so we can see +
+                # edit the subvol tree. Try the LUKS-opened mapper first
+                # (encrypted hosts), then the partlabel (plaintext hosts).
+                # Whichever exists is what disko produced.
+                if [ -b /dev/mapper/cryptroot ]; then
+                  mount -t btrfs -o subvol=/ /dev/mapper/cryptroot /btrfs_tmp
+                else
+                  mount -t btrfs -o subvol=/ \
+                    /dev/disk/by-partlabel/disk-main-nixos /btrfs_tmp
                 fi
-              fi
-            else
-              btrfs subvolume snapshot /btrfs_tmp/root-blank /btrfs_tmp/root
-            fi
 
-            umount /btrfs_tmp
-          '';
-        };
+                # Archive whatever is currently in `root` under
+                # /btrfs_tmp/old_roots/<timestamp>/ so a wedged debugging
+                # session has a chance to recover anything the operator
+                # forgot to declare in environment.persistence. Cleaned up
+                # below if it's older than 30 days.
+                if [ -e /btrfs_tmp/root ]; then
+                  mkdir -p /btrfs_tmp/old_roots
+                  timestamp=$(date --date="@$(stat -c %Y /btrfs_tmp/root)" "+%Y-%m-%dT%H:%M:%S" 2>/dev/null || echo unknown)
+                  mv /btrfs_tmp/root "/btrfs_tmp/old_roots/$timestamp" || \
+                    btrfs subvolume delete /btrfs_tmp/root || true
+                fi
+
+                # Prune old archives (>30 days) so the disk doesn't fill
+                # up with forgotten rollbacks. -mtime tolerates clock skew
+                # on a host that hasn't synced NTP yet (first boot).
+                if [ -d /btrfs_tmp/old_roots ]; then
+                  for old in $(find /btrfs_tmp/old_roots/ -maxdepth 1 -mindepth 1 -mtime +30 2>/dev/null); do
+                    btrfs subvolume delete "$old" || true
+                  done
+                fi
+
+                # Restore a fresh writable copy of `root` from the RO
+                # `root-blank` snapshot the disko factory created at
+                # install time. If root-blank is missing (host is not yet
+                # migrated to a disko factory that creates it), abort
+                # cleanly and let the existing root mount through — the
+                # operator can run the migration script and try again.
+                if [ ! -e /btrfs_tmp/root-blank ]; then
+                  echo "rollback: /btrfs_tmp/root-blank missing; restoring archived root in place" >&2
+                  if [ -d /btrfs_tmp/old_roots ]; then
+                    last=$(ls -1t /btrfs_tmp/old_roots | head -1 || true)
+                    if [ -n "$last" ]; then
+                      btrfs subvolume snapshot \
+                        "/btrfs_tmp/old_roots/$last" /btrfs_tmp/root
+                    fi
+                  fi
+                else
+                  btrfs subvolume snapshot /btrfs_tmp/root-blank /btrfs_tmp/root
+                fi
+
+                umount /btrfs_tmp
+              '';
+            };
 
         # ── /persist must be mounted before /var (and most of /) is
         # accessed by impermanence's bind-mount machinery ───────────

@@ -290,6 +290,128 @@
         };
       };
 
+    # Bare-metal ZFS-on-root: hybrid bios-boot + ESP + optional swap + a
+    # single-disk `rpool` with datasets root(/) nix(/nix) home(/home)
+    # persist(/persist) and a `root@blank` snapshot. Used by the homelab
+    # nodes (ursa, andromeda) so both boxes are ZFS end to end (this boot
+    # pool + andromeda's zrust data pool), and both can run impermanence.
+    #
+    # The `root@blank` snapshot is the ZFS analogue of the btrfs
+    # `root-blank` subvol: flake-modules/impermanence.nix with
+    # `backend = "zfs"` rolls the root dataset back to it in initrd on
+    # every boot. /nix + /home + /persist are separate datasets and are
+    # never rolled back, so they survive.
+    #
+    # rootFsOptions match the OpenZFS-on-root conventions (posixacl + sa
+    # xattrs so systemd/journald ACLs work, zstd compression, atime off,
+    # mountpoint=none so children mount by their explicit `mountpoint`).
+    # ashift=12 (4K) is right for every SSD/HDD we run.
+    #
+    # UEFI + BIOS both boot: /boot is a plain vfat ESP (kernel+initrd), so
+    # systemd-boot (UEFI) loads them and the initrd imports rpool; the 1 MiB
+    # bios-boot partition lets grub boot the same disk on legacy firmware
+    # (the R720 may be BIOS). LUKS is intentionally NOT offered here — for
+    # ZFS the idiomatic encryption is native ZFS encryption, added later if
+    # wanted; the homelab chose no encryption for now.
+    #
+    # NOTE: a host using this MUST set `networking.hostId` (ZFS refuses to
+    # import without one) — the homelab bridges already do.
+    zfs-bare-metal = { disk, poolName ? "rpool", swapSize ? null }:
+      let
+        swapPartition = lib.optionalAttrs (swapSize != null) {
+          swap = {
+            size = swapSize;
+            type = "8200";
+            priority = 3;
+            content = {
+              type = "swap";
+              resumeDevice = true;
+            };
+          };
+        };
+      in
+      {
+        disko.devices = {
+          disk.main = {
+            type = "disk";
+            device = disk;
+            content = {
+              type = "gpt";
+              partitions = {
+                BIOS = {
+                  size = "1M";
+                  type = "EF02";
+                  priority = 1;
+                };
+                ESP = {
+                  size = "1G";
+                  type = "EF00";
+                  priority = 2;
+                  content = {
+                    type = "filesystem";
+                    format = "vfat";
+                    mountpoint = "/boot";
+                    mountOptions = [ "fmask=0022" "dmask=0022" ];
+                  };
+                };
+                zfs = {
+                  size = "100%";
+                  priority = 4;
+                  content = {
+                    type = "zfs";
+                    pool = poolName;
+                  };
+                };
+              } // swapPartition;
+            };
+          };
+          zpool.${poolName} = {
+            type = "zpool";
+            options.ashift = "12";
+            rootFsOptions = {
+              compression = "zstd";
+              acltype = "posixacl";
+              xattr = "sa";
+              atime = "off";
+              mountpoint = "none";
+              "com.sun:auto-snapshot" = "false";
+            };
+            datasets = {
+              # Ephemeral root — rolled back to @blank every boot by the
+              # impermanence module. The postCreateHook takes the empty
+              # snapshot at install time.
+              root = {
+                type = "zfs_fs";
+                mountpoint = "/";
+                postCreateHook = "zfs snapshot ${poolName}/root@blank";
+              };
+              nix = {
+                type = "zfs_fs";
+                mountpoint = "/nix";
+              };
+              home = {
+                type = "zfs_fs";
+                mountpoint = "/home";
+              };
+              # Persistence dataset for impermanence (holds /persist/stacks,
+              # /persist/secrets, and the bind-mount sources). Survives the
+              # root rollback. neededForBoot (below) so it's mounted before
+              # the impermanence bind mounts are set up.
+              persist = {
+                type = "zfs_fs";
+                mountpoint = "/persist";
+              };
+            };
+          };
+        };
+        # ZFS-in-initrd + early mounts. `/` (rpool/root) mounts via zfsutil;
+        # the legacy-mountpoint datasets need explicit fileSystems entries
+        # with neededForBoot so /nix + /persist are up before switch-root
+        # and the impermanence bind mounts.
+        fileSystems."/nix".neededForBoot = true;
+        fileSystems."/persist".neededForBoot = true;
+      };
+
     # VM: ESP + optional swap + ext4 (no bios-boot, no subvols).
     # Optional LUKS wrap; usually unnecessary because the hypervisor /
     # ZFS pool already encrypts the backing store.
