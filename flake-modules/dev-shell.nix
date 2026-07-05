@@ -40,6 +40,13 @@
 #                           authored on WSL and shipped to bare-metal
 #                           NixOS. Use `#!/usr/bin/env bash` instead.
 #                           See AGENTS.md > "Shell script shebangs".
+#   - check-no-private-topology : rejects staged changes that introduce
+#                           real homelab topology (private domain, RFC1918
+#                           VLAN subnets, disk serials, the real hostnames)
+#                           into this PUBLIC repo. That data lives only in
+#                           the separate private dc0d32/homelab flake; the
+#                           reusable modules here use documentation-range
+#                           placeholders. Diff-based, like gitleaks.
 #   - smoke-build-hosts   : pre-PUSH hook (not pre-commit). Runs
 #                           `nix flake check --impure` with
 #                           NIXOS_ALLOW_PLACEHOLDER=1 so every
@@ -128,6 +135,68 @@
         '';
       };
 
+      # check-no-private-topology: block homelab topology (real hostnames,
+      # RFC1918 subnets, disk serials, the private domain) from ever being
+      # committed to this PUBLIC repo. The real topology lives ONLY in the
+      # private `dc0d32/homelab` flake (a separate flake that consumes this
+      # one as an input); the reusable modules here use documentation-range
+      # examples (192.0.2.x, placeholder serials) so this repo carries no
+      # leak surface. See homelab/sessions/ for the architecture.
+      #
+      # Diff-based (scans staged ADDED lines only, like gitleaks) so
+      # already-committed personal references (e.g. a bitwarden URL in a
+      # host's chrome policy) don't block unrelated commits — only NEW
+      # introductions are rejected. The hook excludes its OWN definition
+      # file (this dev-shell.nix necessarily spells the patterns out).
+      #
+      # Bypass a false positive with `git commit --no-verify` (AGENTS.md:
+      # only with an explicit, documented reason).
+      check-no-private-topology = pkgs.writeShellApplication {
+        name = "check-no-private-topology";
+        runtimeInputs = with pkgs; [ git gnugrep coreutils ];
+        text = ''
+          # Staged added lines, excluding this hook's own source (which
+          # necessarily contains the very patterns it searches for).
+          added="$(git diff --cached --unified=0 --no-color -- . \
+            ':(exclude)flake-modules/dev-shell.nix' \
+            | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+
+          # Regexes for real homelab topology that must stay private.
+          patterns=(
+            'bitset\.cc'                 # private domain
+            '192\.168\.'                 # real VLAN subnets (RFC1918)
+            'MZ7WD480HCGM|SSDSC2KF256'   # real storage-node boot-SSD serials
+            'MZVKW1T0HMLH|MTFDDAK1T0MBF' # real edge-node disk serials
+            '\b(andromeda|ursa)\b'       # real hostnames
+          )
+
+          status=0
+          for p in "''${patterns[@]}"; do
+            hits="$(printf '%s\n' "$added" | grep -inE "$p" || true)"
+            if [[ -n "$hits" ]]; then
+              echo "✘ private topology /$p/ in staged changes:" >&2
+              printf '%s\n' "$hits" >&2
+              status=1
+            fi
+          done
+
+          if [[ $status -ne 0 ]]; then
+            cat >&2 <<'EOF'
+
+          Refusing to commit private homelab topology to the PUBLIC repo.
+          Real hostnames, RFC1918 subnets, disk serials and the private
+          domain belong ONLY in the private dc0d32/homelab flake. Use a
+          documentation-range placeholder here (192.0.2.x, a generic
+          "storage-node"/"edge-node", ata-<MODEL>_<SERIAL>) instead.
+
+          If this is a genuine false positive: git commit --no-verify
+          (AGENTS.md: only with an explicit, documented reason).
+          EOF
+          fi
+          exit $status
+        '';
+      };
+
       # Pre-push smoke build: evaluate-and-build every non-placeholder,
       # native-arch NixOS and home-manager configuration before letting
       # the push complete. Catches eval breakage AND build failures
@@ -209,6 +278,17 @@
             entry = "${check-bash-shebang}/bin/check-bash-shebang";
             language = "system";
             pass_filenames = true;
+          };
+
+          # See `check-no-private-topology` above. Runs once (not per
+          # file) and inspects the staged diff for real homelab topology
+          # that must never reach this public repo.
+          check-no-private-topology = {
+            enable = true;
+            name = "no private homelab topology";
+            entry = "${check-no-private-topology}/bin/check-no-private-topology";
+            language = "system";
+            pass_filenames = false;
           };
 
           # See `smoke-build-hosts` above. `stages = [ "pre-push" ]`

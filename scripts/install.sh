@@ -71,7 +71,7 @@ set -euo pipefail
 if [[ $# -lt 2 ]]; then
     echo "Usage: $0 <hostname> <target-ip> [extra nixos-anywhere args]" >&2
     echo >&2
-    echo "Example: $0 pb-t480 192.168.1.42" >&2
+    echo "Example: $0 pb-t480 192.0.2.42" >&2
     exit 2
 fi
 

@@ -12,14 +12,14 @@
 # Why NOT `disko-safety` here:
 #   This is a single-disk VM; /dev/vda is stable inside a VM, and
 #   disko-safety intentionally rejects non-by-id paths — that guard is for
-#   the multi-disk bare-metal nodes (andromeda/ursa), not VMs.
+#   the multi-disk bare-metal nodes, not VMs.
 #
 # Rebuild from inside the VM:
 #   sudo nixos-rebuild switch --flake .#nixtest
 #   home-manager switch --flake .#'p@nixtest'
 #
 # Retire when:
-#   * Phase 0 is proven and the real hosts (andromeda/ursa) exist — delete
+#   * Phase 0 is proven and the real bare-metal hosts exist — delete
 #     this file and hosts/nixtest/.
 { config, ... }:
 let
@@ -89,7 +89,7 @@ let
     # A declarative NFS mount. Automounted + _netdev, so an absent server
     # doesn't block boot while testing. Points at an existing export.
     homelab.nfs.mounts."/mnt/test" = {
-      device = "192.168.10.3:/mnt/zrust/nas";
+      device = "192.0.2.3:/mnt/tank/nas";
     };
 
     # Native, hardened Caddy reverse-proxying to a test container on :8080

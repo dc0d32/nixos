@@ -12,7 +12,7 @@
 # ai-cli is the one heavyweight here; drop it from this list if a given
 # homelab host should stay lean.
 #
-# Consumed by the homelab hosts (nixtest today; ursa/andromeda later) as
+# Consumed by the homelab hosts (nixtest today; the real nodes later) as
 # `p@<host>`.
 #
 # Retire when: home-base is retired, or the homelab collapses into another

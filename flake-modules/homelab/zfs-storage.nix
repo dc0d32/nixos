@@ -1,11 +1,11 @@
 # zfs-storage.nix — ZFS host baseline for homelab storage nodes.
 #
 # Why this exists:
-#   The storage node (andromeda after the migration) imports the existing
-#   `zrust` pool and needs the standard ZFS hygiene: import at boot, weekly
-#   scrub, autotrim, and an ARC cap so containers + ZFS share RAM sanely.
-#   ursa imports its local pools the same way. Encoding it once keeps both
-#   nodes' storage config identical apart from the pool list.
+#   The storage node imports the existing pool and needs the standard ZFS
+#   hygiene: import at boot, weekly scrub, autotrim, and an ARC cap so
+#   containers + ZFS share RAM sanely. Other nodes import their local
+#   pools the same way. Encoding it once keeps every node's storage config
+#   identical apart from the pool list.
 #
 #   The pool is NEVER created here — it is `zpool import`ed (the migration
 #   re-homes the existing OpenZFS pool from TrueNAS untouched). disko owns

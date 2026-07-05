@@ -31,7 +31,8 @@
           enable = true;
           qemu = {
             package = pkgs.qemu_kvm;
-            ovmf.enable = true; # UEFI firmware for guests (HAOS, edge)
+            # OVMF/UEFI firmware for guests ships by default now; the
+            # explicit `qemu.ovmf.*` submodule was removed in nixpkgs 26.05.
             runAsRoot = false;
           };
         };

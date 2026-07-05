@@ -2,7 +2,8 @@
 #
 # Why this exists:
 #   The homelab hosts consume shared datasets from the storage node
-#   (TrueNAS today, andromeda after the migration) over NFS. Rather than
+#   (a NAS today, the bare-metal storage node after the migration) over
+#   NFS. Rather than
 #   hand-writing `fileSystems.*` blocks per host, hosts declare
 #   `homelab.nfs.mounts.<mountpoint> = { device = "<server>:/<path>"; }`
 #   and this module synthesizes the `fileSystems` entries. Mounts are
@@ -28,13 +29,13 @@
           `fileSystems.<mountpoint>` entry, automounted and `_netdev`.
         '';
         example = {
-          "/mnt/mm".device = "192.168.10.3:/mnt/zrust/mm";
+          "/mnt/mm".device = "192.0.2.3:/mnt/tank/mm";
         };
         type = lib.types.attrsOf (lib.types.submodule (_: {
           options = {
             device = lib.mkOption {
               type = lib.types.str;
-              example = "192.168.10.3:/mnt/zrust/mm";
+              example = "192.0.2.3:/mnt/tank/mm";
               description = "NFS export as <server>:/<path>.";
             };
             fsType = lib.mkOption {

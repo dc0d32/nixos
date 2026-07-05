@@ -6,7 +6,7 @@
 #   — it never touches a disk it isn't told about. The real hazard on a
 #   multi-disk server is therefore not disko "reaching" extra disks, but the
 #   named `device` VALUE resolving to the WRONG physical disk. On hosts with
-#   many disks (andromeda: 2 boot SSDs + 8 `zrust` raidz2 members), the
+#   many disks (e.g. a storage node with 2 boot SSDs + 8 raidz2 members), the
 #   kernel's `/dev/sdX` enumeration is NOT stable across boots / kernels /
 #   HBA init order, so a bare `/dev/sda` could point at a pool member on any
 #   given boot. `install.sh`'s destructive pre-wipe reads the same value, so
@@ -45,7 +45,7 @@
               ${lib.concatStringsSep "\n  " badList}
 
             Pin each to a stable /dev/disk/by-id/ path (serial or WWN), e.g.
-              /dev/disk/by-id/ata-SAMSUNG_MZ7WD480HCGM-000H2_S1T9NYAG200249
+              /dev/disk/by-id/ata-<VENDOR_MODEL>_<SERIAL>
             /dev/sdX, /dev/nvmeXnY and /dev/vdX are rejected here because
             their enumeration is not stable across boots.
           '';

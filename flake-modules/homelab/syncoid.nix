@@ -2,7 +2,8 @@
 #
 # Why this exists:
 #   Restore tier 2: replicate critical datasets to the other node so a
-#   node/pool loss is recoverable (ursa's critical services → andromeda).
+#   node/pool loss is recoverable (the edge node's critical services →
+#   the storage node).
 #   Hosts declare `homelab.replication.<id> = { source = …; target = …; }`.
 #
 # Inert until `homelab.replication` is non-empty. SSH access to remote
@@ -20,9 +21,9 @@
         default = { };
         description = "syncoid replication jobs, keyed by id.";
         example = {
-          "ursa-critical" = {
+          "edge-critical" = {
             source = "rpool/apps";
-            target = "root@andromeda:zrust/backup/ursa";
+            target = "root@storage-node:tank/backup/edge";
           };
         };
         type = lib.types.attrsOf (lib.types.submodule (_: {

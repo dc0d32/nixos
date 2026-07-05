@@ -1,5 +1,5 @@
 # nvidia-server.nix — headless NVIDIA driver + container toolkit for the
-# GPU homelab node (andromeda's RTX 2080 Ti).
+# GPU homelab node.
 #
 # Why this exists:
 #   The heavy stack (immich-ML, frigate, ollama, plex) uses the 2080 Ti

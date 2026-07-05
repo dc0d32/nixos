@@ -31,8 +31,8 @@
         default = { };
         description = "NFS exports keyed by exported path.";
         example = {
-          "/mnt/zrust/mm".clients = [
-            { host = "192.168.10.14"; options = "rw,sync,no_subtree_check"; }
+          "/mnt/tank/mm".clients = [
+            { host = "192.0.2.14"; options = "rw,sync,no_subtree_check"; }
           ];
         };
         type = lib.types.attrsOf (lib.types.submodule (_: {
@@ -42,7 +42,7 @@
               options = {
                 host = lib.mkOption {
                   type = lib.types.str;
-                  example = "192.168.10.14";
+                  example = "192.0.2.14";
                   description = "Client host/IP/CIDR.";
                 };
                 options = lib.mkOption {
