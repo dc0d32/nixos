@@ -102,14 +102,14 @@
     let
       lib = inputs.nixpkgs.lib;
       # Private homelab host bridges (real topology: IPs, disk by-ids, the
-      # stack registry) live in the docs/homelab submodule (dc0d32/homelab)
+      # stack registry) live in the `homelab/` submodule (dc0d32/homelab)
       # under nix/, NOT in this public repo. They are imported ONLY when
       # present — i.e. when this flake is evaluated with `?submodules=1` and
       # the operator has access to the private repo. On a public clone or
       # CI runner (no submodule) the path is absent and the homelab hosts
       # simply don't exist, so the public flake still evaluates/builds.
       # Build homelab hosts with: nixos-rebuild --flake '.?submodules=1'#andromeda
-      privateNix = ./docs/homelab/nix;
+      privateNix = ./homelab/nix;
       privateTrees = lib.optional (builtins.pathExists privateNix)
         (inputs.import-tree privateNix);
     in
