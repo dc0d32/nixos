@@ -54,6 +54,14 @@
             default = "authentik";
           };
           gpu = lib.mkOption { type = lib.types.bool; default = false; };
+          tlsUpstream = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Upstream speaks HTTPS (e.g. code-server) — Caddy proxies with
+              `https://` + tls_insecure_skip_verify instead of plain http.
+            '';
+          };
           data = lib.mkOption {
             type = lib.types.enum [ "none" "local" "zrust" ];
             default = "none";

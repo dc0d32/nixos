@@ -34,12 +34,63 @@
       resolve = name: s:
         let r = registry.${name};
         in {
-          inherit (r) composeDir subdomain upstream;
+          inherit (r) composeDir subdomain upstream tlsUpstream;
           expose = if s.expose != null then s.expose else r.exposeDefault;
           auth = if s.auth != null then s.auth else r.authDefault;
         };
       resolved = lib.mapAttrs resolve valid;
       exposed = lib.filterAttrs (_: r: r.expose != "none") resolved;
+
+      # authentik outpost address (for forward_auth). Falls back to the
+      # conventional local port if the SSO stack isn't in the registry.
+      authikUpstream =
+        if registry ? authentik then registry.authentik.upstream else "127.0.0.1:9000";
+
+      # The upstream reverse_proxy directive — https + skip-verify for
+      # self-signed HTTPS upstreams (code-server), plain http otherwise.
+      proxyDirective = r:
+        if r.tlsUpstream then ''
+          reverse_proxy https://${r.upstream} {
+            transport http {
+              tls_insecure_skip_verify
+            }
+          }''
+        else "reverse_proxy ${r.upstream}";
+
+      # LAN-only guard: 403 anything whose source isn't an RFC1918 client.
+      # Defense-in-depth behind the gateway (which simply doesn't
+      # port-forward lan vhosts) — a misconfigured forward can't expose them.
+      lanGuard = ''
+        @external not remote_ip private_ranges
+        respond @external "Forbidden (LAN only)" 403
+      '';
+
+      # authentik forward-auth (the P0-deferred enforcement). Passes the
+      # outpost path straight through, then gates every other request on the
+      # authentik Caddy outpost and copies the identity headers upstream.
+      authBlock = ''
+        reverse_proxy /outpost.goauthentik.io/* ${authikUpstream}
+        forward_auth ${authikUpstream} {
+          uri /outpost.goauthentik.io/auth/caddy
+          copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt X-Authentik-Meta-Jwks X-Authentik-Meta-Outpost X-Authentik-Meta-Provider X-Authentik-Meta-App X-Authentik-Meta-Version
+        }
+      '';
+
+      # Compose one vhost body. When a guard/auth step is present the whole
+      # thing is wrapped in `route { }` so directives run in written order
+      # (Caddy's default directive ordering would otherwise reshuffle the
+      # two reverse_proxy blocks around forward_auth).
+      mkVhostConfig = r:
+        let
+          parts =
+            lib.optional (r.expose == "lan") lanGuard
+            ++ lib.optional (r.auth == "authentik") authBlock
+            ++ [ (proxyDirective r) ];
+          body = lib.concatStringsSep "\n" parts;
+        in
+        if (r.expose == "lan") || (r.auth == "authentik")
+        then "route {\n${body}\n}"
+        else body;
     in
     {
       options.homelab.stacks = lib.mkOption {
@@ -102,9 +153,7 @@
         services.caddy.enable = lib.mkDefault (exposed != { });
         services.caddy.virtualHosts = lib.mapAttrs'
           (_name: r: lib.nameValuePair "${r.subdomain}.${domain}" {
-            extraConfig = ''
-              reverse_proxy ${r.upstream}
-            '';
+            extraConfig = mkVhostConfig r;
           })
           exposed;
       };
