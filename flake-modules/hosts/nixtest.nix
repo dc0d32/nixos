@@ -62,6 +62,14 @@ let
       config.flake.modules.nixos.sanoid
       config.flake.modules.nixos.nfs-server
       config.flake.modules.nixos.samba
+      config.flake.modules.nixos.syncoid
+      config.flake.modules.nixos.offsite-restic
+      config.flake.modules.nixos.nvidia-server
+      config.flake.modules.nixos.crowdsec
+      config.flake.modules.nixos.ddns
+      config.flake.modules.nixos.virt-host
+      config.flake.modules.nixos.stacks-registry
+      config.flake.modules.nixos.stacks
 
       # Bootstrap the p user's HM profile on first boot.
       config.flake.modules.nixos.home-manager-bootstrap
