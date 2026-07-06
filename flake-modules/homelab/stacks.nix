@@ -41,6 +41,18 @@
       resolved = lib.mapAttrs resolve valid;
       exposed = lib.filterAttrs (_: r: r.expose != "none") resolved;
 
+      # Edge proxies: vhosts on THIS host that reverse-proxy to a REMOTE
+      # upstream (a service still hosted elsewhere, pre-migration). Same Caddy
+      # treatment as a local stack, but no compose unit. `resolve`-shaped so
+      # they flow through mkVhostConfig unchanged.
+      edgeResolved = lib.mapAttrs
+        (_name: e: {
+          inherit (e) subdomain upstream tlsUpstream expose auth;
+          composeDir = null;
+        })
+        config.homelab.edgeProxies;
+      edgeExposed = lib.filterAttrs (_: r: r.expose != "none") edgeResolved;
+
       # authentik outpost address (for forward_auth). Falls back to the
       # conventional local port if the SSO stack isn't in the registry.
       authikUpstream =
@@ -116,7 +128,50 @@
         }));
       };
 
-      config = lib.mkIf (enabled != { }) {
+      options.homelab.edgeProxies = lib.mkOption {
+        default = { };
+        description = ''
+          Temporary edge vhosts on THIS host that reverse-proxy a hostname to
+          a REMOTE upstream — a service still hosted elsewhere (e.g. a not-yet-
+          migrated Proxmox VM). Gets the same Caddy treatment as a local stack
+          (lan-guard / authentik forward-auth / tlsUpstream) but has NO compose
+          unit. Retire each entry once the service becomes a real
+          `homelab.stacks` entry on its new host.
+        '';
+        example = {
+          photos = { upstream = "192.168.10.14:2283"; expose = "public"; };
+          home = { upstream = "192.168.10.2:8123"; expose = "public"; };
+        };
+        type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+          options = {
+            subdomain = lib.mkOption {
+              type = lib.types.str;
+              default = name;
+              description = "Subdomain under homelab.domain (defaults to the key).";
+            };
+            upstream = lib.mkOption {
+              type = lib.types.str;
+              example = "192.168.10.14:2283";
+              description = "REMOTE host:port Caddy reverse-proxies to.";
+            };
+            expose = lib.mkOption {
+              type = lib.types.enum [ "none" "lan" "public" ];
+              default = "public";
+            };
+            auth = lib.mkOption {
+              type = lib.types.enum [ "none" "authentik" "basic" ];
+              default = "none";
+            };
+            tlsUpstream = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Upstream speaks HTTPS (proxy with https:// + skip-verify).";
+            };
+          };
+        }));
+      };
+
+      config = lib.mkIf (enabled != { } || edgeExposed != { }) {
         assertions =
           (lib.mapAttrsToList
             (name: _: {
@@ -125,8 +180,8 @@
             })
             enabled)
           ++ [{
-            assertion = (exposed == { }) -> (domain != "");
-            message = "homelab.domain must be set when any stack is exposed.";
+            assertion = (exposed == { } && edgeExposed == { }) -> (domain != "");
+            message = "homelab.domain must be set when any stack or edge proxy is exposed.";
           }];
 
         # One compose-up oneshot per UNIQUE composeDir. Stacks that share a
@@ -165,13 +220,21 @@
             })
             composeDirs);
 
-        # Native Caddy vhosts for exposed stacks (auto-enable Caddy if any).
-        services.caddy.enable = lib.mkDefault (exposed != { });
-        services.caddy.virtualHosts = lib.mapAttrs'
-          (_name: r: lib.nameValuePair "${r.subdomain}.${domain}" {
-            extraConfig = mkVhostConfig r;
-          })
-          exposed;
+        # Native Caddy vhosts for exposed stacks + edge proxies (auto-enable
+        # Caddy if any). Edge proxies point at remote upstreams (services not
+        # yet migrated to this host) and reuse the same vhost treatment.
+        services.caddy.enable = lib.mkDefault (exposed != { } || edgeExposed != { });
+        services.caddy.virtualHosts =
+          (lib.mapAttrs'
+            (_name: r: lib.nameValuePair "${r.subdomain}.${domain}" {
+              extraConfig = mkVhostConfig r;
+            })
+            exposed)
+          // (lib.mapAttrs'
+            (_name: r: lib.nameValuePair "${r.subdomain}.${domain}" {
+              extraConfig = mkVhostConfig r;
+            })
+            edgeExposed);
       };
     };
 }
