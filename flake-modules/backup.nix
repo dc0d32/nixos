@@ -201,8 +201,13 @@
         };
         truenasHost = lib.mkOption {
           type = lib.types.str;
-          default = "nas.lan";
-          description = "Hostname of the SFTP/SSH endpoint.";
+          default = "andromeda.lan";
+          description = ''
+            Hostname of the SFTP/SSH endpoint. The homelab NAS is now
+            bare-metal NixOS `andromeda` (post-TrueNAS migration);
+            `andromeda.lan` resolves to it. (Was `nas.lan`, which pointed at
+            the retired TrueNAS VM.)
+          '';
         };
         truenasUser = lib.mkOption {
           type = lib.types.str;
