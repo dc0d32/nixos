@@ -64,6 +64,7 @@ let
       config.flake.modules.nixos.samba
       config.flake.modules.nixos.syncoid
       config.flake.modules.nixos.offsite-restic
+      config.flake.modules.nixos.offsite-rclone
       config.flake.modules.nixos.nvidia-server
       config.flake.modules.nixos.crowdsec
       config.flake.modules.nixos.ddns
