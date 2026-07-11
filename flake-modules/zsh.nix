@@ -295,10 +295,26 @@
       # instead of atuin hijacking Up to open its full-screen search UI.
       # The store at ~/.local/share/atuin is already carved out in
       # flake-modules/impermanence.nix, so history survives the root wipe.
+      #
+      # Speed: the daemon moves atuin's per-command history write off the
+      # interactive hot path — without it the zsh preexec/precmd hooks do a
+      # synchronous SQLite write on every command, adding prompt latency
+      # (the "atuin feels slow" symptom). It's socket-activated via a
+      # systemd user unit on Linux (launchd on Darwin), so it costs nothing
+      # until first use. `style = "compact"` + a small `inline_height` draw
+      # Ctrl-R inline instead of repainting a full-screen TUI, so the
+      # picker pops instantly. `forceOverwriteSettings` lets HM own
+      # config.toml even though atuin rewrites its own default after every
+      # command (otherwise activation trips over the file atuin left).
       programs.atuin = {
         enable = true;
         enableZshIntegration = true;
         flags = [ "--disable-up-arrow" ];
+        daemon.enable = true;
+        forceOverwriteSettings = true;
+        # Shared cross-platform style (also used by the Windows profile via
+        # hm_win). The daemon.* keys are layered on by daemon.enable above.
+        settings = config.flake.lib.atuinSettings;
       };
 
       home.packages = with pkgs; [

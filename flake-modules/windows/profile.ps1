@@ -37,6 +37,10 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
 # (recall + edit the previous command) instead of atuin hijacking Up to
 # open its full-screen search UI. Ctrl+R still opens atuin.
 if (Get-Command atuin -ErrorAction SilentlyContinue) {
+    # atuin defaults to %APPDATA%\atuin on Windows; point it at the
+    # hm_win-deployed config (~/.config/atuin/config.toml) so the
+    # compact/inline style matches the WSL/zsh setup.
+    $ENV:ATUIN_CONFIG_DIR = Join-Path $HOME '.config\atuin'
     Invoke-Expression (& { (atuin init powershell --disable-up-arrow | Out-String) })
     # One-time: seed atuin from PowerShell's existing PSReadLine history
     # (atuin starts empty and does not auto-absorb past history).

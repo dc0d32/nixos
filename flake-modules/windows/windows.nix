@@ -43,6 +43,19 @@ let
     };
   };
 
+  # ── Shared atuin style (also consumed by flake-modules/zsh.nix) ─────
+  # Just the cross-platform UI knobs: draw Ctrl-R inline (compact) rather
+  # than repainting a full-screen TUI, so the picker pops instantly. The
+  # `daemon` optimization is Unix-only (socket-activated systemd/launchd
+  # unit) and is added on top by the home-manager atuin module in
+  # zsh.nix, so it deliberately does NOT live here — Windows has no such
+  # daemon and would break history recording if `daemon.enabled` were set
+  # with nothing listening.
+  atuinSettings = {
+    style = "compact";
+    inline_height = 12;
+  };
+
   # ── Package sources ─────────────────────────────────────────────────
   # Scoop is the DEFAULT for the CLI toolkit — most of these are single
   # self-contained binaries that corporate app-control doesn't flag.
@@ -158,6 +171,7 @@ let
   mkWindowsDotfiles = pkgs:
     let
       starshipToml = (pkgs.formats.toml { }).generate "starship.toml" starshipSettings;
+      atuinToml = (pkgs.formats.toml { }).generate "atuin-config.toml" atuinSettings;
 
       setupScript = pkgs.writeText "setup.ps1" ''
         #Requires -Version 5.1
@@ -283,6 +297,7 @@ let
       mkdir -p "$out"
       cp ${./profile.ps1}        "$out/profile.ps1"
       cp ${starshipToml}         "$out/starship.toml"
+      cp ${atuinToml}            "$out/atuin-config.toml"
       cp ${../terminal-help.md}  "$out/terminal-help.md"
       cp ${setupScript}          "$out/setup.ps1"
     '';
@@ -395,6 +410,11 @@ let
       echo "hm_win: deploying to $userprofile"
       deploy "$src/profile.ps1" "$profile_path"
       deploy "$src/starship.toml" "$cfg/starship.toml"
+      # atuin reads %APPDATA%\atuin by default on Windows, NOT ~/.config;
+      # profile.ps1 sets ATUIN_CONFIG_DIR to this path so it picks up the
+      # Nix-generated config (compact/inline style, matching the WSL/zsh
+      # setup) instead of atuin's own default.
+      deploy "$src/atuin-config.toml" "$cfg/atuin/config.toml"
       deploy "$src/terminal-help.md" "$cfg/terminal-help.md"
       deploy "$src/setup.ps1" "$nixwin/setup.ps1"
 
@@ -460,6 +480,7 @@ let
 in
 {
   flake.lib.starshipSettings = starshipSettings;
+  flake.lib.atuinSettings = atuinSettings;
 
   flake.modules.homeManager.windows = { pkgs, ... }: {
     home.packages = [ (mkHmWin pkgs) ];
