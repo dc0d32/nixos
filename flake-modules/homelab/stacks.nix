@@ -139,7 +139,7 @@
           `homelab.stacks` entry on its new host.
         '';
         example = {
-          photos = { upstream = "192.168.10.14:2283"; expose = "public"; };
+          photos = { upstream = "192.168.10.10:2283"; expose = "public"; };
           home = { upstream = "192.168.10.2:8123"; expose = "public"; };
         };
         type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
@@ -151,7 +151,7 @@
             };
             upstream = lib.mkOption {
               type = lib.types.str;
-              example = "192.168.10.14:2283";
+              example = "192.168.10.10:2283";
               description = "REMOTE host:port Caddy reverse-proxies to.";
             };
             expose = lib.mkOption {
