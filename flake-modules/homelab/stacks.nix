@@ -34,12 +34,15 @@
       resolve = name: s:
         let r = registry.${name};
         in {
-          inherit (r) composeDir subdomain upstream tlsUpstream;
+          inherit (r) composeDir composeSrc subdomain upstream tlsUpstream;
           expose = if s.expose != null then s.expose else r.exposeDefault;
           auth = if s.auth != null then s.auth else r.authDefault;
         };
       resolved = lib.mapAttrs resolve valid;
       exposed = lib.filterAttrs (_: r: r.expose != "none") resolved;
+      # composeDir → git-tracked compose file, for the dirs that have one.
+      srcByDir = lib.listToAttrs (lib.filter (x: x.value != null)
+        (lib.mapAttrsToList (_: r: lib.nameValuePair r.composeDir r.composeSrc) resolved));
 
       # Edge proxies: vhosts on THIS host that reverse-proxy to a REMOTE
       # upstream (a service still hosted elsewhere, pre-migration). Same Caddy
@@ -213,12 +216,22 @@
                 Type = "oneshot";
                 RemainAfterExit = true;
                 WorkingDirectory = dir;
+                # If this stack's compose is git-tracked (composeSrc), install it
+                # into the working dir first — git is the source of truth; the
+                # data subtree + secret env stay alongside on /persist.
+                ExecStartPre = lib.optional (srcByDir ? ${dir})
+                  "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}";
                 ExecStart = "${compose} up -d --remove-orphans";
                 ExecStop = "${compose} down";
                 TimeoutStartSec = "1800";
               };
             })
             composeDirs);
+
+        # Ensure git-managed stack dirs exist (WorkingDirectory + the install
+        # target above need them present, e.g. on a fresh host).
+        systemd.tmpfiles.rules =
+          lib.mapAttrsToList (dir: _: "d ${dir} 0755 root root -") srcByDir;
 
         # Native Caddy vhosts for exposed stacks + edge proxies (auto-enable
         # Caddy if any). Edge proxies point at remote upstreams (services not

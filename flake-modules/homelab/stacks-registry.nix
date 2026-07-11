@@ -9,8 +9,9 @@
 #   Keeping the registry separate from placement keeps the definitions
 #   stable while placement churns.
 #
-# Compose files live OUTSIDE the nix store (in the private homelab repo,
-# deployed to the data disk); `composeDir` points at that on-disk path.
+# Compose files may live either on-disk only (`composeDir`) or be git-tracked
+# and installed into `composeDir` at unit start (`composeSrc`, see stacks.nix).
+# Secrets and data always stay on `composeDir`/`/persist`, never in the store.
 #
 # Retire when: the homelab adopts an orchestrator (Nomad) that owns the
 #   service catalog, at which point this registry feeds the Nomad jobs
@@ -34,6 +35,18 @@
             type = lib.types.str;
             example = "/persist/stacks/immich";
             description = "On-disk dir holding this stack's compose file.";
+          };
+          composeSrc = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            example = lib.literalExpression "../stacks/immich/docker-compose.yml";
+            description = ''
+              Optional git-tracked compose file for this stack. When set, the
+              stack unit installs it into `composeDir` (as its basename) before
+              `docker compose up`, so the compose BODY is versioned in-repo
+              while data + secrets stay on `composeDir`/`/persist`. Leave null
+              for stacks whose compose still lives only on disk.
+            '';
           };
           subdomain = lib.mkOption {
             type = lib.types.str;
