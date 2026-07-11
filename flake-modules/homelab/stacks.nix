@@ -34,17 +34,19 @@
       resolve = name: s:
         let r = registry.${name};
         in {
-          inherit (r) composeDir composeSrc configDir subdomain upstream tlsUpstream;
+          inherit (r) composeDir composeSrc configDir gitClone subdomain upstream tlsUpstream;
           expose = if s.expose != null then s.expose else r.exposeDefault;
           auth = if s.auth != null then s.auth else r.authDefault;
         };
       resolved = lib.mapAttrs resolve valid;
       exposed = lib.filterAttrs (_: r: r.expose != "none") resolved;
-      # composeDir → git-tracked compose file / config dir, for those that have one.
+      # composeDir → git-tracked compose file / config dir / clone URL.
       srcByDir = lib.listToAttrs (lib.filter (x: x.value != null)
         (lib.mapAttrsToList (_: r: lib.nameValuePair r.composeDir r.composeSrc) resolved));
       dirByDir = lib.listToAttrs (lib.filter (x: x.value != null)
         (lib.mapAttrsToList (_: r: lib.nameValuePair r.composeDir r.configDir) resolved));
+      cloneByDir = lib.listToAttrs (lib.filter (x: x.value != null)
+        (lib.mapAttrsToList (_: r: lib.nameValuePair r.composeDir r.gitClone) resolved));
 
       # Edge proxies: vhosts on THIS host that reverse-proxy to a REMOTE
       # upstream (a service still hosted elsewhere, pre-migration). Same Caddy
@@ -218,16 +220,19 @@
                 Type = "oneshot";
                 RemainAfterExit = true;
                 WorkingDirectory = dir;
-                # If this stack's config is git-tracked, render it into the
-                # working dir first — git is the source of truth; the data
-                # subtree + secret env stay alongside on /persist. configDir
-                # (whole build/config tree) takes precedence over a single
-                # composeSrc file.
+                # (1) If the stack's source lives in its own repo (gitClone),
+                # clone it into composeDir when no compose is present yet
+                # (fresh-host bootstrap; existing checkouts untouched). (2) Then
+                # render any git-tracked config: configDir (whole tree) wins over
+                # a single composeSrc file. git = source of truth; data + secret
+                # env stay alongside on /persist.
                 ExecStartPre =
-                  if dirByDir ? ${dir}
-                  then [ "${pkgs.coreutils}/bin/cp -rL --no-preserve=mode,ownership ${dirByDir.${dir}}/. ${dir}/" ]
-                  else lib.optional (srcByDir ? ${dir})
-                    "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}";
+                  (lib.optional (cloneByDir ? ${dir})
+                    "${pkgs.bash}/bin/bash -c '[ -e ${dir}/docker-compose.yml ] || [ -e ${dir}/docker-compose.yaml ] || ${pkgs.git}/bin/git clone ${cloneByDir.${dir}} ${dir}'")
+                  ++ (if dirByDir ? ${dir}
+                      then [ "${pkgs.coreutils}/bin/cp -rL --no-preserve=mode,ownership ${dirByDir.${dir}}/. ${dir}/" ]
+                      else lib.optional (srcByDir ? ${dir})
+                        "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}");
                 ExecStart = "${compose} up -d --remove-orphans";
                 ExecStop = "${compose} down";
                 TimeoutStartSec = "1800";
@@ -239,7 +244,7 @@
         # target above need them present, e.g. on a fresh host).
         systemd.tmpfiles.rules =
           lib.mapAttrsToList (dir: _: "d ${dir} 0755 root root -")
-            (srcByDir // dirByDir);
+            (srcByDir // dirByDir // cloneByDir);
 
         # Native Caddy vhosts for exposed stacks + edge proxies (auto-enable
         # Caddy if any). Edge proxies point at remote upstreams (services not

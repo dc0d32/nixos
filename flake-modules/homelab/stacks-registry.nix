@@ -61,6 +61,19 @@
               precedence over `composeSrc`.
             '';
           };
+          gitClone = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "https://github.com/dc0d32/CycleTracker.git";
+            description = ''
+              Optional git repo URL for stacks whose source lives in their OWN
+              repo (not this one). When set, the stack unit clones it into
+              `composeDir` at start IF no compose file is present there, so a
+              fresh host bootstraps the checkout automatically. Existing
+              checkouts are left untouched (updates/pushes stay manual). Runs
+              before composeSrc/configDir. Private repos need creds on the host.
+            '';
+          };
           subdomain = lib.mkOption {
             type = lib.types.str;
             default = name;
