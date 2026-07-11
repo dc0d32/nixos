@@ -48,6 +48,19 @@
               for stacks whose compose still lives only on disk.
             '';
           };
+          configDir = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            example = lib.literalExpression "../stacks/circuitjs";
+            description = ''
+              Optional git-tracked config/BUILD directory (compose + Dockerfile
+              + any build source / extra config files). When set, ALL its files
+              are synced into `composeDir` at unit start; data + secrets already
+              on `composeDir`/`/persist` are left untouched. Use instead of
+              `composeSrc` for multi-file or `build:`-context stacks. Takes
+              precedence over `composeSrc`.
+            '';
+          };
           subdomain = lib.mkOption {
             type = lib.types.str;
             default = name;

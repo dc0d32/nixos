@@ -34,15 +34,17 @@
       resolve = name: s:
         let r = registry.${name};
         in {
-          inherit (r) composeDir composeSrc subdomain upstream tlsUpstream;
+          inherit (r) composeDir composeSrc configDir subdomain upstream tlsUpstream;
           expose = if s.expose != null then s.expose else r.exposeDefault;
           auth = if s.auth != null then s.auth else r.authDefault;
         };
       resolved = lib.mapAttrs resolve valid;
       exposed = lib.filterAttrs (_: r: r.expose != "none") resolved;
-      # composeDir → git-tracked compose file, for the dirs that have one.
+      # composeDir → git-tracked compose file / config dir, for those that have one.
       srcByDir = lib.listToAttrs (lib.filter (x: x.value != null)
         (lib.mapAttrsToList (_: r: lib.nameValuePair r.composeDir r.composeSrc) resolved));
+      dirByDir = lib.listToAttrs (lib.filter (x: x.value != null)
+        (lib.mapAttrsToList (_: r: lib.nameValuePair r.composeDir r.configDir) resolved));
 
       # Edge proxies: vhosts on THIS host that reverse-proxy to a REMOTE
       # upstream (a service still hosted elsewhere, pre-migration). Same Caddy
@@ -216,11 +218,16 @@
                 Type = "oneshot";
                 RemainAfterExit = true;
                 WorkingDirectory = dir;
-                # If this stack's compose is git-tracked (composeSrc), install it
-                # into the working dir first — git is the source of truth; the
-                # data subtree + secret env stay alongside on /persist.
-                ExecStartPre = lib.optional (srcByDir ? ${dir})
-                  "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}";
+                # If this stack's config is git-tracked, render it into the
+                # working dir first — git is the source of truth; the data
+                # subtree + secret env stay alongside on /persist. configDir
+                # (whole build/config tree) takes precedence over a single
+                # composeSrc file.
+                ExecStartPre =
+                  if dirByDir ? ${dir}
+                  then [ "${pkgs.coreutils}/bin/cp -rL --no-preserve=mode,ownership ${dirByDir.${dir}}/. ${dir}/" ]
+                  else lib.optional (srcByDir ? ${dir})
+                    "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}";
                 ExecStart = "${compose} up -d --remove-orphans";
                 ExecStop = "${compose} down";
                 TimeoutStartSec = "1800";
@@ -231,7 +238,8 @@
         # Ensure git-managed stack dirs exist (WorkingDirectory + the install
         # target above need them present, e.g. on a fresh host).
         systemd.tmpfiles.rules =
-          lib.mapAttrsToList (dir: _: "d ${dir} 0755 root root -") srcByDir;
+          lib.mapAttrsToList (dir: _: "d ${dir} 0755 root root -")
+            (srcByDir // dirByDir);
 
         # Native Caddy vhosts for exposed stacks + edge proxies (auto-enable
         # Caddy if any). Edge proxies point at remote upstreams (services not
