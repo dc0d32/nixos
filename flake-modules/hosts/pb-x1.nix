@@ -160,6 +160,16 @@ in
       # Base CLI (git/vim/curl/wget) is provided system-wide by
       # flake-modules/system-utils.nix; nothing host-specific to add.
 
+      # aarch64 emulation (qemu-user + binfmt_misc). Lets this x86_64 build
+      # host build the draco Raspberry-Pi-4 closures AND its SD image
+      # (`nix build .#…aarch64-linux…`), then `nix copy` them to the Pi.
+      # draco is a headless appliance push-deployed from pb-x1 (build here →
+      # copy → switch), so this is its PERMANENT build path, not a one-off
+      # bootstrap. Cost: a static qemu-aarch64 + a binfmt registration;
+      # negligible when idle. Retire if draco is decommissioned or a native
+      # aarch64 builder takes over its builds.
+      boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
+
       system.stateVersion = stateVersion;
     };
   };
