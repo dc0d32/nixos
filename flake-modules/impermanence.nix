@@ -611,6 +611,21 @@
           wantedBy = [ "multi-user.target" ];
           pathConfig.PathChanged = map (f: "/etc/${f}") authFiles;
         };
+        # Safety net: a `.path` unit can miss an atomic write+rename replacement
+        # of /etc/passwd (usermod/update-users-groups.pl etc. rename a temp file
+        # over the path), and an UNCLEAN shutdown skips the ExecStop save below —
+        # either way an auth change could be lost on the next impermanence wipe.
+        # A periodic save bounds that window to a few minutes regardless. The
+        # copy is a handful of KB, so the cost is negligible.
+        systemd.timers.persist-auth-save = {
+          description = "Periodic safety-net save of /etc user/group database to /persist";
+          wantedBy = [ "timers.target" ];
+          timerConfig = {
+            OnBootSec = "5min";
+            OnUnitActiveSec = "5min";
+            Persistent = true;
+          };
+        };
         # … and once more at shutdown, to capture the very last change.
         systemd.services.persist-auth-shutdown = {
           description = "Persist /etc user/group database on shutdown";
