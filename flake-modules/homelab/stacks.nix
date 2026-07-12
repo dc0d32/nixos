@@ -249,15 +249,27 @@
         # Native Caddy vhosts for exposed stacks + edge proxies (auto-enable
         # Caddy if any). Edge proxies point at remote upstreams (services not
         # yet migrated to this host) and reuse the same vhost treatment.
+        # logFormat overrides the nixpkgs default only to add `mode 0640` so the
+        # access logs are group-readable — a co-located IPS (crowdsec, in the
+        # caddy group) must be able to tail them (Caddy's file logger defaults
+        # to 0600, which locks everything else out).
         services.caddy.enable = lib.mkDefault (exposed != { } || edgeExposed != { });
         services.caddy.virtualHosts =
+          let
+            accessLog = sub: ''
+              output file ${config.services.caddy.logDir}/access-${sub}.${domain}.log {
+                mode 0640
+              }'';
+          in
           (lib.mapAttrs'
             (_name: r: lib.nameValuePair "${r.subdomain}.${domain}" {
+              logFormat = accessLog r.subdomain;
               extraConfig = mkVhostConfig r;
             })
             exposed)
           // (lib.mapAttrs'
             (_name: r: lib.nameValuePair "${r.subdomain}.${domain}" {
+              logFormat = accessLog r.subdomain;
               extraConfig = mkVhostConfig r;
             })
             edgeExposed);
