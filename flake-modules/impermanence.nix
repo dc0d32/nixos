@@ -81,7 +81,15 @@
   flake.modules.nixos.impermanence = { lib, config, pkgs, ... }:
     let
       cfg = config.impermanence;
-      normalUsers = lib.filterAttrs (_: u: u.isNormalUser) config.users.users;
+      # Per-user dotfile/dir persistence targets a user's home, so it only
+      # makes sense for real login users (home under /home). Service accounts
+      # that happen to be isNormalUser for a fixed uid — e.g. the `nas`
+      # NFS/Samba account with home=/var/empty and a nologin shell — must be
+      # excluded: /var/empty is read-only, so bind-mounting .zsh_history there
+      # fails and aborts the whole activation (switch exits non-zero).
+      normalUsers = lib.filterAttrs
+        (_: u: u.isNormalUser && lib.hasPrefix "/home/" u.home)
+        config.users.users;
 
       # User/group database files that carry mutable runtime state
       # (passwords, group membership, subordinate-id ranges). These are
