@@ -7,6 +7,12 @@
 #   password + Azure account/key) live as files under
 #   `config.homelab.secrets.dir` — never in the store.
 #
+#   ONE-TIME SETUP per repo: restic's Azure backend does NOT create the blob
+#   container, so `restic init` fails with ContainerNotFound until it exists.
+#   Pre-create it once with rclone (same creds, auto-creates):
+#     set -a; . /persist/secrets/rclone-azure.env; set +a
+#     rclone --config /dev/null mkdir :azureblob:<container>
+#
 # Inert until `homelab.offsite` is non-empty.
 #
 # Retire when: the homelab changes offsite provider/tooling.
