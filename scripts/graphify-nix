@@ -1,0 +1,70 @@
+#!/home/p/.local/share/uv/tools/graphifyy/bin/python
+"""graphify-nix — run graphify with (basic) Nix `.nix` extraction.
+
+graphify (graphifyy) ships no Nix tree-sitter grammar/config, so `.nix` files are
+ignored entirely and the code graph is built from markdown only. This wrapper
+monkeypatches graphify at runtime to (1) classify `.nix` as code and (2) register
+a tree-sitter-nix `LanguageConfig`, then delegates to graphify's normal CLI.
+
+Kept IN-REPO (not patched into site-packages) so it survives `uv tool upgrade
+graphifyy`. The shebang points at graphify's uv-tool venv python (deterministic
+path) so the graphify package + tree-sitter-nix are importable.
+
+Prereq (one-time, records the grammar as a --with dep so it survives reinstall):
+    uv tool install graphifyy --with tree-sitter-nix
+
+Usage (same args as graphify):
+    scripts/graphify-nix update .
+    scripts/graphify-nix query "..."
+
+STATUS: BASIC FIRST CUT. It recognizes `.nix` as code and emits a file node +
+the top-level module-function node per file (previously: nothing). Deeper, useful
+Nix extraction — attribute bindings (`flake.modules.*`, `options.*`), `import`
+file edges, `lib.*`/`pkgs.*` call edges — is NOT done yet. See the `graphify-nix-*`
+todos / docs/graphify-nix-handoff.md for the full spec someone should implement.
+"""
+import sys
+
+try:
+    import tree_sitter_nix  # noqa: F401
+except ImportError:
+    sys.exit(
+        "graphify-nix: tree-sitter-nix not installed in graphify's env. Run:\n"
+        "  uv tool install graphifyy --with tree-sitter-nix"
+    )
+
+from graphify import detect, extract
+from graphify.extract import LanguageConfig, _extract_generic
+
+# 1. treat .nix as code (so the file walker extracts instead of skipping)
+detect.CODE_EXTENSIONS.add(".nix")
+
+# 2. minimal Nix language config. tree-sitter-nix node types of interest:
+#    binding (attrpath=expression), function_expression (lambdas),
+#    apply_expression (function+argument = a "call"), select_expression
+#    (attr access, e.g. lib.mkForce), import ./x = apply(function=import).
+_NIX_CONFIG = LanguageConfig(
+    ts_module="tree_sitter_nix",
+    ts_language_fn="language",
+    function_types=frozenset({"function_expression", "binding"}),
+    call_types=frozenset({"apply_expression", "select_expression"}),
+    call_function_field="function",
+    call_accessor_node_types=frozenset({"select_expression"}),
+    call_accessor_field="attrpath",
+    call_accessor_object_field="expression",
+    name_field="attrpath",
+    name_fallback_child_types=("attrpath", "identifier", "formals"),
+    body_field="body",
+    body_fallback_child_types=(
+        "attrset_expression", "let_expression", "expression", "apply_expression",
+    ),
+    function_boundary_types=frozenset({"function_expression"}),
+    function_label_parens=False,
+)
+
+extract._DISPATCH[".nix"] = lambda path: _extract_generic(path, _NIX_CONFIG)
+
+# 3. delegate to graphify's CLI
+from graphify.__main__ import main  # noqa: E402
+
+sys.exit(main())
