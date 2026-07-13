@@ -12,6 +12,9 @@
         vim_keys = true;
         rounded_corners = true;
         update_ms = 1000;
+        # Lower CPU graph shows I/O-wait (upper stays total) — makes disk/IO
+        # stalls obvious at a glance.
+        cpu_graph_lower = "iowait";
       };
     };
   };
