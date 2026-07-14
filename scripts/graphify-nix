@@ -1,4 +1,4 @@
-#!/home/p/.local/share/uv/tools/graphifyy/bin/python
+#!/usr/bin/env python3
 """graphify-nix — run graphify with (basic) Nix `.nix` extraction.
 
 graphify (graphifyy) ships no Nix tree-sitter grammar/config, so `.nix` files are
@@ -7,8 +7,10 @@ monkeypatches graphify at runtime to (1) classify `.nix` as code and (2) registe
 a tree-sitter-nix `LanguageConfig`, then delegates to graphify's normal CLI.
 
 Kept IN-REPO (not patched into site-packages) so it survives `uv tool upgrade
-graphifyy`. The shebang points at graphify's uv-tool venv python (deterministic
-path) so the graphify package + tree-sitter-nix are importable.
+graphifyy`. The shebang is portable `#!/usr/bin/env python3`; if graphify isn't
+importable under that interpreter, the bootstrap below RE-EXECS this script under
+graphify's own venv python — discovered from the `graphify` launcher on PATH (or
+~/.local/bin/graphify), NOT a hardcoded user/tool path.
 
 Prereq (one-time, records the grammar as a --with dep so it survives reinstall):
     uv tool install graphifyy --with tree-sitter-nix
@@ -23,7 +25,44 @@ Nix extraction — attribute bindings (`flake.modules.*`, `options.*`), `import`
 file edges, `lib.*`/`pkgs.*` call edges — is NOT done yet. See the `graphify-nix-*`
 todos / docs/graphify-nix-handoff.md for the full spec someone should implement.
 """
+import os
+import shutil
 import sys
+
+
+def _graphify_python():
+    """Resolve the interpreter of graphify's venv by reading the shebang of the
+    `graphify` launcher (PATH first, then ~/.local/bin). Tool-name/user-path
+    agnostic: works for any uv-tool / pipx / venv install."""
+    exe = shutil.which("graphify") or os.path.expanduser("~/.local/bin/graphify")
+    try:
+        with open(exe, "rb") as fh:
+            first = fh.readline().decode("utf-8", "replace").strip()
+    except OSError:
+        return None
+    if first.startswith("#!"):
+        interp = first[2:].strip().split()[0]
+        # skip an `env` shebang (no fixed interpreter to reuse)
+        if interp and os.path.basename(interp) != "env" and os.path.exists(interp):
+            return interp
+    return None
+
+
+try:
+    import graphify  # noqa: F401
+except ImportError:
+    _py = _graphify_python()
+    # Re-exec via graphify's venv python. NOTE: don't compare realpaths — a venv
+    # python often shares the same underlying binary as the system python, yet
+    # invoking it via the VENV path is what puts graphify's site-packages on
+    # sys.path. A sentinel env var prevents any re-exec loop.
+    if _py and not os.environ.get("_GRAPHIFY_NIX_REEXEC"):
+        os.environ["_GRAPHIFY_NIX_REEXEC"] = "1"
+        os.execv(_py, [_py, os.path.abspath(__file__), *sys.argv[1:]])
+    sys.exit(
+        "graphify-nix: could not locate graphify's Python env. Install with:\n"
+        "  uv tool install graphifyy --with tree-sitter-nix"
+    )
 
 try:
     import tree_sitter_nix  # noqa: F401
@@ -43,6 +82,13 @@ detect.CODE_EXTENSIONS.add(".nix")
 #    binding (attrpath=expression), function_expression (lambdas),
 #    apply_expression (function+argument = a "call"), select_expression
 #    (attr access, e.g. lib.mkForce), import ./x = apply(function=import).
+#    Meaningful nodes come from `binding` (e.g. flake.modules.homeManager.ai-cli).
+#    KNOWN COSMETIC ARTEFACT: each file's anonymous top-level module lambda
+#    ({ lib, ... }: …) still gets a `{ ... }()` label. That name is built by
+#    graphify's own `_extract_generic` internals (NOT `_resolve_name` /
+#    name_fallback_child_types, which the generic path doesn't use), so it can't
+#    be cleaned from this wrapper's config — it needs a change upstream in
+#    graphify. Tracked in the graphify-nix-* todos / handoff doc.
 _NIX_CONFIG = LanguageConfig(
     ts_module="tree_sitter_nix",
     ts_language_fn="language",
@@ -53,7 +99,7 @@ _NIX_CONFIG = LanguageConfig(
     call_accessor_field="attrpath",
     call_accessor_object_field="expression",
     name_field="attrpath",
-    name_fallback_child_types=("attrpath", "identifier", "formals"),
+    name_fallback_child_types=("attrpath", "identifier"),
     body_field="body",
     body_fallback_child_types=(
         "attrset_expression", "let_expression", "expression", "apply_expression",
