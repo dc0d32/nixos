@@ -108,7 +108,134 @@ _NIX_CONFIG = LanguageConfig(
     function_label_parens=False,
 )
 
-extract._DISPATCH[".nix"] = lambda path: _extract_generic(path, _NIX_CONFIG)
+extract._DISPATCH[".nix"] = lambda path: _extract_nix(path)
+
+
+# ── Import edges (the module DAG) — the highest-value Nix output ───────────────
+# Nix has no `import` node type and `_extract_generic`'s import_handler path
+# never fires for it, so we post-process the tree ourselves and append file->file
+# "imports" edges. Two forms:
+#   * `import ./x.nix`         → apply_expression(function=variable "import",
+#                                 argument=path_expression)   (anywhere)
+#   * `imports = [ ./a.nix … ]`→ binding(attrpath="imports").expression =
+#                                 list_expression with bare path_expression items
+# Endpoints are keyed on `make_id(str(path.resolve()))` — the SAME raw
+# (pre-remap) id extract() assigns a FILE node and registers in its id_remap
+# table (it maps make_id(str(path)) AND make_id(str(path.resolve())) → the
+# canonical repo-relative id for every scanned file). Because both our edge
+# endpoints are those exact keys, extract()'s id-remap post-pass rewrites them
+# to canonical form in lockstep with the file nodes — so the edges connect.
+# (NB: the file node's raw id keeps the extension; the extension-less
+# _file_stem form is only the prefix for that file's *symbol* nodes.)
+from graphify.ids import make_id as _make_id  # noqa: E402
+from graphify.extractors.base import _read_text  # noqa: E402
+
+_NIX_PARSER = None
+
+
+def _nix_parser():
+    global _NIX_PARSER
+    if _NIX_PARSER is None:
+        from tree_sitter import Language, Parser
+        _NIX_PARSER = Parser(Language(tree_sitter_nix.language()))
+    return _NIX_PARSER
+
+
+def _resolve_nix_import(src_path, rel_text):
+    """Resolve a Nix path literal (./x, ../d/y.nix, ./dir) to a .nix file path
+    IN THE SAME PATH SPACE as ``src_path`` (graphify walks with repo-relative
+    paths and keys file nodes off that form, so the edge target must match it —
+    NOT an absolute .resolve()). Existence is checked via the absolute path.
+    Returns the path string (with .nix) or None. A bare dir → <dir>/default.nix."""
+    import os
+    rel_text = rel_text.strip()
+    if not (rel_text.startswith("./") or rel_text.startswith("../") or rel_text.startswith("/")):
+        return None  # not a path literal (e.g. <nixpkgs> or an attr ref)
+    base = os.path.dirname(str(src_path))
+    joined = os.path.normpath(os.path.join(base, rel_text))  # keeps src_path's space
+    for cand in (joined, joined + ".nix", os.path.join(joined, "default.nix")):
+        # existence check needs a real filesystem path
+        ap = cand if os.path.isabs(cand) else os.path.join(os.getcwd(), cand)
+        if os.path.isfile(ap):
+            return cand
+    return None
+
+
+def _extract_nix(path):
+    """Generic extraction + Nix import-edge post-processing."""
+    result = _extract_generic(path, _NIX_CONFIG)
+    try:
+        _append_nix_import_edges(path, result)
+    except Exception:  # never let import-edge extraction break the base graph
+        pass
+    return result
+
+
+def _append_nix_import_edges(path, result):
+    from pathlib import Path
+    p = Path(path)
+    source = p.read_bytes()
+    tree = _nix_parser().parse(source)
+    file_nid = _make_id(str(p.resolve()))
+    edges = result.setdefault("edges", [])
+    seen = set()
+
+    def emit(target_path, line):
+        tgt = _make_id(str(Path(target_path).resolve()))
+        key = (tgt, line)
+        if tgt == file_nid or key in seen:
+            return
+        seen.add(key)
+        edges.append({
+            "source": file_nid,
+            "target": tgt,
+            "relation": "imports",
+            "context": "import",
+            "confidence": "EXTRACTED",
+            "source_file": str(p),
+            "source_location": f"L{line}",
+            "weight": 1.0,
+        })
+
+    def is_import_call(node):
+        if node.type != "apply_expression":
+            return None
+        fn = node.child_by_field_name("function")
+        arg = node.child_by_field_name("argument")
+        if fn is not None and arg is not None and fn.type == "variable_expression" \
+                and _read_text(fn, source) == "import" and arg.type == "path_expression":
+            return arg
+        return None
+
+    def walk(node):
+        # form 1: `import ./x` anywhere
+        arg = is_import_call(node)
+        if arg is not None:
+            r = _resolve_nix_import(p, _read_text(arg, source))
+            if r:
+                emit(r, node.start_point[0] + 1)
+        # form 2: bare paths in an `imports = [ … ]` value. The value may be a
+        # bare list OR a binary_expression like `[ … ] ++ bundles ++ [ … ]`, so
+        # gather path items from EVERY list_expression under the binding.
+        if node.type == "binding":
+            ap = node.child_by_field_name("attrpath")
+            expr = node.child_by_field_name("expression")
+            if ap is not None and expr is not None and _read_text(ap, source) == "imports":
+                stack = [expr]
+                while stack:
+                    n = stack.pop()
+                    if n.type == "list_expression":
+                        for item in n.children:
+                            if item.type == "path_expression":
+                                r = _resolve_nix_import(p, _read_text(item, source))
+                                if r:
+                                    emit(r, item.start_point[0] + 1)
+                    else:
+                        stack.extend(n.children)
+        for c in node.children:
+            walk(c)
+
+    walk(tree.root_node)
 
 # 3. delegate to graphify's CLI
 from graphify.__main__ import main  # noqa: E402
