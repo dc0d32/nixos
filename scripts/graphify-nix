@@ -19,11 +19,12 @@ Usage (same args as graphify):
     scripts/graphify-nix update .
     scripts/graphify-nix query "..."
 
-STATUS: BASIC FIRST CUT. It recognizes `.nix` as code and emits a file node +
-the top-level module-function node per file (previously: nothing). Deeper, useful
-Nix extraction — attribute bindings (`flake.modules.*`, `options.*`), `import`
-file edges, `lib.*`/`pkgs.*` call edges — is NOT done yet. See the `graphify-nix-*`
-todos / docs/graphify-nix-handoff.md for the full spec someone should implement.
+STATUS: recognizes `.nix` as code and emits a file node + the top-level
+module-function node per file, PLUS file->file `import` edges (the module DAG)
+and file->callee `calls` edges for nixpkgs primitives (`lib.*`/`pkgs.*`/
+`builtins.*`). Still NOT done: attribute-binding nodes (`flake.modules.*`,
+`options.*`), in-repo helper call resolution, and the dendritic feature graph.
+See the `graphify-nix-*` todos / docs/graphify-nix-handoff.md for the full spec.
 """
 import os
 import shutil
@@ -162,20 +163,25 @@ def _resolve_nix_import(src_path, rel_text):
 
 
 def _extract_nix(path):
-    """Generic extraction + Nix import-edge post-processing."""
+    """Generic extraction + Nix import/call-edge post-processing."""
+    from pathlib import Path
     result = _extract_generic(path, _NIX_CONFIG)
+    p = Path(path)
     try:
-        _append_nix_import_edges(path, result)
-    except Exception:  # never let import-edge extraction break the base graph
-        pass
+        source = p.read_bytes()
+        tree = _nix_parser().parse(source)
+    except Exception:  # unreadable/unparseable — leave the base result untouched
+        return result
+    for _pass in (_append_nix_import_edges, _append_nix_call_edges):
+        try:
+            _pass(p, source, tree, result)
+        except Exception:  # never let one edge pass break the base graph / the other
+            pass
     return result
 
 
-def _append_nix_import_edges(path, result):
+def _append_nix_import_edges(p, source, tree, result):
     from pathlib import Path
-    p = Path(path)
-    source = p.read_bytes()
-    tree = _nix_parser().parse(source)
     file_nid = _make_id(str(p.resolve()))
     edges = result.setdefault("edges", [])
     seen = set()
@@ -237,7 +243,87 @@ def _append_nix_import_edges(path, result):
 
     walk(tree.root_node)
 
-# 3. delegate to graphify's CLI
+
+# ── Call edges (nixpkgs primitive usage) ──────────────────────────────────────
+# Emit file->callee "calls" edges for `apply_expression`s whose callee is a
+# dotted select rooted at a nixpkgs namespace we can name unambiguously WITHOUT
+# scope analysis: `lib.*`, `pkgs.*`, `builtins.*` (e.g. lib.mkForce,
+# lib.mkDefault, pkgs.writeShellApplication, builtins.readFile). The callee is a
+# SYNTHETIC concept node (id `nixcall:<dotted>`) shared across the whole graph —
+# G.add_node() is idempotent by id, so the same callee emitted from many files
+# collapses to one node, giving a "which modules use this primitive" view (handy
+# for the repo's mkForce-vs-mkDefault policy concerns + per-module pkgs usage).
+#
+# Endpoints: the edge SOURCE is the file node's raw id (remapped to canonical by
+# extract()'s id-remap post-pass, exactly like import edges); the TARGET synthetic
+# id is NOT a file path so it survives the post-pass untouched — the node we add
+# carries the same id, so no ghost.
+#
+# DEFERRED (needs binding/scope nodes — the `graphify-nix-bindings` todo): bare
+# in-repo helper calls (`renderUserConf`, `validateUser`, let-bound lambdas) and
+# `config.*`/`inputs.*` references, which can't be resolved to a definition node
+# until we emit binding nodes to point them at.
+_NIX_CALL_NAMESPACES = frozenset({"lib", "pkgs", "builtins"})
+
+
+def _append_nix_call_edges(p, source, tree, result):
+    file_nid = _make_id(str(p.resolve()))
+    nodes = result.setdefault("nodes", [])
+    edges = result.setdefault("edges", [])
+    seen_edges = set()   # (callee_id) — one edge per callee per file
+    seen_nodes = set()   # callee_ids already added in THIS file's result
+
+    def callee_name(apply_node):
+        """Head callee of an apply chain, if it's a lib/pkgs/builtins select."""
+        head = apply_node.child_by_field_name("function")
+        while head is not None and head.type == "apply_expression":
+            head = head.child_by_field_name("function")
+        if head is None or head.type != "select_expression":
+            return None
+        text = _read_text(head, source)
+        # a multi-line/whitespaced select is rare; normalize interior whitespace
+        text = " ".join(text.split())
+        root = text.split(".", 1)[0]
+        if root not in _NIX_CALL_NAMESPACES:
+            return None
+        return text
+
+    def emit(name, line):
+        cid = _make_id("nixcall:" + name)
+        if cid not in seen_nodes:
+            seen_nodes.add(cid)
+            nodes.append({
+                "id": cid,
+                "label": name,
+                "file_type": "concept",
+                "source_file": "",
+                "_origin": "ast",
+            })
+        if cid in seen_edges:
+            return
+        seen_edges.add(cid)
+        edges.append({
+            "source": file_nid,
+            "target": cid,
+            "relation": "calls",
+            "context": "call",
+            "confidence": "EXTRACTED",
+            "source_file": str(p),
+            "source_location": f"L{line}",
+            "weight": 1.0,
+        })
+
+    def walk(node):
+        if node.type == "apply_expression":
+            name = callee_name(node)
+            if name is not None:
+                emit(name, node.start_point[0] + 1)
+        for c in node.children:
+            walk(c)
+
+    walk(tree.root_node)
+
+
 from graphify.__main__ import main  # noqa: E402
 
 sys.exit(main())
