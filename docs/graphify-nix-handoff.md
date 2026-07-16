@@ -43,50 +43,49 @@ per file; nested bindings, imports, and calls are not turned into nodes/edges.
 
 ## The work (todos)
 
-Tracked as `graphify-nix-*` in the session DB. In priority order:
+Tracked as `graphify-nix-*` in the session DB. STATUS as of 2026-07-16:
+items 1–4, 6, 7, 8 are DONE (see
+`docs/sessions/2026-07-16-graphify-nix-extraction.md`). Remaining: 5 (label
+quality) and 9 (grammar/ABI watch), both minor.
 
-1. **Binding nodes.** Emit a node per meaningful `binding`, named by its
-   `attrpath`. Focus the high-value ones: `flake.modules.<class>.<feature>`
-   (the dendritic features), `options.<ns>`, `imports`, top-level `config.*`.
-   Decide a noise policy (don't emit a node for every leaf config scalar).
-   Investigate why `_extract_generic` doesn't currently recurse into nested
-   bindings (function-boundary / body-field handling) and fix the config or add
-   an `extra_walk_fn`.
+1. **Binding nodes.** ✅ DONE. Emits nodes for the significant attrpaths only —
+   `flake.modules.<class>.<feature>`, `flake.{lib,overlays,packages,checks}.*`,
+   `options.<ns>` — with `config.`-stripping + `config = { … }` transparency so
+   the three dendritic spellings converge. Noise policy: no node for leaf config
+   scalars. (`_extract_generic` never recurses into nested bindings; rather than
+   fight its function-boundary handling, we walk the tree ourselves in a
+   post-pass.)
 
-2. **Import edges (the module DAG).** This is the single most valuable output for
-   a dendritic flake. Emit file→file edges for both `import ./x.nix` and the
-   members of `imports = [ ./a.nix ../b.nix config.flake.modules... ];`. Nix has
-   no import node type, so the standard `import_types`/`import_handler` path
-   won't fire — needs a custom walk over `apply_expression`(function=import) +
-   list literals assigned to an `imports` attrpath.
+2. **Import edges (the module DAG).** ✅ DONE. `import ./x.nix` anywhere + bare
+   paths in `imports = [ … ]` incl. `++`-concatenated lists.
 
-3. **Call edges.** Resolve `apply_expression` callees (`lib.mkIf`, `lib.mkForce`,
-   `pkgs.caddy.withPlugins`, `lib.genAttrs`, …) from the `function` child
-   (`variable_expression.name` or `select_expression.attrpath`) and emit call
-   edges. Verify the current `call_*` fields actually resolve names (they may not).
+3. **Call edges.** ✅ DONE for `lib.*`/`pkgs.*`/`builtins.*` selects (the
+   `call_*` config fields did NOT resolve names — done via a custom walk +
+   synthetic callee nodes). Bare in-repo helper callees deferred (need scope
+   resolution).
 
-4. **Dendritic semantics.** Surface the feature graph: which files contribute to
-   `flake.modules.<class>.<name>`, and which host bridges
-   (`flake-modules/hosts/*.nix`, `homelab/nix/hosts/*.nix`) import which features.
-   Consider a light post-pass that links a `flake.modules.nixos.foo` definition
-   node to every host that imports `pub.modules.nixos.foo`.
+4. **Dendritic semantics.** ✅ DONE. Feature nodes link every contributing file
+   (`defines`) to every consuming host (`feature-import`), across the pub +
+   homelab trees, via the `config.flake.modules.*` / `pub.modules.*` convergence.
 
 5. **Name/label quality.** Dotted attrpaths (`services.caddy.package`) — decide
-   labels; strip `function_label_parens` artefacts (`{ ... }()`).
+   labels; strip `function_label_parens` artefacts (`{ ... }()`). NOTE: the
+   `{ ... }()` artefact originates in graphify's internal `_extract_generic`
+   naming — only fixable upstream (see item 7 decision).
 
-6. **Harden the wrapper.** The shebang hardcodes graphify's venv python
-   (`/home/p/.local/share/uv/tools/graphifyy/bin/python`) — discover it instead
-   (e.g. resolve `~/.local/bin/graphify` → its interpreter) so it isn't tied to
-   the `graphifyy` tool name / `$HOME`.
+6. **Harden the wrapper.** ✅ DONE. Portable `#!/usr/bin/env python3` + re-exec
+   that discovers graphify's venv python from the `graphify` launcher's shebang.
 
-7. **Upstream vs wrapper.** Evaluate contributing a Nix `LanguageConfig` to
-   graphifyy upstream (adds `tree_sitter_nix` + a config in `extract.py`) so the
-   wrapper can be retired. If not upstreaming, keep the wrapper as the seam.
+7. **Upstream vs wrapper.** ✅ EVALUATED — decision: KEEP THE WRAPPER. A mere
+   `LanguageConfig` can't express the valuable edges (dead `extra_walk_fn` /
+   `import_handler` hooks; no Nix import node type); the dendritic layer is
+   flake-parts/repo-specific and can't upstream. Generic import/call extractors
+   COULD upstream as an `extract_nix()` (low-priority follow-up). Full rationale
+   in the 2026-07-16 session log.
 
-8. **Tests.** Validate on representative modules: a pure-leaf module, an
-   options+config module (e.g. `flake-modules/homelab/crowdsec.nix`), a host
-   bridge (`homelab/nix/hosts/ursa.nix`), an overlay. Assert expected feature
-   nodes + import edges appear.
+8. **Tests.** ✅ DONE. `scripts/graphify-nix-test` — 14 assertions on pure-leaf /
+   options+config / host-bridge fixtures incl. noise policy + id convergence.
+   Dev-time only (graphify absent from the flake-check sandbox).
 
 9. **Grammar/ABI watch.** `tree-sitter-nix==0.1.0`; confirm node-type names stay
    stable across graphify's `tree_sitter` core bumps.

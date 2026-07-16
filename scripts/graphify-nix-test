@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""graphify-nix-test — assert the Nix extraction passes of scripts/graphify-nix.
+
+Covers the four in-repo extraction passes on hand-written fixtures modelled on
+this repo's real dendritic shapes:
+  * import edges   — `import ./x` and bare paths in `imports = [ … ]`
+  * call edges     — `lib.*`/`pkgs.*`/`builtins.*` apply_expressions
+  * binding nodes  — `flake.modules.<class>.<feature>`, `options.<ns>`,
+                     `flake.{lib,…}.<name>` (incl. the `config = { … }` wrapping
+                     and inline `config.flake.modules.…` spellings)
+  * dendritic      — host `imports = [ config.flake.modules.… / pub.modules.… ]`
+                     → feature nodes, converging with the definition node
+
+Run it directly; like the wrapper it RE-EXECS under graphify's venv python (so
+tree_sitter_nix / graphify are importable) when needed:
+    scripts/graphify-nix-test
+
+Exits 0 iff every assertion passes; prints a FAIL line per broken assertion.
+This is a dev-time test — it needs graphify + tree-sitter-nix present and is
+NOT wired into `nix flake check` (graphify isn't a nixpkgs package / not in the
+build sandbox).
+"""
+import importlib.machinery
+import importlib.util
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+sys.dont_write_bytecode = True  # don't litter scripts/__pycache__ when loading the wrapper
+
+
+def _graphify_python():
+    exe = shutil.which("graphify") or os.path.expanduser("~/.local/bin/graphify")
+    try:
+        with open(exe, "rb") as fh:
+            first = fh.readline().decode("utf-8", "replace").strip()
+    except OSError:
+        return None
+    if first.startswith("#!"):
+        interp = first[2:].strip().split()[0]
+        if interp and os.path.basename(interp) != "env" and os.path.exists(interp):
+            return interp
+    return None
+
+
+try:
+    import graphify  # noqa: F401
+except ImportError:
+    _py = _graphify_python()
+    if _py and not os.environ.get("_GRAPHIFY_NIX_TEST_REEXEC"):
+        os.environ["_GRAPHIFY_NIX_TEST_REEXEC"] = "1"
+        os.execv(_py, [_py, os.path.abspath(__file__), *sys.argv[1:]])
+    sys.exit(
+        "graphify-nix-test: could not locate graphify's Python env. Install with:\n"
+        "  uv tool install graphifyy --with tree-sitter-nix"
+    )
+
+
+def _load_wrapper():
+    """Load scripts/graphify-nix as an import-safe module (it guards its CLI
+    entry with `if __name__ == '__main__'`), returning the module object."""
+    path = Path(__file__).with_name("graphify-nix")
+    loader = importlib.machinery.SourceFileLoader("graphify_nix_wrapper", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+WRAP = _load_wrapper()
+_DISPATCH = WRAP.extract._DISPATCH[".nix"]
+_make_id = WRAP._make_id
+
+FAILURES = []
+
+
+def _extract(path):
+    res = _DISPATCH(Path(path))
+    return res.get("nodes", []), res.get("edges", [])
+
+
+def _edge_targets(edges, context):
+    return {e["target"] for e in edges if e.get("context") == context}
+
+
+def check(name, cond):
+    status = "ok  " if cond else "FAIL"
+    print(f"  [{status}] {name}")
+    if not cond:
+        FAILURES.append(name)
+
+
+def main():
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "sub.nix").write_text("{ }\n")
+        (d / "hw.nix").write_text("{ }\n")
+
+        feat = d / "feat.nix"
+        feat.write_text(
+            "{ lib, ... }:\n"
+            "{\n"
+            "  imports = [ ./sub.nix ];\n"
+            "  flake.modules.homeManager.demo = {\n"
+            "    programs.demo.enable = lib.mkDefault true;\n"
+            "  };\n"
+            "}\n"
+        )
+        opt = d / "opt.nix"
+        opt.write_text(
+            "{ lib, config, ... }:\n"
+            "{\n"
+            "  options.demo.enable = lib.mkOption { type = lib.types.bool; };\n"
+            "  config = {\n"
+            "    flake.lib.demoLayouts = { };\n"
+            "    flake.modules.nixos.demo = {\n"
+            "      services.demo.enable = lib.mkForce true;\n"
+            "    };\n"
+            "  };\n"
+            "}\n"
+        )
+        host = d / "host.nix"
+        host.write_text(
+            "{ config, pub, ... }:\n"
+            "{\n"
+            "  imports = [\n"
+            "    ./hw.nix\n"
+            "    config.flake.modules.nixos.demo\n"
+            "    pub.modules.nixos.backup\n"
+            "  ];\n"
+            "}\n"
+        )
+
+        print("feat.nix (pure-leaf: import + call + feature binding):")
+        _, e = _extract(feat)
+        imports = _edge_targets(e, "import")
+        calls = _edge_targets(e, "call")
+        binds = _edge_targets(e, "binding")
+        check("import edge -> sub.nix",
+              _make_id(str((d / "sub.nix").resolve())) in imports)
+        check("call edge -> lib.mkDefault",
+              _make_id("nixcall:lib.mkDefault") in calls)
+        check("defines feature homeManager.demo",
+              _make_id("nixfeat:homeManager.demo") in binds)
+
+        print("opt.nix (options+config: config={} wrapping, lib output):")
+        _, e = _extract(opt)
+        calls = _edge_targets(e, "call")
+        binds = _edge_targets(e, "binding")
+        check("defines option namespace demo",
+              _make_id("nixopt:demo") in binds)
+        check("defines feature nixos.demo (through config={} wrapper)",
+              _make_id("nixfeat:nixos.demo") in binds)
+        check("defines flake.lib.demoLayouts",
+              _make_id("nixlib:lib.demoLayouts") in binds)
+        check("call edge -> lib.mkForce", _make_id("nixcall:lib.mkForce") in calls)
+        check("call edge -> lib.mkOption", _make_id("nixcall:lib.mkOption") in calls)
+        check("NO node for leaf scalar services.demo.enable",
+              _make_id("nixopt:services") not in binds
+              and not any("services" in str(t) for t in binds))
+
+        print("host.nix (dendritic consumer: file + feature imports):")
+        _, e = _extract(host)
+        imports = _edge_targets(e, "import")
+        feats = _edge_targets(e, "feature-import")
+        check("import edge -> hw.nix",
+              _make_id(str((d / "hw.nix").resolve())) in imports)
+        check("feature-import -> nixos.demo (config.flake.modules.* spelling)",
+              _make_id("nixfeat:nixos.demo") in feats)
+        check("feature-import -> nixos.backup (pub.modules.* spelling)",
+              _make_id("nixfeat:nixos.backup") in feats)
+
+        print("cross-file convergence (definition id == consumer id):")
+        check("opt.nix def nixos.demo == host.nix consume nixos.demo",
+              _make_id("nixfeat:nixos.demo") == _make_id("nixfeat:nixos.demo"))
+
+    print()
+    if FAILURES:
+        print(f"{len(FAILURES)} FAILURE(S): " + ", ".join(FAILURES))
+        return 1
+    print("all graphify-nix extraction assertions passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

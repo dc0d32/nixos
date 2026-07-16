@@ -172,7 +172,8 @@ def _extract_nix(path):
         tree = _nix_parser().parse(source)
     except Exception:  # unreadable/unparseable — leave the base result untouched
         return result
-    for _pass in (_append_nix_import_edges, _append_nix_call_edges):
+    for _pass in (_append_nix_import_edges, _append_nix_call_edges,
+                  _append_nix_binding_edges, _append_nix_dendritic_edges):
         try:
             _pass(p, source, tree, result)
         except Exception:  # never let one edge pass break the base graph / the other
@@ -324,6 +325,179 @@ def _append_nix_call_edges(p, source, tree, result):
     walk(tree.root_node)
 
 
+# ── Binding nodes (dendritic feature / option / flake-lib structure) ───────────
+# Emit a node per STRUCTURALLY-significant attrpath binding — NOT every leaf
+# config scalar (that would drown the graph). The significant set, chosen for a
+# flake-parts / dendritic tree:
+#   * flake.modules.<class>.<feature>   → a dendritic FEATURE (id nixfeat:<c>.<f>)
+#   * flake.{lib,overlays,packages,checks}.<name> → a flake output   (id nixlib:…)
+#   * options.<ns>                      → an options namespace        (id nixopt:<ns>)
+# A leading `config.` is stripped and a wrapping `config = { … }` attrset is made
+# transparent, so all three dendritic spellings converge:
+#   flake.modules.nixos.foo = …
+#   config.flake.modules.nixos.foo = …
+#   config = { flake.modules.nixos.foo = …; }
+# Feature/lib/option nodes are SHARED graph-wide (keyed on the logical path, not
+# the file) — dendritic means many files contribute to one feature, so the
+# idempotent add_node collapses them to a single node and each contributing file
+# gets a `defines` edge to it. Same endpoint-id discipline as calls/imports: the
+# file (edge SOURCE) is remapped to canonical; the synthetic target survives
+# untouched and we add a node with that id, so no ghost.
+_NIX_FLAKE_OUTPUT_KINDS = frozenset({"lib", "overlays", "packages", "checks"})
+_NIX_ATTRSET_TYPES = frozenset({"attrset_expression", "rec_attrset_expression"})
+
+
+def _nix_binding_kind(norm):
+    """Classify a normalized (config-stripped) attrpath → (id, label) or None."""
+    segs = [s for s in norm.split(".") if s]
+    if not segs:
+        return None
+    if segs[0] == "flake" and len(segs) >= 2:
+        if segs[1] == "modules" and len(segs) >= 4:
+            key = segs[2] + "." + segs[3]
+            return ("nixfeat:" + key, "flake.modules." + key)
+        if segs[1] in _NIX_FLAKE_OUTPUT_KINDS and len(segs) >= 3:
+            key = segs[1] + "." + segs[2]
+            return ("nixlib:" + key, "flake." + key)
+    if segs[0] == "options" and len(segs) >= 2:
+        return ("nixopt:" + segs[1], "options." + segs[1])
+    return None
+
+
+def _append_nix_binding_edges(p, source, tree, result):
+    file_nid = _make_id(str(p.resolve()))
+    nodes = result.setdefault("nodes", [])
+    edges = result.setdefault("edges", [])
+    seen_nodes = set()
+    seen_edges = set()
+
+    def emit(nid, label, line):
+        nid = _make_id(nid)
+        if nid not in seen_nodes:
+            seen_nodes.add(nid)
+            nodes.append({
+                "id": nid, "label": label, "file_type": "concept",
+                "source_file": "", "_origin": "ast",
+            })
+        if nid in seen_edges:
+            return
+        seen_edges.add(nid)
+        edges.append({
+            "source": file_nid, "target": nid,
+            "relation": "defines", "context": "binding",
+            "confidence": "EXTRACTED",
+            "source_file": str(p), "source_location": f"L{line}",
+            "weight": 1.0,
+        })
+
+    def walk(node, prefix):
+        # prefix is the list of ancestor attrpath segments accumulated through
+        # transparent `config = { … }` / attrset nesting.
+        if node.type == "binding":
+            ap = node.child_by_field_name("attrpath")
+            expr = node.child_by_field_name("expression")
+            apx = " ".join(_read_text(ap, source).split()) if ap is not None else ""
+            full = ".".join([s for s in prefix if s] + [apx])
+            norm = full[len("config."):] if full.startswith("config.") else full
+            if norm == "config":
+                norm = ""
+            kind = _nix_binding_kind(norm)
+            if kind is not None:
+                emit(kind[0], kind[1], node.start_point[0] + 1)
+            # descend: keep building the path only through attrset values (so a
+            # `config = { … }` or feature body contributes its segment); reset the
+            # prefix through let/list/function values to avoid bogus paths.
+            if expr is not None:
+                child_prefix = ([s for s in prefix if s] + [apx]) \
+                    if expr.type in _NIX_ATTRSET_TYPES else []
+                walk(expr, child_prefix)
+            return
+        for c in node.children:
+            walk(c, prefix)
+
+    walk(tree.root_node, [])
+
+
+# ── Dendritic consumer edges (host bridge → feature) ──────────────────────────
+# The payoff of the dendritic model: link each host/consumer that pulls a feature
+# into its `imports = [ … ]` to that feature's node. Consumption is spelled as a
+# select_expression inside the imports list, in either flake:
+#   pub:      config.flake.modules.<class>.<feature>
+#   homelab:  pub.modules.<class>.<feature>   (pub = the public flake input)
+# Both carry a `…modules.<class>.<feature>` tail, so we key the target on the two
+# segments following `modules` — exactly the same nixfeat:<class>.<feature> id the
+# binding pass assigns the DEFINITION, so consumer and definition converge on one
+# node (across the pub + homelab trees, which graphify scans together). We also
+# (idempotently) add the feature node here so a consumed-but-unscanned feature
+# can't leave a ghost.
+def _append_nix_dendritic_edges(p, source, tree, result):
+    file_nid = _make_id(str(p.resolve()))
+    nodes = result.setdefault("nodes", [])
+    edges = result.setdefault("edges", [])
+    seen_nodes = set()
+    seen_edges = set()
+
+    def feature_key(select_text):
+        segs = [s for s in select_text.replace(" ", "").split(".") if s]
+        if "modules" not in segs:
+            return None
+        i = segs.index("modules")
+        if len(segs) >= i + 3:
+            return segs[i + 1] + "." + segs[i + 2]
+        return None
+
+    def emit(key, line):
+        nid = "nixfeat:" + key
+        nid = _make_id(nid)
+        if nid not in seen_nodes:
+            seen_nodes.add(nid)
+            nodes.append({
+                "id": nid, "label": "flake.modules." + key, "file_type": "concept",
+                "source_file": "", "_origin": "ast",
+            })
+        if nid in seen_edges:
+            return
+        seen_edges.add(nid)
+        edges.append({
+            "source": file_nid, "target": nid,
+            "relation": "imports", "context": "feature-import",
+            "confidence": "EXTRACTED",
+            "source_file": str(p), "source_location": f"L{line}",
+            "weight": 1.0,
+        })
+
+    def scan_imports_value(expr):
+        stack = [expr]
+        while stack:
+            n = stack.pop()
+            if n.type == "list_expression":
+                for item in n.children:
+                    sel = item
+                    if sel.type == "parenthesized_expression":
+                        inner = [c for c in sel.children
+                                 if c.type not in ("(", ")")]
+                        sel = inner[0] if inner else sel
+                    if sel.type == "select_expression":
+                        key = feature_key(_read_text(sel, source))
+                        if key is not None:
+                            emit(key, sel.start_point[0] + 1)
+            else:
+                stack.extend(n.children)
+
+    def walk(node):
+        if node.type == "binding":
+            ap = node.child_by_field_name("attrpath")
+            expr = node.child_by_field_name("expression")
+            if ap is not None and expr is not None \
+                    and _read_text(ap, source).split(".")[-1].strip() == "imports":
+                scan_imports_value(expr)
+        for c in node.children:
+            walk(c)
+
+    walk(tree.root_node)
+
+
 from graphify.__main__ import main  # noqa: E402
 
-sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())

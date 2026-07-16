@@ -15,3 +15,7 @@ graphify-out/
 # git-hooks.nix shellHook materializes a .pre-commit-config.yaml symlink
 # pointing into the nix store. Local-only artifact; not part of the flake.
 .pre-commit-config.yaml
+
+# Python bytecode cache (e.g. from scripts/graphify-nix-test loading the wrapper)
+__pycache__/
+*.pyc
