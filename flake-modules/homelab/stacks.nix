@@ -230,9 +230,10 @@
                   (lib.optional (cloneByDir ? ${dir})
                     "${pkgs.bash}/bin/bash -c '[ -e ${dir}/docker-compose.yml ] || [ -e ${dir}/docker-compose.yaml ] || ${pkgs.git}/bin/git clone ${cloneByDir.${dir}} ${dir}'")
                   ++ (if dirByDir ? ${dir}
-                      then [ "${pkgs.coreutils}/bin/cp -rL --no-preserve=mode,ownership ${dirByDir.${dir}}/. ${dir}/" ]
-                      else lib.optional (srcByDir ? ${dir})
-                        "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}");
+                  then [ "${pkgs.coreutils}/bin/cp -rL --no-preserve=mode,ownership ${dirByDir.${dir}}/. ${dir}/" ]
+                  else
+                    lib.optional (srcByDir ? ${dir})
+                      "${pkgs.coreutils}/bin/install -Dm0644 ${srcByDir.${dir}} ${dir}/${baseNameOf srcByDir.${dir}}");
                 ExecStart = "${compose} up -d --remove-orphans";
                 ExecStop = "${compose} down";
                 TimeoutStartSec = "1800";
