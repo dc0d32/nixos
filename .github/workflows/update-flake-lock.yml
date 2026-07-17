@@ -13,6 +13,22 @@ on:
     - cron: "0 6 * * 6" # Saturdays 06:00 UTC
   workflow_dispatch:
 
+# The default GITHUB_TOKEN is read-only in this repo (Settings → Actions →
+# General → Workflow permissions), so update-flake-lock's `git push` of its
+# PR branch 403'd on every scheduled run. Grant the two scopes it needs to
+# push the branch and open the PR. A workflow-level `permissions:` block
+# overrides the repo's read-only default for this workflow only.
+#
+# SECOND GATE (repo setting, not fixable here): opening the PR also requires
+# Settings → Actions → General → "Allow GitHub Actions to create and approve
+# pull requests" to be ENABLED. While it's off, the branch pushes but the PR
+# step still fails. Toggle it in the UI, or:
+#   gh api -X PUT repos/dc0d32/nixos/actions/permissions/workflow \
+#     -F default_workflow_permissions=read -F can_approve_pull_request_reviews=true
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
