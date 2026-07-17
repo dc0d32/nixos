@@ -96,6 +96,24 @@
       url = "github:nix-community/nix-index-database";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # microvm.nix — lightweight declarative VMs. NOT used by any host in
+    # THIS (public) flake; it lives here purely as the centralized version
+    # pin that the private homelab flake follows (microvm.follows =
+    # "pub/microvm"). The homelab's edge DMZ + redzone detonation microVMs
+    # import `inputs.microvm.nixosModules.host`; centralizing the pin here
+    # (like disko/impermanence/nixos-hardware) means the homelab has zero
+    # independent inputs, so bumping this flake's lock — via the weekly
+    # update-flake-lock workflow — carries the WHOLE fleet, incl. the
+    # homelab microVMs, with no separate private-repo lock to maintain.
+    # (github:astro/microvm.nix is a public project — no topology leak.)
+    #
+    # Retire when: the homelab stops using microvm.nix, or the private
+    # flake gains its own input-update automation.
+    microvm = {
+      url = "github:astro/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:
