@@ -39,7 +39,7 @@ in
             family = "FantasqueSansM Nerd Font Mono";
             style = "Regular";
           };
-          size = 10;
+          size = 12;
         };
         cursor.style.shape = "Beam";
         scrolling.history = 100000;

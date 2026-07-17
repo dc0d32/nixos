@@ -419,7 +419,9 @@ let
       deploy "$src/setup.ps1" "$nixwin/setup.ps1"
 
       # Windows Terminal: set only the default font face/size, merged
-      # into the existing settings.json with jq (non-destructive).
+      # into the existing settings.json with jq (non-destructive re: other
+      # keys). Face and size are force-set (not `// default`) so a size
+      # bump here actually lands on machines that already ran hm_win.
       # Keybindings are intentionally left at their defaults.
       shopt -s nullglob
       wt_found=0
@@ -428,7 +430,7 @@ let
         backup "$s"
         tmp="$(mktemp)"
         if jq '.profiles.defaults.font.face = "FantasqueSansM Nerd Font Mono"
-               | .profiles.defaults.font.size = (.profiles.defaults.font.size // 11)' \
+               | .profiles.defaults.font.size = 13' \
              "$s" > "$tmp" 2>/dev/null; then
           mv "$tmp" "$s"
           echo "  Windows Terminal font set: $s"
