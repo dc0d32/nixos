@@ -76,6 +76,21 @@
             itself.
           '';
         };
+
+        vfioPciIds = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "1002:6608" "1002:aab0" ];
+          description = ''
+            PCI `vendor:device` IDs to bind to vfio-pci at boot (via the
+            `vfio-pci.ids=` kernel param), claiming them away from their
+            native host driver so a guest can take them by PCI passthrough.
+            NOTE: matches ALL devices with these IDs — fine when every card
+            of that model is meant for passthrough. Pair with
+            `boot.blacklistedKernelModules` for the native driver if it would
+            otherwise race vfio-pci for the device. Takes effect on reboot.
+          '';
+        };
       };
 
       config = lib.mkIf cfg.enable {
@@ -89,7 +104,14 @@
         boot.kernelParams =
           (lib.optional isIntel "intel_iommu=on")
           ++ (lib.optional isAmd "amd_iommu=on")
-          ++ (lib.optional cfg.passthroughPt "iommu=pt");
+          ++ (lib.optional cfg.passthroughPt "iommu=pt")
+          ++ (lib.optional (cfg.vfioPciIds != [ ])
+            "vfio-pci.ids=${lib.concatStringsSep "," cfg.vfioPciIds}");
+
+        # Ensure vfio-pci is present early enough to claim the IDs before the
+        # native driver probes them.
+        boot.initrd.kernelModules =
+          lib.optionals (cfg.loadVfio && cfg.vfioPciIds != [ ]) [ "vfio_pci" ];
 
         # VFIO stack available for later device binding.
         boot.kernelModules = lib.optionals cfg.loadVfio [
