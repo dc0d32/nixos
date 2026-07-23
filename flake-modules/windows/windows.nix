@@ -56,6 +56,22 @@ let
     inline_height = 12;
   };
 
+  # ── Windows cursor theme (matches the Linux Bibata-Modern-Classic set
+  # in flake-modules/desktop-extras.nix) ──────────────────────────────
+  # Cursors aren't in winget/Scoop and the nixpkgs bibata-cursors package
+  # ships X11 Xcursors, not Windows .cur/.ani — so setup.ps1 fetches the
+  # official ful1e5/Bibata_Cursor Windows release. Pinned to a release tag
+  # + the SHA-256 of the zip so the download is reproducible and
+  # tamper-evident (same "pinned, verifiable source" bar as winget/Scoop).
+  # Applied entirely user-scoped (HKCU\Control Panel\Cursors + files under
+  # %LOCALAPPDATA%), so it needs no admin. `version` bumps + `sha256`
+  # refresh together; get the hash from `Get-FileHash` or `sha256sum` of
+  # Bibata-Modern-Classic-Windows.zip (uppercase hex).
+  bibataCursor = {
+    version = "v2.0.7";
+    sha256 = "B98ECA4077D6E7796FF7E710E4D220CA13439F1118160D1E7B3DB9E91FDEC2BE";
+  };
+
   # ── Package sources ─────────────────────────────────────────────────
   # Scoop is the DEFAULT for the CLI toolkit — most of these are single
   # self-contained binaries that corporate app-control doesn't flag.
@@ -186,6 +202,8 @@ let
         #   - uv: pure-Python tools (visidata) with no winget/scoop package.
         #   - Scoop: the rest of the CLI toolkit + a Nerd Font.
         #   - cleanup: drop duplicates so each tool has a single source.
+        #   - cursor: Bibata-Modern-Classic (matches Linux), pinned+hashed
+        #     GitHub release zip, applied user-scoped (no admin).
         $ErrorActionPreference = 'Continue'  # keep going if one step fails
 
         # ---- Snapshot installed winget packages (one export call) --------
@@ -206,7 +224,7 @@ let
           }
         }
 
-        Write-Host '== Step 1/4: winget (system apps + git/git-lfs/uv) =='
+        Write-Host '== Step 1/5: winget (system apps + git/git-lfs/uv) =='
         foreach ($id in @(${lib.concatMapStringsSep ", " (p: "'${p.id}'") (wingetSystem ++ wingetCli)})) {
           if ($wingetIds.ContainsKey($id)) {
             Write-Host "  ok (installed): $id"
@@ -221,7 +239,7 @@ let
         $Env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
                     [Environment]::GetEnvironmentVariable('Path', 'User')
 
-        Write-Host '== Step 2/4: uv (pure-Python tools) =='
+        Write-Host '== Step 2/5: uv (pure-Python tools) =='
         if (Get-Command uv -ErrorAction SilentlyContinue) {
           # Snapshot uv-installed tools once (top-level lines = tool names).
           $uvInstalled = @{}
@@ -247,7 +265,7 @@ let
           if ($Env:Path -notlike "*$sevenZipDir*") { $Env:Path += ";$sevenZipDir" }
         }
 
-        Write-Host '== Step 3/4: Scoop (tools with no winget package) =='
+        Write-Host '== Step 3/5: Scoop (tools with no winget package) =='
         if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
           Write-Host 'Installing Scoop...'
           Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
@@ -272,7 +290,7 @@ let
           }
         }
 
-        Write-Host '== Step 4/4: reconcile sources (one tool, one source) =='
+        Write-Host '== Step 4/5: reconcile sources (one tool, one source) =='
         # Remove Scoop copies of the tools we moved to winget.
         foreach ($app in @(${lib.concatMapStringsSep ", " (p: "'${p.name}'") wingetCli})) {
           if (Test-ScoopApp $app) {
@@ -286,6 +304,71 @@ let
           if ($wingetIds.ContainsKey($id)) {
             Write-Host "  winget uninstall $id (now provided by Scoop)"
             winget uninstall --exact --id $id --silent --disable-interactivity 2>$null
+          }
+        }
+
+        Write-Host '== Step 5/5: cursor theme (Bibata-Modern-Classic) =='
+        # Matches the Linux Bibata-Modern-Classic set. Pinned+hashed
+        # official release zip; applied user-scoped (HKCU + %LOCALAPPDATA%),
+        # so no admin. The nixpkgs package is X11-only, hence the download.
+        $curScheme  = 'Bibata-Modern-Classic'
+        $curVersion = '${bibataCursor.version}'
+        $curSha256  = '${bibataCursor.sha256}'
+        $curRoot    = Join-Path $Env:LOCALAPPDATA "cursors\$curScheme"
+        $curMarker  = Join-Path $curRoot '.installed-version'
+        if ((Test-Path $curMarker) -and ((Get-Content -Raw $curMarker).Trim() -eq $curVersion)) {
+          Write-Host "  ok (installed): $curScheme $curVersion"
+        } else {
+          try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            $curUrl = "https://github.com/ful1e5/Bibata_Cursor/releases/download/$curVersion/Bibata-Modern-Classic-Windows.zip"
+            $curZip = Join-Path $Env:TEMP "bibata-$curVersion.zip"
+            Write-Host "  downloading $curUrl"
+            Invoke-WebRequest -Uri $curUrl -OutFile $curZip -UseBasicParsing
+            $curGot = (Get-FileHash -Algorithm SHA256 -Path $curZip).Hash
+            if ($curGot -ne $curSha256) {
+              Write-Warning "  cursor zip SHA256 mismatch (got $curGot) - skipping cursor install"
+            } else {
+              $curTmp = Join-Path $Env:TEMP "bibata-$curVersion"
+              if (Test-Path $curTmp) { Remove-Item -Recurse -Force $curTmp }
+              Expand-Archive -Path $curZip -DestinationPath $curTmp -Force
+              $curSrc = Join-Path $curTmp 'Bibata-Modern-Classic-Regular-Windows'
+              if (Test-Path $curRoot) { Remove-Item -Recurse -Force $curRoot }
+              New-Item -ItemType Directory -Force -Path $curRoot | Out-Null
+              Copy-Item -Path (Join-Path $curSrc '*') -Destination $curRoot -Recurse -Force
+              # Windows cursor role -> Bibata file (from the zip's install.inf [Wreg]).
+              $curMap = @{}
+              $curMap['Arrow']       = 'Pointer.cur'
+              $curMap['Help']        = 'Help.cur'
+              $curMap['AppStarting'] = 'Work.ani'
+              $curMap['Wait']        = 'Busy.ani'
+              $curMap['Crosshair']   = 'Cross.cur'
+              $curMap['IBeam']       = 'Text.cur'
+              $curMap['NWPen']       = 'Handwriting.cur'
+              $curMap['No']          = 'Unavailable.cur'
+              $curMap['SizeNS']      = 'Vert.cur'
+              $curMap['SizeWE']      = 'Horz.cur'
+              $curMap['SizeNWSE']    = 'Dgn1.cur'
+              $curMap['SizeNESW']    = 'Dgn2.cur'
+              $curMap['SizeAll']     = 'Move.cur'
+              $curMap['UpArrow']     = 'Alternate.cur'
+              $curMap['Hand']        = 'Link.cur'
+              $curReg = 'HKCU:\Control Panel\Cursors'
+              Set-ItemProperty -Path $curReg -Name '(default)' -Value "$curScheme-Regular Cursors"
+              foreach ($role in $curMap.Keys) {
+                Set-ItemProperty -Path $curReg -Name $role -Value (Join-Path $curRoot $curMap[$role])
+              }
+              Set-Content -Path $curMarker -Value $curVersion
+              # Apply immediately (SPI_SETCURSORS = 0x0057) so no logoff is needed.
+              if (-not ('Win32.NativeCursor' -as [type])) {
+                Add-Type -Namespace Win32 -Name NativeCursor -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError=true)] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'
+              }
+              [void][Win32.NativeCursor]::SystemParametersInfo(0x0057, 0, [IntPtr]::Zero, 3)
+              Write-Host "  installed + applied: $curScheme $curVersion"
+            }
+            Remove-Item $curZip -ErrorAction SilentlyContinue
+          } catch {
+            Write-Warning "  cursor install failed: $($_.Exception.Message)"
           }
         }
 
