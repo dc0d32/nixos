@@ -80,6 +80,18 @@ let
     autoloads = [ ];
   };
 
+  # Shared per-host display layout — same for p, m, and s so every
+  # account behaves identically when the laptop is docked. The T480's
+  # built-in panel is 1920x1080 at 14"; pin scale 1 rather than letting
+  # niri guess from DPI. External monitors are deliberately NOT listed:
+  # whoever docks can arrange them with wdisplays (Mod+D) and persist
+  # with `display-save` (Mod+Shift+D) — no rebuild and no wheel needed,
+  # which matters because m and s are non-admin. Promote a good layout
+  # into this attrset later with `display-export`.
+  displaysCfg = {
+    "eDP-1".scale = 1;
+  };
+
   # Convenience wrapper for p to view kid-account login activity.
   # Reads from the systemd journal (which p can read via wheel
   # membership), filters logind session events for the kid users, and
@@ -208,6 +220,18 @@ in
         # flake-modules/timekpr-sync.nix.
         config.flake.modules.nixos.timekpr-sync
         config.flake.modules.nixos.chrome-managed
+        # ── Docking ─────────────────────────────────────────────────
+        # DisplayLink dock support (evdi + DisplayLinkManager). s docks
+        # this laptop with a Lenovo ThinkPad Hybrid USB-C with USB-A
+        # Dock (17e9:6015), which sends video over USB rather than DP
+        # alt-mode. Without this its USB hub, ethernet and audio all
+        # come up while the external monitors stay dark — which is
+        # exactly the half-working dock experience s reported. See
+        # flake-modules/displaylink.nix.
+        config.flake.modules.nixos.displaylink
+        # Thunderbolt authorization, for when this host is used with a
+        # TB3/TB4 dock instead. See flake-modules/thunderbolt.nix.
+        config.flake.modules.nixos.thunderbolt
         # (The steam module was deleted from the flake 2026-06-25.)
       ];
 
@@ -222,13 +246,26 @@ in
       # `lspci -nn | grep -E 'VGA|3D'`.
       gpu.driver = "intel";
 
-      # Grant the kid accounts USB-device access (dialout/plugdev/uucp)
-      # for robotics work — RP2040 UF2 flashing, ESP32 esptool runs,
+      # Grant the kid accounts USB-device access (dialout/plugdev/uucp)      # for robotics work — RP2040 UF2 flashing, ESP32 esptool runs,
       # picocom over USB-serial, etc. See flake-modules/hardware-
       # hacking.nix for why this is a NixOS-class option (per-host)
       # rather than a flake-parts top-level option (would leak to pb-x1
       # and try to add phantom m/s users there).
       hardware-hacking.extraUsers = kidUsers;
+
+      # Let any physically-present user authorize a Thunderbolt dock
+      # without an admin password. Unlike pb-x1, the T480's Alpine Ridge
+      # controller predates firmware IOMMU DMA protection, so boltd
+      # cannot silently auto-authorize and instead falls back to an
+      # `auth_admin` polkit prompt. m and s are deliberately non-wheel,
+      # so that prompt is unanswerable for them — a dock would be
+      # permanently unusable on the accounts that use this laptop most.
+      #
+      # See the option description in flake-modules/thunderbolt.nix for
+      # the DMA trade-off this accepts. Revisit if this host is ever
+      # replaced by hardware with Kernel DMA Protection, where the
+      # correct value is `false` (boltd then needs no help).
+      thunderbolt.trustLocalUsers = true;
 
       # Battery / hibernate config (declared as a NixOS module option
       # by flake-modules/battery.nix). T480 has BAT0 (external
@@ -315,6 +352,9 @@ in
           # EasyEffects per-host data — shared with kids on this host.
           audio = audioCfg;
 
+          # Display layout — shared with kids on this host.
+          displays.outputs = displaysCfg;
+
           home.username = primaryUser;
           home.homeDirectory = "/home/${primaryUser}";
           home.stateVersion = stateVersion;
@@ -326,7 +366,11 @@ in
         name = "${kid}@${hostName}";
         value = {
           pkgs = hmPkgs;
-          module = config.flake.lib.mkKidHmModule { username = kid; audio = audioCfg; };
+          module = config.flake.lib.mkKidHmModule {
+            username = kid;
+            audio = audioCfg;
+            displays = displaysCfg;
+          };
         };
       })
       kidUsers);

@@ -27,7 +27,15 @@
 #
 # Retire when: the user switches Wayland compositor (hyprland, sway,
 # etc.) or niri grows to the size of warranting a dedicated subtree.
-{ ... }:
+#
+# Takes the outer flake-parts `config` (bound as `outerConfig`) to read
+# the `displays.enable` cross-module signal. The inner module bodies
+# below shadow `config` with the NixOS/HM config, so the outer one must
+# be captured here — see the "Cross-module signals" section of AGENTS.md.
+{ config, ... }:
+let
+  cfg-displays-enable = config.displays.enable;
+in
 {
   flake.modules.nixos.niri = { inputs, lib, pkgs, ... }: {
     imports = [ inputs.niri.nixosModules.niri ];
@@ -210,11 +218,11 @@
       hotkey-overlay = {
         skip-at-startup = true;
       };
-      outputs = {
-        "eDP-1" = {
-          scale = 1;
-        };
-      };
+      # Per-output config (scale/mode/position/…) lives in
+      # flake-modules/displays.nix via the `displays.outputs` option,
+      # which renders into this same `settings.outputs` attrset. The
+      # old hardcoded `"eDP-1".scale = 1;` moved to the host bridge so
+      # it can't collide with a host's own output settings.
       layout = {
         gaps = 2;
         border.width = 2;
@@ -274,8 +282,31 @@
           (kdl.node "blur" [ true ] [ ])
           (kdl.node "xray" [ false ] [ ])
         ];
+
+        # Mutable layout layer, written by `display-save` when the user
+        # rearranges monitors in wdisplays. See flake-modules/
+        # displays.nix for the full rationale.
+        #
+        # PREPENDED, not appended, and that is load-bearing. niri's
+        # `output` is a "multipart section ... inserted as is without
+        # merging", and lookup is a linear scan returning the FIRST
+        # match (niri-config/src/output.rs:150). So the first matching
+        # `output` block wins — the opposite of the last-wins rule that
+        # applies to merged sections. Verified empirically against niri
+        # 2026-07-08: swapping the two include lines flips which scale
+        # takes effect. Append this instead of prepending and saved
+        # layouts are silently ignored, with no error anywhere.
+        #
+        # `optional=true` (niri 26.04+) so a missing file is a warning
+        # rather than a config-breaking error — it does not exist until
+        # the user first saves a layout, and `display-reset` deletes it.
+        localLayoutInclude =
+          lib.optional cfg-displays-enable
+            (kdl.node "include" [{ optional = true; } "~/.config/niri/outputs.local.kdl"] [ ]);
       in
-      options.programs.niri.config.default ++ [
+      localLayoutInclude
+      ++ options.programs.niri.config.default
+      ++ [
         (kdl.node "window-rule" [ ] [ blurChild ])
         (kdl.node "layer-rule" [ ] [ blurChild ])
       ];

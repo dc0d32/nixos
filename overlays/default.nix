@@ -10,4 +10,9 @@
 #   - flake-modules/mk-pkgs.nix (the shared HM-side `pkgs` factory each
 #     host bridge calls via `config.flake.lib.mkPkgs`).
 [
+  # DisplayLink userspace driver: swap nixpkgs' `requireFile` source for a
+  # `fetchurl`, so DisplayLink docks work on unattended installs/upgrades.
+  # Retire when nixpkgs drops requireFile, or no host imports
+  # flake.modules.nixos.displaylink. See the file header.
+  (import ./displaylink.nix)
 ]

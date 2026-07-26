@@ -45,6 +45,7 @@
       chrome
       desktop-extras
       desktop-shell
+      displays
       electronics
       file-manager
       fonts

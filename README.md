@@ -90,9 +90,47 @@ nix flake update
 # Evaluate everything without building
 nix flake check
 
-# Format all nix files
-nix fmt
+# Format all nix files (the path argument is required — `nix fmt` with
+# no path blocks reading stdin, because the formatter is a bare package)
+nix fmt .
 ```
+
+## Docking stations, external displays
+
+Laptop hosts (`pb-x1`, `pb-t480`) support both dock families:
+
+- **Thunderbolt 3 / 4** — `flake.modules.nixos.thunderbolt` runs `boltd`.
+  Where firmware provides IOMMU DMA protection (pb-x1) docks authorize
+  silently; on older controllers without it (pb-t480's Alpine Ridge) set
+  `thunderbolt.trustLocalUsers = true` so non-admin users aren't blocked
+  by an `auth_admin` prompt. Check with `boltctl domains`.
+- **DisplayLink** (e.g. ThinkPad Hybrid USB-C Dock, `17e9:6015`) —
+  `flake.modules.nixos.displaylink` adds `evdi` + `DisplayLinkManager`.
+  Without it the dock's USB, ethernet and audio work while the external
+  monitors stay dark. **Requires a reboot after the first switch**, since
+  `boot.extraModulePackages` only lands in the booted system's module tree.
+
+Display layout is managed by `flake.modules.homeManager.displays`:
+
+```sh
+# Rearrange monitors live (GUI) — also bound to Mod+D
+wdisplays
+
+# Persist the current arrangement — also bound to Mod+Shift+D
+display-save
+
+# Print it as Nix, to paste into a host bridge and commit
+display-export
+
+# Discard the saved layout, revert to the Nix one
+display-reset
+```
+
+Declarative defaults live in `displays.outputs` in the host bridge; a saved
+layout overrides them while it exists. Key external monitors by
+`"MAKE MODEL SERIAL"` (as printed by `niri msg outputs`) rather than a
+connector name like `DP-2` — connector numbering depends on which port a
+dock routes the monitor through and isn't stable across docks.
 
 ## Project dev shells (templates)
 

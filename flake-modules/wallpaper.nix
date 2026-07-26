@@ -5,6 +5,16 @@
 # and storage directory are configurable via top-level `wallpaper.*`
 # options.
 #
+# DEPENDS ON niri. The `wallpaper-hotplug` unit below shells out to
+# `niri msg event-stream` and reads `config.programs.niri.package`, so
+# this module must only be imported alongside
+# `flake.modules.homeManager.niri`. Both bundles that carry wallpaper
+# (home-desktop, home-kid) also carry niri, and no host imports it
+# directly, so that holds today. If wallpaper is ever wanted on a
+# non-niri host, split the hotplug watcher out rather than dropping the
+# reference — an unimported option yields a cryptic
+# "option does not exist" eval error a long way from the cause.
+#
 # Retire when: wallpaper provider changes (e.g. local image rotation,
 # different API), or awww is replaced by a different wallpaper agent.
 { lib, config, ... }:
@@ -38,6 +48,46 @@ in
         if cfg.directory != null
         then cfg.directory
         else "${config.home.homeDirectory}/.wallpaper";
+
+      # Re-apply the CURRENT wallpaper to any output that isn't showing
+      # one. Deliberately does not fetch: hotplugging a monitor should
+      # not burn a Wallhaven API call or change the image you already
+      # have — it should just paint the existing one onto the new
+      # screen.
+      #
+      # awww paints per-output and has no concept of "and also do this
+      # for monitors that show up later", so a freshly-attached output
+      # keeps awww's default flat colour until the next timer tick —
+      # up to `intervalMinutes` of grey. Observed on pb-x1 2026-07-26
+      # after plugging in a DisplayLink dock:
+      #   eDP-1:   currently displaying: image: /home/p/.wallpaper/…jpg
+      #   DVI-I-1: currently displaying: color: 000000
+      applyScript = pkgs.writeShellScript "wallpaper-apply" ''
+        set -uo pipefail
+        dir="${wallpaperDir}"
+
+        sock="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY-awww-daemon.sock"
+        [ -S "$sock" ] || exit 0
+
+        # Nothing fetched yet (e.g. first boot before the timer fires).
+        current=$(ls -1 "$dir"/current.* 2>/dev/null | head -1) || true
+        [ -n "''${current:-}" ] || exit 0
+
+        # awww query lines look like:
+        #   : eDP-1: 1920x1200, scale: 1, currently displaying: image: /path
+        #   : DVI-I-1: 1920x1080, scale: 1, currently displaying: color: 000000
+        # Collect only the outputs still on a solid colour.
+        blank=$(${pkgs.awww}/bin/awww query 2>/dev/null \
+          | ${pkgs.gnugrep}/bin/grep 'currently displaying: color:' \
+          | ${pkgs.gnused}/bin/sed 's/^: *//; s/:.*//' \
+          | ${pkgs.coreutils}/bin/paste -sd, -) || true
+
+        [ -n "''${blank:-}" ] || exit 0
+
+        ${pkgs.awww}/bin/awww img "$current" \
+          --outputs "$blank" \
+          --transition-type fade --transition-duration 1 || true
+      '';
 
       fetchScript = pkgs.writeShellScript "wallpaper-fetch" ''
         set -euo pipefail
@@ -152,6 +202,53 @@ in
           Unit = "wallpaper-fetch.service";
         };
         Install.WantedBy = [ "timers.target" ];
+      };
+
+      # Paint the wallpaper onto monitors as they appear.
+      #
+      # Why an event-stream watcher rather than a systemd path/device
+      # unit: monitor hotplug isn't visible to the *user* systemd
+      # instance (the DRM uevent goes to the system one), and niri owns
+      # output state anyway. `niri msg event-stream` is a long-lived
+      # line-oriented stream, so a read loop is the natural fit.
+      #
+      # We trigger on workspace changes rather than looking for an
+      # output-specific event because niri always moves workspaces when
+      # an output appears or disappears — every monitor has its own set
+      # — so WorkspacesChanged is a reliable proxy that exists in the
+      # stable IPC surface. wallpaper-apply is cheap and idempotent
+      # (it no-ops unless some output is showing a solid colour), so
+      # firing it on a few extra events costs nothing.
+      #
+      # The `read` loop with a 1s settle keeps a burst of events during
+      # a single plug from launching a pile of awww calls.
+      systemd.user.services.wallpaper-hotplug = {
+        Unit = {
+          Description = "Apply wallpaper to newly connected outputs";
+          PartOf = [ "graphical-session.target" ];
+          After = [ "graphical-session.target" "awww-daemon.service" ];
+          Wants = [ "awww-daemon.service" ];
+        };
+        Service = {
+          Type = "simple";
+          ExecStart = "${pkgs.writeShellScript "wallpaper-hotplug" ''
+            set -uo pipefail
+            ${config.programs.niri.package}/bin/niri msg event-stream 2>/dev/null \
+            | while IFS= read -r line; do
+                case "$line" in
+                  *"Workspaces changed"*)
+                    # Let niri finish settling the new output before we
+                    # ask awww what's blank.
+                    sleep 1
+                    ${applyScript}
+                    ;;
+                esac
+              done
+          ''}";
+          Restart = "on-failure";
+          RestartSec = 5;
+        };
+        Install.WantedBy = [ "graphical-session.target" ];
       };
     };
 }

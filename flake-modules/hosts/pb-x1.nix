@@ -99,6 +99,21 @@ in
         # companion to biometrics (~1.2 GiB howdy closure); pb-x1 has IR
         # hardware so it's wired here.
         config.flake.modules.nixos.face-unlock
+        # DisplayLink dock support (evdi + DisplayLinkManager). The
+        # Lenovo ThinkPad Hybrid USB-C with USB-A Dock (17e9:6015) sends
+        # video over USB rather than DP alt-mode or a Thunderbolt PCIe
+        # tunnel, so without this its USB hub / ethernet / audio all come
+        # up while the external monitors stay dark. See
+        # flake-modules/displaylink.nix.
+        config.flake.modules.nixos.displaylink
+        # Thunderbolt device authorization (boltd). Both TB domains ship
+        # at security level "user", so without boltd a TB3/TB4 dock is
+        # never authorized and its PCIe-tunnelled ethernet/USB/DP stay
+        # dead. pb-x1 has firmware IOMMU DMA protection
+        # (iommu_dma_protection = 1), so boltd auto-authorizes silently
+        # and `thunderbolt.trustLocalUsers` is left at its `false`
+        # default. See flake-modules/thunderbolt.nix.
+        config.flake.modules.nixos.thunderbolt
 
         # NOT imported on pb-x1: the auto-deploy bundle (auto-upgrade,
         # nixos-clone, hm-auto-upgrade). This is the active dev box — a
@@ -225,6 +240,18 @@ in
       };
 
       # EDITOR/VISUAL default to "vim" via flake-modules/vim.nix.
+
+      # Display layout defaults. These are overridden by a saved
+      # runtime layout (~/.config/niri/outputs.local.kdl) if one
+      # exists — rearrange with wdisplays (Mod+D), persist with
+      # `display-save` (Mod+Shift+D), promote into Nix with
+      # `display-export`, discard with `display-reset`. See
+      # flake-modules/displays.nix.
+      displays.outputs = {
+        # Built-in panel. 1920x1200 at 14", so DPI-guessed fractional
+        # scaling is wrong here — pin it to 1.
+        "eDP-1".scale = 1;
+      };
 
       home.username = user;
       home.homeDirectory = "/home/${user}";

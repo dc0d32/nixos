@@ -258,6 +258,40 @@
           '';
           default = [
             ".zsh_history"
+            # Display layout saved by `display-save` (wdisplays →
+            # Mod+Shift+D). Persisted as a FILE, not by adding
+            # ".config/niri" to userDirectories: home-manager owns
+            # ~/.config/niri/config.kdl as a read-only store symlink and
+            # rewrites it on every generation, so bind-mounting the whole
+            # directory would fight HM for it. Only the mutable sibling
+            # needs to survive the boot-time wipe.
+            #
+            # Without this, a kid on pb-t480 rearranges their monitors,
+            # saves, and silently loses the layout at next boot — the
+            # exact papercut flake-modules/displays.nix exists to fix.
+            ".config/niri/outputs.local.kdl"
+          ];
+        };
+
+        userFilesAppendOnly = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          description = ''
+            Subset of `userFiles` whose contents are append-style
+            line-oriented text (shell history and the like), and which
+            can therefore be safely de-shadowed by merging the shadowing
+            copy into the persisted one as a line-union.
+
+            Files NOT listed here are treated as structured documents: a
+            shadowing copy is moved aside to `<name>.shadow-<timestamp>`
+            instead of being merged, because concatenating two of them
+            produces a syntactically invalid file rather than a longer
+            one. For `outputs.local.kdl` a line-union would emit
+            duplicate `output` blocks, which niri rejects — taking the
+            user's whole desktop config down over a saved monitor
+            layout.
+          '';
+          default = [
+            ".zsh_history"
           ];
         };
       };
@@ -565,19 +599,37 @@
             let
               relocate = home: file:
                 "deshadow_file ${lib.escapeShellArg "${home}/${file}"} "
-                + "${lib.escapeShellArg "${cfg.persistRoot}${home}/${file}"}\n";
+                + "${lib.escapeShellArg "${cfg.persistRoot}${home}/${file}"} "
+                + (if lib.elem file cfg.userFilesAppendOnly then "merge" else "aside")
+                + "\n";
               calls = lib.concatStrings (lib.mapAttrsToList
                 (_: u: lib.concatMapStrings (relocate u.home) cfg.userFiles)
                 normalUsers);
             in
             ''
               deshadow_file() {
-                target="$1"; src="$2"
+                target="$1"; src="$2"; strategy="''${3:-aside}"
+                # Default to the lossless "aside" strategy: a caller that forgets
+                # to classify a new file must not silently get the destructive
+                # line-union merge. `relocate` always passes an explicit arg.
                 # Already the bind mount, or no shadow, or an HM symlink? skip.
                 if ${pkgs.util-linux}/bin/mountpoint -q "$target" 2>/dev/null; then return 0; fi
                 if [ ! -e "$target" ]; then return 0; fi
                 if [ -L "$target" ] || [ ! -f "$target" ]; then return 0; fi
                 ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$src")"
+                if [ -e "$src" ] && [ "$strategy" != "merge" ]; then
+                  # Structured file (KDL/JSON/TOML): a line-union would
+                  # produce an invalid document, so keep the persisted
+                  # copy authoritative and park the shadow next to it
+                  # rather than destroying either.
+                  aside="$target.shadow-$(${pkgs.coreutils}/bin/date +%Y%m%d-%H%M%S)"
+                  if ${pkgs.coreutils}/bin/mv -f "$target" "$aside"; then
+                    echo "deshadow: moved shadowing $target aside to $aside (persisted copy wins)"
+                    return 0
+                  fi
+                  echo "deshadow: could not move $target aside, left in place" >&2
+                  return 0
+                fi
                 if [ -e "$src" ]; then
                   tmp=$(${pkgs.coreutils}/bin/mktemp)
                   if ${pkgs.coreutils}/bin/cat "$src" "$target" \

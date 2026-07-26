@@ -48,7 +48,11 @@
   # Per-kid home-manager module factory. idle timings and EDITOR/VISUAL
   # are module defaults now (flake-modules/idle.nix, flake-modules/vim.nix),
   # so they no longer need to be set per-kid.
-  flake.lib.mkKidHmModule = { username, audio, stateVersion ? "25.11" }: {
+  # `displays` mirrors the primary user's display layout so every
+  # account on a shared host sees identical monitor behaviour — a kid
+  # docking the family laptop should get the same arrangement p does.
+  # Defaults to `{ }` (niri auto-detects) for hosts that don't care.
+  flake.lib.mkKidHmModule = { username, audio, displays ? { }, stateVersion ? "25.11" }: {
     imports = config.flake.lib.bundles.homeManager.kid ++ [
       # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle no
       # longer carries it, but the kids have always had it.
@@ -60,6 +64,8 @@
     # EasyEffects per-host data (shared with the primary user on the
     # same host).
     inherit audio;
+
+    displays.outputs = displays;
 
     home.username = username;
     home.homeDirectory = "/home/${username}";

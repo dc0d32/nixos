@@ -102,6 +102,7 @@
       desktop-shell
       electronics
       file-manager
+      displays
       fonts
       hardware-hacking
       idle

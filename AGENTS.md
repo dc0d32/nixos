@@ -18,8 +18,10 @@ sudo nixos-rebuild switch --flake .#pb-x1
 # Rebuild user environment
 home-manager switch --flake .#'p@pb-x1'
 
-# Format
-nix fmt
+# Format (the path argument is required: `nix fmt` with no path hangs,
+# because formatter.nix binds a bare pkgs.nixpkgs-fmt which then blocks
+# reading stdin)
+nix fmt .
 
 # Evaluate without building (use --impure if any host is a placeholder;
 # see "Placeholder hosts" below)
