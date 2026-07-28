@@ -132,15 +132,9 @@ in
 
   # NOTE: `idle.*` is set inside each HM module block below, NOT here.
 
-  # Reuse the same Family-Link-locking managed-policy file as pb-t480
-  # rather than duplicating it. Both hosts apply the same restrictions
-  # to the same kid; a divergent copy would drift. Switch this to
-  # ../../hosts/m-pc/chrome-policy.json if/when m-pc needs to differ.
-  chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
-
-  # NOTE: `timekpr.*` and `timekpr-sync.*` are set inside
-  # `configurations.nixos.${hostName}.module`, for the same per-config
-  # scoping reason.
+  # NOTE: `chrome-managed.*`, `timekpr.*` and `timekpr-sync.*` are set
+  # inside `configurations.nixos.${hostName}.module`, for the same
+  # per-config scoping reason.
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
@@ -198,6 +192,12 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
 
+      # Reuse the same Family-Link-locking managed-policy file as pb-t480
+      # rather than duplicating it. Both hosts apply the same restrictions
+      # to the same kid; a divergent copy would drift. Switch this to
+      # ../../hosts/m-pc/chrome-policy.json if/when m-pc needs to differ —
+      # which is now actually possible, see flake-modules/chrome-managed.nix.
+      chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
       # ── Per-kid screen-time policies (timekpr) ───────────────────────
       # Identical policy to pb-t480 (same kid, same school schedule). See

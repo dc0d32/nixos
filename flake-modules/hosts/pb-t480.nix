@@ -120,21 +120,9 @@ in
   # inside each HM module block below (per-(NixOS|HM)-config scoping; the
   # shared `audioCfg` lives in the `let` block above).
 
-  # Chrome managed-policy file applied to
-  # /etc/opt/chrome/policies/managed/ on this host. See
-  # flake-modules/chrome-managed.nix for why this exists and
-  # hosts/pb-t480/chrome-policy.md for what each policy does.
-  # NOTE: on Linux there is no per-user Chrome policy mechanism;
-  # the policy applies to every user on this host who launches
-  # google-chrome, including p. p has accepted that trade-off
-  # because Family Link supervision (the whole point of the policy)
-  # only works on signed-in Chrome with Google's API keys, which
-  # the open-source Chromium build lacks.
-  chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
-
-  # NOTE: `timekpr.*` and `timekpr-sync.*` are also set inside
-  # `configurations.nixos.${hostName}.module`, for the same per-config
-  # scoping reason.
+  # NOTE: `chrome-managed.*`, `timekpr.*` and `timekpr-sync.*` are also
+  # set inside `configurations.nixos.${hostName}.module`, for the same
+  # per-config scoping reason.
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
@@ -216,6 +204,17 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
 
+      # Chrome managed-policy file applied to
+      # /etc/opt/chrome/policies/managed/ on this host. See
+      # flake-modules/chrome-managed.nix for why this exists and
+      # hosts/pb-t480/chrome-policy.md for what each policy does.
+      # NOTE: on Linux there is no per-user Chrome policy mechanism;
+      # the policy applies to every user on this host who launches
+      # google-chrome, including p. p has accepted that trade-off
+      # because Family Link supervision (the whole point of the policy)
+      # only works on signed-in Chrome with Google's API keys, which
+      # the open-source Chromium build lacks.
+      chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
       # ── Per-kid screen-time policies (timekpr) ───────────────────────
       # Both kids share the same policy:

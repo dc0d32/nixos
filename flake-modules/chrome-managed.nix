@@ -39,37 +39,48 @@
 # Retire when: Linux Chrome gains per-user managed-policy paths
 # (long-shot — not on the upstream roadmap as of 2026), or kid
 # accounts age out and the host stops importing this module.
-{ lib, config, ... }:
-let
-  cfg = config.chrome-managed;
-in
+{ lib, ... }:
 {
-  options.chrome-managed = {
-    policyFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = null;
-      example = lib.literalExpression "../../hosts/pb-t480/chrome-policy.json";
-      description = ''
-        Path to the JSON file that will be installed at
-        `/etc/opt/chrome/policies/managed/family-safety.json`.
-        Required for the NixOS class to do anything; without it the
-        module installs no policy file (Chrome runs unmanaged).
-      '';
-    };
-  };
-
   # HM side: deliberately empty. Chrome itself is installed by the
   # `chrome` module (flake-modules/chrome.nix); both p's adult
   # bundle and the kid bundle import it. Keeping the install in one
   # place avoids HM's duplicate-home.packages warning.
-  config.flake.modules.homeManager.chrome-managed = { ... }: { };
+  flake.modules.homeManager.chrome-managed = { ... }: { };
 
-  config.flake.modules.nixos.chrome-managed = { ... }: {
-    # Drop the policy JSON at the path Chrome scans on Linux.
-    # `mkIf` so hosts that import the module without setting
-    # policyFile don't crash with a path-coerce error.
-    environment.etc = lib.mkIf (cfg.policyFile != null) {
-      "opt/chrome/policies/managed/family-safety.json".source = cfg.policyFile;
+  # `policyFile` is declared INSIDE the NixOS module, not at the
+  # flake-parts top level. A top-level option is a single option shared
+  # by the whole flake: every host setting it writes to the same place,
+  # so the header's promise that "different hosts could ship different
+  # policy files" was false — two differing paths would have been a
+  # `conflicting definition` error, not per-host behaviour. It only
+  # looked fine because m-pc and pb-t480 happened to set the identical
+  # path. Declaring it here gives each host its own instance.
+  flake.modules.nixos.chrome-managed = { config, ... }:
+    let
+      cfg = config.chrome-managed;
+    in
+    {
+      options.chrome-managed = {
+        policyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          example = lib.literalExpression "../../hosts/pb-t480/chrome-policy.json";
+          description = ''
+            Path to the JSON file that will be installed at
+            `/etc/opt/chrome/policies/managed/family-safety.json`.
+            Required for the NixOS class to do anything; without it the
+            module installs no policy file (Chrome runs unmanaged).
+          '';
+        };
+      };
+
+      config = {
+        # Drop the policy JSON at the path Chrome scans on Linux.
+        # `mkIf` so hosts that import the module without setting
+        # policyFile don't crash with a path-coerce error.
+        environment.etc = lib.mkIf (cfg.policyFile != null) {
+          "opt/chrome/policies/managed/family-safety.json".source = cfg.policyFile;
+        };
+      };
     };
-  };
 }
