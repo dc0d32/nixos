@@ -186,6 +186,20 @@
               message = "homelab.stacks.${name}: no matching homelab.registry.${name} entry.";
             })
             enabled)
+          # `basic` is in the enum but mkVhostConfig only ever emits the
+          # lan guard and the authentik forward-auth block — setting it
+          # would produce a vhost with NO authentication at all. A silent
+          # no-op is the worst possible failure mode for an auth knob, so
+          # reject it until someone actually implements it.
+          ++ (lib.mapAttrsToList
+            (name: r: {
+              assertion = r.auth != "basic";
+              message =
+                "homelab.edgeProxies.${name}: auth = \"basic\" is not implemented "
+                + "(it would silently produce an UNAUTHENTICATED vhost). Use "
+                + "\"authentik\", or have the upstream service do its own auth.";
+            })
+            edgeResolved)
           ++ [{
             assertion = (exposed == { } && edgeExposed == { }) -> (domain != "");
             message = "homelab.domain must be set when any stack or edge proxy is exposed.";

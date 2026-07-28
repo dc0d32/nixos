@@ -22,8 +22,13 @@
   # Shared timekpr policy. See the long comment in
   # flake-modules/hosts/pb-t480.nix for the weekday/weekend rationale
   # (window vs budget are independent axes; Sunday curfew is tight
-  # because Monday is school). Enforced PER HOST — a kid can spend the
-  # budget once on each host they use.
+  # because Monday is school).
+  #
+  # The budget is ONE pool spent across every host that runs the
+  # timekpr-sync agent (flake-modules/timekpr-sync.nix) against the
+  # controller on ursa. Hosts that don't run the agent — or any host
+  # while the controller is unreachable — fall back to enforcing this
+  # same number locally, per host.
   flake.lib.kidTimekprPolicy = {
     allowedHoursByDay = {
       mon = "06:00-22:00";
@@ -43,6 +48,49 @@
       sat = 360;
       sun = 360;
     };
+    # Lock the screen, never terminate the session. The default
+    # (`terminate`) SIGTERM/SIGKILLs everything the kid had open the
+    # instant the budget or the curfew boundary is hit — i.e. it destroys
+    # unsaved work as a matter of routine, several times a week. That is a
+    # support burden and it teaches them the enforcement is the enemy.
+    #
+    # `lock` calls the logind session's .Lock() (server/interface/dbus/
+    # logind/user.py::lockUserSessions, gated on session Type being one of
+    # x11/wayland/mir — a niri session reports `wayland`, so it matches).
+    # swayidle's `lock` event handler is already listening for exactly that
+    # signal on these hosts (flake-modules/idle.nix) and raises
+    # swaylock-effects. Their work stays open behind the lockscreen.
+    #
+    # This does NOT weaken enforcement: unlocking with their password just
+    # puts them back in front of a daemon that still sees zero time left,
+    # and it re-locks on its next poll. And with TRACK_INACTIVE = false
+    # (the default here) a locked screen stops consuming budget, so a lock
+    # can't quietly eat the next day's allowance either.
+    lockoutType = "lock";
+  };
+
+  # Where the shared-budget controller lives, and the token the agents
+  # present on POST /report. Single source of truth so a host bridge and
+  # ursa can't drift apart.
+  #
+  # `reportToken` is checked into git ON PURPOSE, and is NOT a secret:
+  #
+  #   * It authorizes exactly one operation — "add usage for (host,user)".
+  #     The controller stores usage as max(stored, reported), so the only
+  #     thing a holder can do is make a kid's day SHORTER. There is no
+  #     reachable state where knowing this string buys anyone screen time.
+  #   * It could not be a secret even if we wanted it to be: it is baked
+  #     into the agent's spec file in /nix/store, which is world-readable
+  #     on the kids' own laptops. A tokenFile would only move the same
+  #     string somewhere marginally less obvious.
+  #
+  # Granting time, and every other privileged action, is behind the
+  # dashboard's basic auth, whose password stays OUT of git in
+  # /persist/secrets/timekpr-dashboard.pass on ursa. That is the real
+  # credential. Do not put it here.
+  flake.lib.timekprCentral = {
+    url = "https://screentime.bitset.cc";
+    reportToken = "yrXGIiw08Cmg4FQ9oJnb8f0E8GGzlurv";
   };
 
   # Per-kid home-manager module factory. idle timings and EDITOR/VISUAL

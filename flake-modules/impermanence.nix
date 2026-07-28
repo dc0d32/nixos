@@ -467,6 +467,15 @@
             # them empty as needed.
             "/var/lib/fprint"
             "/var/lib/iwd"
+            # timekpr — per-user screen-time accounting (work/<user>.time
+            # holds TIME_SPENT_DAY/WEEK/MONTH) and the runtime-editable
+            # per-user policy under config/. MUST persist: without it a
+            # kid reboots and the day's consumed time resets to zero,
+            # which defeats the whole point of the enforcement. Owned by
+            # flake.modules.nixos.timekpr; listed here (like /etc/restic
+            # below) so importing only impermanence still survives
+            # timekpr's eventual addition.
+            "/var/lib/timekpr"
             # libvirt / docker / colord — cheap to list speculatively.
             "/var/lib/docker"
             "/var/lib/libvirt"

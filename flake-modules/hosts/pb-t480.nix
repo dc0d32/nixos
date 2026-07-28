@@ -44,6 +44,7 @@ let
   hostName = "pb-t480";
   primaryUser = "p";
   kidUsers = [ "m" "s" ];
+  central = config.flake.lib.timekprCentral;
   system = "x86_64-linux";
   stateVersion = "25.11";
 
@@ -131,14 +132,9 @@ in
   # the open-source Chromium build lacks.
   chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
-
-  # Shared cross-host daily budget: report usage to and pull the shared
-  # remaining from the docker-host control plane (LAN). Same budget pool
-  # as m-pc, so a kid gets one total/day across both machines.
-  timekpr-sync = {
-    serverUrl = "http://apphost.lan:8780";
-    users = kidUsers;
-  };
+  # NOTE: `timekpr.*` and `timekpr-sync.*` are also set inside
+  # `configurations.nixos.${hostName}.module`, for the same per-config
+  # scoping reason.
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
@@ -220,6 +216,7 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
 
+
       # ── Per-kid screen-time policies (timekpr) ───────────────────────
       # Both kids share the same policy:
       #   - Window mon-thu + sun: 06:00-22:00. Sunday too because Monday
@@ -233,10 +230,6 @@ in
       # Note Friday is a school day (4h budget) but Friday night curfew
       # is the looser 23:00 because Saturday isn't school. The two axes
       # are independent — that's the whole point of the *ByDay form.
-      #
-      # p is unrestricted (not listed in timekpr.users) but IS in the
-      # `timekpr` group below so they can drive timekpra/timekprc to
-      # grant ad-hoc time or change limits at runtime.
       timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
       # p is excluded from timekpr entirely — not merely absent from
@@ -246,6 +239,24 @@ in
       # this machine. p remains in the `timekpr` group below so they can
       # still drive timekpra/timekprc to grant ad-hoc time.
       timekpr.excludeUsers = [ primaryUser ];
+
+      # Shared cross-host daily budget. This host reports the seconds m
+      # and s each burn HERE to the controller on ursa and pulls back the
+      # pool-wide remainder, so the budget rendered by `timekpr.users`
+      # above is spent once per day across the whole fleet rather than
+      # once per machine. See flake-modules/timekpr-sync.nix.
+      #
+      # Public hostname, not the LAN IP. AdGuard rewrites *.bitset.cc to
+      # the DMZ edge for on-LAN clients, so this resolves from any VLAN
+      # and rides a real wildcard cert — which is what stops a kid on the
+      # LAN from ARP-spoofing the controller and forging themselves the
+      # extra hour that `maxExtraMinutes` allows. Off the home LAN the
+      # edge's LAN guard 403s, the agent no-ops, and the local cap stands.
+      timekpr-sync = {
+        serverUrl = central.url;
+        users = kidUsers;
+        token = central.reportToken;
+      };
 
       # GPU driver is a guess — revisit after generating real hardware
       # config. T480 SKUs ship with Intel UHD 620 alone, or Intel +

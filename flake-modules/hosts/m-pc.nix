@@ -47,14 +47,15 @@
 #   hosts/m-pc/chrome-policy.json and flip the reference below.
 #
 # Timekpr screen-time:
-#   Same per-day window + budget as pb-t480. The two hosts each enforce
-#   their own limit independently — there is no shared cross-host
-#   budget yet (timekpr-next does not support that). An honest
-#   description of the policy: "up to N hours on EACH host per day"
-#   rather than "N hours total." If/when the kids start gaming
-#   sessions across both, this becomes worth solving (probably via a
-#   syncthing-backed shared timekpr state file or a cross-host
-#   accounting daemon); for now it's an acceptable approximation.
+#   Same per-day window + budget as pb-t480, and since 2026-07-27 the two
+#   hosts share ONE daily pool rather than each enforcing its own copy.
+#   The local timekpr daemon is still the only thing that enforces; the
+#   cross-host accounting lives on ursa (flake-modules/timekpr-central.nix)
+#   and `timekpr-sync` below reconciles this host against it every minute.
+#   So the policy is honestly "N hours total per day across both machines",
+#   not "N hours on EACH". If the controller is unreachable the agent
+#   no-ops and this host falls back to its own local cap — the old
+#   per-host behaviour, which is a safe degradation rather than an outage.
 #
 # Hibernate on a desktop:
 #   Unusual but explicitly requested. battery.nix is imported (the
@@ -85,6 +86,7 @@ let
   hostName = "m-pc";
   primaryUser = "p";
   kidUsers = [ "m" ];
+  central = config.flake.lib.timekprCentral;
   system = "x86_64-linux";
   stateVersion = "25.11";
 
@@ -136,13 +138,9 @@ in
   # ../../hosts/m-pc/chrome-policy.json if/when m-pc needs to differ.
   chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
-
-  # Shared cross-host daily budget via the docker-host control plane (LAN).
-  # Same budget pool as pb-t480. See flake-modules/timekpr-sync.nix.
-  timekpr-sync = {
-    serverUrl = "http://apphost.lan:8780";
-    users = kidUsers;
-  };
+  # NOTE: `timekpr.*` and `timekpr-sync.*` are set inside
+  # `configurations.nixos.${hostName}.module`, for the same per-config
+  # scoping reason.
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
@@ -200,16 +198,15 @@ in
       networking.hostName = hostName;
       users.primary = primaryUser;
 
+
       # ── Per-kid screen-time policies (timekpr) ───────────────────────
       # Identical policy to pb-t480 (same kid, same school schedule). See
       # the long comment in pb-t480.nix's `timekpr.users` block for the
       # weekday vs weekend rationale and the school-night curfew design.
       #
-      # Cross-host accounting caveat: timekpr enforces this budget
-      # PER HOST. m can spend the full daily allotment on m-pc AND another
-      # full daily allotment on pb-t480 if she switches between them. Not
-      # great, but not worth solving today; revisit if/when m starts
-      # actually exploiting it.
+      # This renders the LOCAL cap. The cross-host pool that keeps m from
+      # spending it once here and once on pb-t480 is the `timekpr-sync`
+      # block below.
       timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
       # Keep the admin account out of timekpr's sight entirely. Without
@@ -217,6 +214,20 @@ in
       # unrestricted timekpr.p.conf — not limited, but tracked, and one
       # timekpra mis-click from locking the admin out of this machine.
       timekpr.excludeUsers = [ primaryUser ];
+
+      # Shared cross-host daily budget. This host reports the seconds m
+      # burns HERE to the controller on ursa and pulls back the pool-wide
+      # remainder, so the budget rendered by `timekpr.users` above is
+      # spent once per day across the whole fleet rather than once per
+      # machine. Same pool as pb-t480 — that is the entire point. See
+      # flake-modules/timekpr-sync.nix. Public hostname rather than the LAN
+      # IP: it resolves from any VLAN via the AdGuard rewrite and rides a
+      # real wildcard cert, so a forged controller can't hand out time.
+      timekpr-sync = {
+        serverUrl = central.url;
+        users = kidUsers;
+        token = central.reportToken;
+      };
 
       # AMD Radeon Pro WX 2100 (GCN 1.1 / "Tonga") is driven by amdgpu
       # in mainline kernels. RADV (the Mesa Vulkan driver) supports
