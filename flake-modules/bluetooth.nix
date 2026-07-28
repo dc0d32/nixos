@@ -23,11 +23,27 @@
 # WSL doesn't get bluetooth; ah-1 (NAS) doesn't either.
 #
 # Top-level options:
-#   - bluetooth.enable — read-only signal; true iff this module is
-#     imported on this host. Set by mkDefault inside the module body
-#     so other modules (e.g. waybar's bluetooth chip) can read the
-#     flag without coupling to a host-level toggle. Mirrors the
-#     pattern used in flake-modules/biometrics.nix.
+#   - bluetooth.enable — see the WARNING below. Read by nothing today.
+#
+# WARNING — this signal does NOT mean what the name suggests.
+# `bluetooth.enable` is a flake-parts *top-level* option, and
+# import-tree loads every file under flake-modules/ unconditionally, so
+# the `mkDefault true` below is applied once for the whole flake. The
+# flag therefore reads `true` on EVERY host — including WSL and ah-1,
+# which deliberately do not import this module. It is not, and cannot
+# be, "true iff this module is imported on this host".
+#
+# It cannot be fixed by moving the assignment into the class modules
+# either: the intended consumer (waybar's bluetooth chip in
+# desktop-shell.nix) is home-manager, home-manager runs standalone in
+# this flake, and a NixOS-class module's config is not visible from an
+# HM evaluation. A genuine cross-class per-host signal needs a
+# different mechanism than a shared flake-parts option.
+#
+# Harmless today only because nothing reads it — the waybar chip at
+# desktop-shell.nix is unconditional. Do NOT gate anything on this
+# flag without fixing the mechanism first, or the gate will be
+# permanently open. Same caveat applies to biometrics.enable.
 #
 # User permissions: BlueZ does not ship a `bluetooth` Unix group;
 # upstream-recommended access control is via polkit. The polkit JS
@@ -48,12 +64,9 @@
       type = lib.types.bool;
       default = false;
       description = ''
-        Read-only signal: true iff the bluetooth module is imported on
-        this host. Other dendritic modules (waybar's bluetooth chip,
-        future per-host UI hints) inspect this to decide whether to
-        render bluetooth UI. Don't set this manually — import
-        flake-modules/bluetooth.nix to enable bluetooth; the module
-        sets this flag itself.
+        Read by nothing today. Reads `true` on every host in the flake,
+        NOT just the ones importing this module — see the WARNING in the
+        file header before gating anything on it.
       '';
     };
   };

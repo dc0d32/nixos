@@ -8,18 +8,27 @@
 # closure (TensorFlow + dlib + face models) that not every
 # biometric host wants.
 #
-# A `biometrics.enable` signal option (default false, set to true
-# by this module's own config when imported) is published so other
-# dendritic modules can adapt their UI without coupling to a
-# host-level flag. (Currently no consumer reads it after the
-# quickshell retreat — kept in place for future use; cheap.)
+# A `biometrics.enable` signal option is published so other dendritic
+# modules could adapt their UI. Nothing reads it after the quickshell
+# retreat — see the WARNING below before wiring a consumer.
 #
 # Top-level options:
-#   - biometrics.enable — read-only signal; true iff this module is
-#     imported into the host. Set by mkDefault inside the module body
-#     so other modules can inspect it without forcing a value.
+#   - biometrics.enable — see the WARNING below. Read by nothing today.
 #   - biometrics.cameraDevice — fallback /dev/video* path used at
 #     boot before the autodetect oneshot picks the real IR sensor.
+#
+# WARNING — `biometrics.enable` does NOT mean what the name suggests.
+# It is a flake-parts *top-level* option, and import-tree loads every
+# file under flake-modules/ unconditionally, so the `mkDefault true`
+# below applies once for the whole flake. The flag reads `true` on
+# EVERY host, including m-pc, wsl and ah-1 which never import this
+# module. It is not "true iff imported into the host". Do not gate
+# anything on it without replacing the mechanism. Same caveat applies
+# to bluetooth.enable; see flake-modules/bluetooth.nix for why moving
+# the assignment into the class modules does not fix it either.
+#
+# `biometrics.face` is unaffected — it is declared inside the NixOS
+# module below and so is genuinely per-host.
 #     Optional; defaults to /dev/video2.
 #
 # NixOS-level option (declared inside the NixOS module so face-unlock
@@ -38,11 +47,9 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Read-only signal: true iff the biometrics module is imported on
-        this host. Currently unused after the quickshell retreat; kept
-        for future cross-module UI adaptation. Don't set this manually
-        — import flake-modules/biometrics.nix to enable biometrics;
-        the module sets this flag itself.
+        Read by nothing today. Reads `true` on every host in the flake,
+        NOT just the ones importing this module — see the WARNING in the
+        file header before gating anything on it.
       '';
     };
     cameraDevice = lib.mkOption {
