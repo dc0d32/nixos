@@ -157,13 +157,13 @@ in
 
   # ── NixOS configuration ──────────────────────────────────────────
   configurations.nixos.${hostName} = {
-    # placeholder = true: hosts/m-pc/hardware-configuration.nix is the
-    # all-zeros sentinel until nixos-generate-config is run on the real
-    # machine. Skips the auto `nix flake check` entry so pure
-    # `nix flake check` passes on the dev box; smoke-build with
-    # NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure
-    #   .#nixosConfigurations.m-pc.config.system.build.toplevel
-    placeholder = true;
+    # placeholder = false: hosts/m-pc/hardware-configuration.nix is a real
+    # generated config (Intel desktop: ehci_pci/ahci/usb_storage), not the
+    # all-zeros sentinel — the machine is a daily driver. The stale
+    # `placeholder = true` here forced NIXOS_ALLOW_PLACEHOLDER=1 on every
+    # rebuild of a live host and made the flake look like m-pc was never
+    # installed. Corrected 2026-07-28.
+    placeholder = false;
     module = {
       imports = [
         ../../hosts/m-pc/hardware-configuration.nix
