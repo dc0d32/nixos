@@ -47,23 +47,33 @@
 # `LIMITS_PER_WEEKDAYS` as seven values.
 #
 # Per-user files are seeded into /var/lib/timekpr/config/timekpr.<user>.conf
-# via systemd.tmpfiles `C` (copy-if-missing) rules so the daemon's own
-# rewrites (when admin uses the GUI/CLI to adjust limits at runtime)
-# survive across reboots.
+# by timekpr-seed-config.service, which re-copies a user's file whenever
+# the DECLARED policy changes (it compares the seed's store path against a
+# `.seed-<user>` stamp) and leaves it alone otherwise. So a policy edit +
+# `nixos-rebuild switch` applies immediately, while ad-hoc runtime
+# adjustments made with `timekpra` persist until the declaration next
+# changes.
 #
-# IMPORTANT — applying a policy change to an already-deployed host:
-# Because the seed files use `C` semantics, editing this module or
-# the host's `timekpr.users.*` block and running `nixos-rebuild
-# switch` is NOT enough on a host that already has the file: the
-# pre-existing /var/lib/timekpr/config/timekpr.<user>.conf wins and
-# the daemon keeps the old policy. To re-apply the declared values:
+# HISTORY — two bugs that together meant this module enforced NOTHING from
+# its introduction until 2026-07-28:
 #
-#     sudo rm /var/lib/timekpr/config/timekpr.<user>.conf
-#     sudo nixos-rebuild switch --flake .#<host>
-#     sudo systemctl restart timekpr
+#  1. The user section was rendered as `[USER]`. timekpr reads the section
+#     named after the user (`common/utils/config.py::loadUserConfiguration`
+#     does `section = self._userName`). Every parameter read therefore
+#     raised NoSectionError, which `_readAndNormalizeValue` swallows,
+#     substituting defaults: LIMITS_PER_WEEKDAYS = 86400 x7 and
+#     ALLOWED_HOURS = all 24. That trips `TK_CTRL_TNL` in
+#     `server/user/userdata.py`, so clients displayed "Your time is not
+#     limited today" and no limit was ever applied. The daemon then
+#     rewrote the file with the correct section name and those unlimited
+#     defaults, permanently erasing the declared policy.
+#  2. Seeding used systemd.tmpfiles `C` (copy-only-if-missing), so fixing
+#     (1) alone would never have reached an already-deployed host — the
+#     unlimited file the daemon wrote in step (1) would win forever.
 #
-# This is by design — admin's ad-hoc runtime adjustments via
-# `timekpra` should not get clobbered by every system rebuild.
+# Both are fixed. The stamp in (2) is what repairs existing hosts: they
+# have no stamp file, so the corrected config is written on the next
+# switch.
 # A fresh install (no file present) gets the declared defaults
 # automatically; only updates need the manual reset.
 #
@@ -71,10 +81,8 @@
 # at time of writing — only `services.timekpr-next` exists in flake-
 # parts hearsay; nixpkgs HEAD ships no such thing), OR when this
 # household stops needing parental controls.
-{ lib, config, ... }:
+{ lib, ... }:
 let
-  cfg = config.timekpr;
-
   # Day-of-week names in the order timekpr's ALLOWED_HOURS_<n> /
   # LIMITS_PER_WEEKDAYS slots use them: ISO weekday numbering with
   # Monday=1 ... Sunday=7. The renderer iterates this list.
@@ -274,11 +282,12 @@ let
     in
     ''
       [DOCUMENTATION]
-      #### managed by flake-modules/timekpr.nix — initial seed only.
-      #### the daemon may rewrite this file when admin uses timekpra/timekprc
-      #### at runtime. delete the file and rebuild to re-apply declared defaults.
+      #### managed by flake-modules/timekpr.nix.
+      #### re-seeded automatically whenever the declared policy changes
+      #### (see the seed-stamp service below); runtime edits made with
+      #### timekpra/timekprc survive until then.
 
-      [USER]
+      [${username}]
       ${hoursLines}
       ALLOWED_WEEKDAYS = 1;2;3;4;5;6;7
       LIMITS_PER_WEEKDAYS = ${limitsList}
@@ -289,7 +298,7 @@ let
       LOCKOUT_TYPE = ${u.lockoutType}
       WAKEUP_HOUR_INTERVAL = 0;23
 
-      [USER.PLAYTIME]
+      [${username}.PLAYTIME]
       PLAYTIME_ENABLED = False
       PLAYTIME_LIMIT_OVERRIDE_ENABLED = False
       PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED = True
@@ -298,86 +307,192 @@ let
     '';
 in
 {
-  options.timekpr = {
-    users = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule userOpts);
-      default = { };
-      description = ''
-        Per-user time policies. The attribute name is the unix
-        username; the value declares that user's curfew window and
-        daily budget. Users not listed here are not subject to
-        timekpr enforcement (i.e. unrestricted from timekpr's POV).
-      '';
-    };
-  };
-
-  config.flake.modules.nixos.timekpr = { pkgs, ... }:
+  # Options live INSIDE the NixOS module, not at the flake-parts top
+  # level. Declaring them outside makes them a single shared option
+  # across the whole flake, so every host that sets `timekpr.users`
+  # merges its definition into the same attrset and all of them get the
+  # union. That is not hypothetical: it put a `timekpr.s.conf` on m-pc,
+  # where user `s` does not exist, purely because pb-t480 declares `s`.
+  # It also made per-host policy divergence impossible. Same failure the
+  # `timekpr-sync` module had, which went unnoticed only because
+  # `types.str` silently merges byte-identical definitions.
+  flake.modules.nixos.timekpr = { config, pkgs, ... }:
     let
-      # Materialize each per-user config into the nix store, then
-      # tmpfiles-copy it on first boot. We use copy (`C`) rather than
-      # link (`L`) so the daemon can rewrite the file at runtime when
-      # admin adjusts limits via timekpra; the rewrite persists across
-      # reboots because tmpfiles `C` is "create only if missing".
+      cfg = config.timekpr;
+
       userSeedFiles = lib.mapAttrs
         (username: u: pkgs.writeText "timekpr.${username}.conf" (renderUserConf username u))
         cfg.users;
 
-      tmpfilesUserRules = lib.mapAttrsToList
-        (username: seedFile:
-          "C /var/lib/timekpr/config/timekpr.${username}.conf 0644 root root - ${seedFile}"
-        )
-        userSeedFiles;
+      shippedConf = "${pkgs.timekpr}/etc/timekpr/timekpr.conf";
+      extraExcl = lib.concatStringsSep ";" cfg.excludeUsers;
+
+      mainConf =
+        if cfg.excludeUsers == [ ] then shippedConf
+        else
+          pkgs.runCommand "timekpr.conf" { } ''
+            sed -E 's|^(TIMEKPR_USERS_EXCL[[:space:]]*=[[:space:]]*.*)$|\1;${extraExcl}|' \
+              ${shippedConf} > $out
+            grep -qE '^TIMEKPR_USERS_EXCL[[:space:]]*=.*;${extraExcl}$' $out || {
+              echo "timekpr: TIMEKPR_USERS_EXCL not found in ${shippedConf};" >&2
+              echo "upstream must have renamed it — refusing to ship a config" >&2
+              echo "that silently drops excludeUsers = ${extraExcl}" >&2
+              exit 1
+            }
+          '';
+
+      # Re-seed a user's config whenever the DECLARED policy changes, and
+      # never otherwise.
+      #
+      # This replaces a tmpfiles `C` rule, which was "copy only if the
+      # destination is missing". That was wrong in the one way that
+      # mattered: it made a policy change in this flake a silent no-op on
+      # every host that had already booted once. Editing the budget here
+      # and rebuilding did nothing at all, forever, with no error.
+      #
+      # The stamp holds the store path of the seed that was last applied.
+      # Different path => the declaration changed => overwrite. Same path
+      # => leave the file alone, so runtime `timekpra` adjustments and the
+      # daemon's own rewrites still persist across reboots.
+      seedScript = pkgs.writeShellApplication {
+        name = "timekpr-seed-config";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = ''
+          install -d -m 0755 /var/lib/timekpr /var/lib/timekpr/config /var/lib/timekpr/work
+        '' + lib.concatStrings (lib.mapAttrsToList
+          (username: seedFile: ''
+            conf=/var/lib/timekpr/config/timekpr.${username}.conf
+            stamp=/var/lib/timekpr/config/.seed-${username}
+            if [ ! -e "$conf" ] || [ "$(cat "$stamp" 2>/dev/null || true)" != "${seedFile}" ]; then
+              install -m 0644 -o root -g root ${seedFile} "$conf"
+              printf '%s' "${seedFile}" > "$stamp"
+              echo "timekpr-seed: applied declared config for ${username}"
+            fi
+          '')
+          userSeedFiles);
+      };
     in
     {
-      # CLI/GUI tooling for admin (timekpra) and clients (timekprc) on
-      # PATH for everyone; the daemon binary lives at the same prefix.
-      environment.systemPackages = [ pkgs.timekpr ];
+      options.timekpr = {
+        users = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule userOpts);
+          default = { };
+          description = ''
+            Per-user time policies. The attribute name is the unix
+            username; the value declares that user's curfew window and
+            daily budget.
 
-      # The upstream D-Bus policy (shipped under
-      # ${pkgs.timekpr}/etc/dbus-1/system.d/timekpr.conf) restricts the
-      # admin interface to the `timekpr` group. NixOS picks up
-      # system.d snippets from packages listed here.
-      services.dbus.packages = [ pkgs.timekpr ];
+            Users not listed here are NOT automatically ignored — see
+            `excludeUsers`. timekpr tracks every non-system user that
+            logs in and auto-creates an unrestricted config for anyone
+            it has never seen.
+          '';
+        };
 
-      # Polkit action shipped at ${pkgs.timekpr}/share/polkit-1/actions
-      # — picked up by the systemwide polkit aggregation.
-      environment.pathsToLink = [ "/share/polkit-1" ];
+        excludeUsers = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "p" ];
+          description = ''
+            Usernames appended to timekpr's `TIMEKPR_USERS_EXCL`, on top
+            of the login managers upstream already excludes.
 
-      # Group used by the D-Bus policy to authorize admin calls. GID
-      # 2000 matches the upstream postinst convention (Debian/Ubuntu)
-      # so the same `timekpr` group works identically across distros
-      # if data is moved.
-      users.groups.timekpr = {
-        gid = 2000;
+            This matters for admin accounts. The daemon enrolls every
+            valid non-excluded user that logs in
+            (`server/interface/dbus/daemon.py`) and calls
+            `initUserConfiguration()` for unknown ones, writing an
+            unrestricted config. So an unlisted admin is not *limited*,
+            but it is *tracked*: it gets the timekpr tray icon and
+            notifications on the kids' machines, and a single mis-click
+            in the timekpra admin GUI can lock the admin out of the very
+            box needed to undo it. Listing the admin here removes it
+            from timekpr's view entirely.
+          '';
+        };
       };
 
-      # Main daemon config: the package ships a fully-realized
-      # /etc/timekpr/timekpr.conf with TIMEKPR_SHARED_DIR already
-      # patched to the nix store; we just symlink it into /etc.
-      environment.etc."timekpr/timekpr.conf".source =
-        "${pkgs.timekpr}/etc/timekpr/timekpr.conf";
+      config = {
+        # CLI/GUI tooling for admin (timekpra) and clients (timekprc) on
+        # PATH for everyone; the daemon binary lives at the same prefix.
+        environment.systemPackages = [ pkgs.timekpr ];
 
-      # Logrotate snippet shipped by upstream (rotates /var/log/timekpr*).
-      environment.etc."logrotate.d/timekpr".source =
-        "${pkgs.timekpr}/etc/logrotate.d/timekpr";
+        # The upstream D-Bus policy (shipped under
+        # ${pkgs.timekpr}/etc/dbus-1/system.d/timekpr.conf) restricts the
+        # admin interface to the `timekpr` group. NixOS picks up
+        # system.d snippets from packages listed here.
+        services.dbus.packages = [ pkgs.timekpr ];
 
-      # Seed per-user config files. tmpfiles `C` only writes if the
-      # destination is missing, so the daemon's own runtime rewrites
-      # (driven by timekpra) survive reboots.
-      systemd.tmpfiles.rules = [
-        "d /var/lib/timekpr 0755 root root -"
-        "d /var/lib/timekpr/config 0755 root root -"
-        "d /var/lib/timekpr/work 0755 root root -"
-      ] ++ tmpfilesUserRules;
+        # Polkit action shipped at ${pkgs.timekpr}/share/polkit-1/actions
+        # — picked up by the systemwide polkit aggregation.
+        environment.pathsToLink = [ "/share/polkit-1" ];
 
-      # The daemon. The unit shipped at
-      # ${pkgs.timekpr}/lib/systemd/system/timekpr.service uses
-      # absolute store paths for ExecStart and WorkingDirectory, so
-      # we just adopt it wholesale by listing the package as a
-      # systemd package and enabling the unit.
-      systemd.packages = [ pkgs.timekpr ];
-      systemd.services.timekpr = {
-        wantedBy = [ "multi-user.target" ];
+        # Group used by the D-Bus policy to authorize admin calls. GID
+        # 2000 matches the upstream postinst convention (Debian/Ubuntu)
+        # so the same `timekpr` group works identically across distros
+        # if data is moved.
+        users.groups.timekpr = {
+          gid = 2000;
+        };
+
+        # Main daemon config: the package ships a fully-realized
+        # /etc/timekpr/timekpr.conf with TIMEKPR_SHARED_DIR already
+        # patched to the nix store. When `excludeUsers` is empty we
+        # symlink it verbatim; otherwise we append to its
+        # TIMEKPR_USERS_EXCL line and ship the result.
+        #
+        # Patching by sed rather than rewriting the file wholesale keeps
+        # every other upstream key (and any key a future release adds)
+        # exactly as shipped. That matters more than usual here: this
+        # file lives in the read-only store, and if the daemon fails to
+        # read any expected key it calls initTimekprConfig() and tries to
+        # write the file back. The `grep -q` is a build-time guard so an
+        # upstream rename of TIMEKPR_USERS_EXCL fails the build instead
+        # of silently dropping the exclusion.
+        environment.etc."timekpr/timekpr.conf".source = mainConf;
+
+        # Logrotate snippet shipped by upstream (rotates /var/log/timekpr*).
+        environment.etc."logrotate.d/timekpr".source =
+          "${pkgs.timekpr}/etc/logrotate.d/timekpr";
+
+        # Seed per-user config files. The actual copy is done by
+        # timekpr-seed-config.service below (tmpfiles `C` could not express
+        # "re-copy when the declaration changes"); these rules only
+        # guarantee the directories exist for anything else that looks.
+        systemd.tmpfiles.rules = [
+          "d /var/lib/timekpr 0755 root root -"
+          "d /var/lib/timekpr/config 0755 root root -"
+          "d /var/lib/timekpr/work 0755 root root -"
+        ];
+
+        # Must land before the daemon reads the config, and must re-run on a
+        # switch that changes the seed — hence both the ordering and the
+        # restartTriggers. Without the trigger a `nixos-rebuild switch` would
+        # write the new seed only at the next reboot.
+        systemd.services.timekpr-seed-config = {
+          description = "Apply declared timekpr per-user configuration";
+          wantedBy = [ "multi-user.target" ];
+          before = [ "timekpr.service" ];
+          restartTriggers = lib.attrValues userSeedFiles;
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = lib.getExe seedScript;
+          };
+        };
+
+        # The daemon. The unit shipped at
+        # ${pkgs.timekpr}/lib/systemd/system/timekpr.service uses
+        # absolute store paths for ExecStart and WorkingDirectory, so
+        # we just adopt it wholesale by listing the package as a
+        # systemd package and enabling the unit.
+        systemd.packages = [ pkgs.timekpr ];
+        systemd.services.timekpr = {
+          wantedBy = [ "multi-user.target" ];
+          # Without this the daemon keeps serving whatever policy it parsed
+          # at boot, and a switch that changes the budget looks like a no-op
+          # until the next reboot.
+          restartTriggers = lib.attrValues userSeedFiles;
+        };
       };
     };
 }

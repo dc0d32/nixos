@@ -136,17 +136,6 @@ in
   # ../../hosts/m-pc/chrome-policy.json if/when m-pc needs to differ.
   chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
-  # ── Per-kid screen-time policies (timekpr) ───────────────────────
-  # Identical policy to pb-t480 (same kid, same school schedule). See
-  # the long comment in pb-t480.nix's `timekpr.users` block for the
-  # weekday vs weekend rationale and the school-night curfew design.
-  #
-  # Cross-host accounting caveat: timekpr enforces this budget
-  # PER HOST. m can spend the full daily allotment on m-pc AND another
-  # full daily allotment on pb-t480 if she switches between them. Not
-  # great, but not worth solving today; revisit if/when m starts
-  # actually exploiting it.
-  timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
   # Shared cross-host daily budget via the docker-host control plane (LAN).
   # Same budget pool as pb-t480. See flake-modules/timekpr-sync.nix.
@@ -210,6 +199,24 @@ in
 
       networking.hostName = hostName;
       users.primary = primaryUser;
+
+      # ── Per-kid screen-time policies (timekpr) ───────────────────────
+      # Identical policy to pb-t480 (same kid, same school schedule). See
+      # the long comment in pb-t480.nix's `timekpr.users` block for the
+      # weekday vs weekend rationale and the school-night curfew design.
+      #
+      # Cross-host accounting caveat: timekpr enforces this budget
+      # PER HOST. m can spend the full daily allotment on m-pc AND another
+      # full daily allotment on pb-t480 if she switches between them. Not
+      # great, but not worth solving today; revisit if/when m starts
+      # actually exploiting it.
+      timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
+
+      # Keep the admin account out of timekpr's sight entirely. Without
+      # this, logging in as `p` here enrolls it and auto-writes an
+      # unrestricted timekpr.p.conf — not limited, but tracked, and one
+      # timekpra mis-click from locking the admin out of this machine.
+      timekpr.excludeUsers = [ primaryUser ];
 
       # AMD Radeon Pro WX 2100 (GCN 1.1 / "Tonga") is driven by amdgpu
       # in mainline kernels. RADV (the Mesa Vulkan driver) supports

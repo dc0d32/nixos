@@ -131,24 +131,6 @@ in
   # the open-source Chromium build lacks.
   chrome-managed.policyFile = ../../hosts/pb-t480/chrome-policy.json;
 
-  # ── Per-kid screen-time policies (timekpr) ───────────────────────
-  # Both kids share the same policy:
-  #   - Window mon-thu + sun: 06:00-22:00. Sunday too because Monday
-  #     is school — the curfew is "no use after 22:00 on the night
-  #     BEFORE a school day."
-  #   - Window fri + sat:     06:00-23:00. Looser cutoff because the
-  #     next morning isn't school.
-  #   - Budget mon-fri:       240 min (4h). All five are school days.
-  #   - Budget sat + sun:     360 min (6h).
-  #
-  # Note Friday is a school day (4h budget) but Friday night curfew
-  # is the looser 23:00 because Saturday isn't school. The two axes
-  # are independent — that's the whole point of the *ByDay form.
-  #
-  # p is unrestricted (not listed in timekpr.users) but IS in the
-  # `timekpr` group below so they can drive timekpra/timekprc to
-  # grant ad-hoc time or change limits at runtime.
-  timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
 
   # Shared cross-host daily budget: report usage to and pull the shared
   # remaining from the docker-host control plane (LAN). Same budget pool
@@ -237,6 +219,33 @@ in
 
       networking.hostName = hostName;
       users.primary = primaryUser;
+
+      # ── Per-kid screen-time policies (timekpr) ───────────────────────
+      # Both kids share the same policy:
+      #   - Window mon-thu + sun: 06:00-22:00. Sunday too because Monday
+      #     is school — the curfew is "no use after 22:00 on the night
+      #     BEFORE a school day."
+      #   - Window fri + sat:     06:00-23:00. Looser cutoff because the
+      #     next morning isn't school.
+      #   - Budget mon-fri:       240 min (4h). All five are school days.
+      #   - Budget sat + sun:     360 min (6h).
+      #
+      # Note Friday is a school day (4h budget) but Friday night curfew
+      # is the looser 23:00 because Saturday isn't school. The two axes
+      # are independent — that's the whole point of the *ByDay form.
+      #
+      # p is unrestricted (not listed in timekpr.users) but IS in the
+      # `timekpr` group below so they can drive timekpra/timekprc to
+      # grant ad-hoc time or change limits at runtime.
+      timekpr.users = lib.genAttrs kidUsers (_: config.flake.lib.kidTimekprPolicy);
+
+      # p is excluded from timekpr entirely — not merely absent from
+      # `timekpr.users`. Without this the daemon enrolls p on first login
+      # and auto-writes an unrestricted timekpr.p.conf: not limited, but
+      # tracked, and one timekpra mis-click from locking the admin out of
+      # this machine. p remains in the `timekpr` group below so they can
+      # still drive timekpra/timekprc to grant ad-hoc time.
+      timekpr.excludeUsers = [ primaryUser ];
 
       # GPU driver is a guess — revisit after generating real hardware
       # config. T480 SKUs ship with Intel UHD 620 alone, or Intel +
