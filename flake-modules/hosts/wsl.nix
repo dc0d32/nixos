@@ -63,6 +63,10 @@ let
       # extension can't connect. See flake-modules/nix-ld.nix.
       config.flake.modules.nixos.nix-ld
       config.flake.modules.nixos.system-utils
+      # /bin/bash FHS shim — the Copilot CLI hardcodes that path and is
+      # otherwise unusable as an agent here. See
+      # flake-modules/bin-bash.nix.
+      config.flake.modules.nixos.bin-bash
       config.flake.modules.nixos.users
       config.flake.modules.nixos.locale
     ]

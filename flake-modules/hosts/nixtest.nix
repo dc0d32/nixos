@@ -45,6 +45,10 @@ let
       # Base server-class modules (same set as ah-1).
       config.flake.modules.nixos.nix-settings
       config.flake.modules.nixos.system-utils
+      # /bin/bash FHS shim — the Copilot CLI hardcodes that path and is
+      # otherwise unusable as an agent here. See
+      # flake-modules/bin-bash.nix.
+      config.flake.modules.nixos.bin-bash
       config.flake.modules.nixos.users
       config.flake.modules.nixos.locale
       config.flake.modules.nixos.networking
