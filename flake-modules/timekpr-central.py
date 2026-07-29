@@ -25,6 +25,16 @@ silently inflating tomorrow.
 
 remaining = budget(today) + bonus - sum(spent over all hosts), clamped
 at >= 0.
+
+allowedHoursByDay (optional per user) is the same "HH:MM-HH:MM" window
+the kid hosts render into their local timekpr config, carried here for
+DISPLAY ONLY. It is never folded into `remaining`: in timekpr the budget
+and the window are independent axes (server/user/userdata.py takes
+min(secondsLeft, per-hour limits)), so a grant cannot open a blocked
+hour, and collapsing them here would make a curfew indistinguishable
+from an exhausted budget — which would make a parent's grant appear to
+do nothing. Absent from the spec, the calendar and curfew banner are
+simply not rendered and the JSON gains no window keys.
 """
 
 import base64
@@ -210,6 +220,58 @@ class Controller:
             return None
         return user["budgetMinutesByDay"][DAY_NAMES[when.weekday()]] * 60
 
+    def window(self, username, weekday):
+        """(start_hour, end_hour) for one weekday, or None if not configured.
+
+        End is EXCLUSIVE, matching the module that renders these same strings
+        into timekpr's hour-grain ALLOWED_HOURS_<n>: "06:00-22:00" permits
+        06:00..21:59. Returns None rather than raising when the spec predates
+        the option, so an old spec degrades to "no calendar" instead of a
+        crashed dashboard.
+        """
+        user = self.users.get(username)
+        if user is None:
+            return None
+        windows = user.get("allowedHoursByDay")
+        if not windows:
+            return None
+        return parse_window(windows.get(DAY_NAMES[weekday]))
+
+    def window_state(self, username, when):
+        """Curfew picture for `when`: is the window open, and when does it flip?
+
+        This is DISPLAY ONLY. The controller deliberately does not fold the
+        window into `remaining` — budget and window are independent axes in
+        timekpr (`server/user/userdata.py` takes min(secondsLeft, hour
+        limits), so a grant can never open a blocked hour), and the local
+        daemon is the only thing positioned to enforce either. Collapsing
+        them here would make a curfew look like an exhausted budget and
+        would mean a parent's grant appeared to do nothing.
+        """
+        win = self.window(username, when.weekday())
+        if win is None:
+            return None
+        start, end = win
+        within = start <= when.hour < end
+        if within:
+            flip = when.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=end)
+        elif when.hour < start:
+            flip = when.replace(hour=start, minute=0, second=0, microsecond=0)
+        else:
+            # Past today's close: the next opening is tomorrow's start hour,
+            # which may differ from today's (weekend windows are wider).
+            nxt = self.window(username, (when.weekday() + 1) % 7)
+            nxt_start = start if nxt is None else nxt[0]
+            flip = (when + timedelta(days=1)).replace(
+                hour=nxt_start, minute=0, second=0, microsecond=0
+            )
+        return {
+            "withinWindow": within,
+            "windowToday": fmt_window(start, end),
+            "changesAt": flip.strftime("%Y-%m-%d %H:%M"),
+            "changesAtLabel": flip.strftime("%a %H:%M"),
+        }
+
     def status(self, username, when):
         """Full picture for one user on one day. None if user is unknown."""
         budget = self.budget_seconds(username, when)
@@ -220,7 +282,7 @@ class Controller:
         bonus = self.store.bonus(day, username)
         spent = sum(h["spent"] for h in hosts)
         locked, until = self.store.lock_state(username, when)
-        return {
+        st = {
             "user": username,
             "day": day,
             "budget": budget,
@@ -234,12 +296,95 @@ class Controller:
             "lockedUntil": until,
             "hosts": hosts,
         }
+        # Additive: absent when the spec carries no windows, and never folded
+        # into `remaining`, so agents are unaffected either way.
+        win = self.window_state(username, when)
+        if win is not None:
+            st.update(win)
+        return st
+
+
+def parse_window(window):
+    """"HH:MM-HH:MM" -> (start_hour, end_hour), or None if unusable.
+
+    Minutes are accepted and ignored, exactly as timekpr's hour-grain
+    accounting ignores them. Anything malformed yields None so a typo
+    degrades the calendar rather than taking the dashboard down; the Nix
+    side already rejects the same strings at build time.
+    """
+    if not isinstance(window, str):
+        return None
+    try:
+        start_s, end_s = window.split("-", 1)
+        start = int(start_s.split(":", 1)[0])
+        end = int(end_s.split(":", 1)[0])
+    except (ValueError, AttributeError):
+        return None
+    if not (0 <= start <= 23 and 0 < end <= 24 and start < end):
+        return None
+    return start, end
+
+
+def fmt_window(start, end):
+    return f"{start:02d}:00-{end:02d}:00"
 
 
 def fmt_hms(seconds):
     sign = "-" if seconds < 0 else ""
     seconds = abs(int(seconds))
     return f"{sign}{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+
+
+DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def render_calendar(controller, username, now):
+    """A week x 24h grid of the allowed window, with today and now marked.
+
+    The point of this is to make the two independent axes visible at a
+    glance. A parent looking at "4h 59m left" at 23:35 cannot tell from the
+    number alone that the window shut at 22:00; the grid shows the shut
+    window, the current hour sitting outside it, and the budget for each day
+    in one place. Returns "" when the spec carries no windows.
+    """
+    user = controller.users.get(username) or {}
+    if not user.get("allowedHoursByDay"):
+        return ""
+
+    head = "".join(
+        f"<div class=hh>{h if h % 3 == 0 else ''}</div>" for h in range(24)
+    )
+    rows = []
+    for idx, label in enumerate(DAY_LABELS):
+        win = controller.window(username, idx)
+        budget = user["budgetMinutesByDay"][DAY_NAMES[idx]]
+        is_today = idx == now.weekday()
+        cells = []
+        for h in range(24):
+            on = win is not None and win[0] <= h < win[1]
+            klass = "on" if on else "off"
+            if is_today and h == now.hour:
+                klass += " now"
+            cells.append(f"<div class='{klass}'></div>")
+        dl = "dl today" if is_today else "dl"
+        rows.append(
+            f"<div class='{dl}'>{label}</div>"
+            + "".join(cells)
+            + f"<div class=bd>{budget // 60}h{budget % 60:02d}</div>"
+        )
+    return f"""
+      <div class=calwrap>
+        <div class=cal>
+          <div></div>{head}<div></div>
+          {"".join(rows)}
+        </div>
+      </div>
+      <p class="dim legend">
+        <span class="sw on"></span> allowed
+        <span class="sw off"></span> curfew
+        <span class="sw now"></span> now
+        &middot; right column is that day's budget
+      </p>"""
 
 
 def render_dashboard(controller, now):
@@ -273,6 +418,20 @@ def render_dashboard(controller, now):
               </form>"""
         else:
             state = f"<p class=big>{fmt_hms(st['remaining'])} left</p>"
+            # The whole reason the calendar exists: budget and window are
+            # independent, so "X left" alone is a half-truth outside the
+            # window. Say so on the same line the number appears on.
+            if st.get("withinWindow") is False:
+                state += (
+                    f'<p class=curfew>&#127769; curfew &mdash; today\'s window '
+                    f'{html.escape(st["windowToday"])} is shut, '
+                    f'opens {html.escape(st["changesAtLabel"])}</p>'
+                )
+            elif st.get("withinWindow") is True:
+                state += (
+                    f'<p class=dim>window {html.escape(st["windowToday"])} '
+                    f'&middot; shuts {html.escape(st["changesAtLabel"])}</p>'
+                )
             lock_form = f"""
               <form method=post action=/lock>
                 <input type=hidden name=user value="{user_esc}">
@@ -287,6 +446,7 @@ def render_dashboard(controller, now):
               {state}
               <p>used {fmt_hms(st['spent'])} of {fmt_hms(st['budget'])}{bonus_bit}</p>
               <div class=bar><div class=fill style="width:{pct}%"></div></div>
+              {render_calendar(controller, username, now)}
               <ul>{host_bits}</ul>
               <form method=post action=/grant>
                 <input type=hidden name=user value="{user_esc}">
@@ -322,7 +482,31 @@ def render_dashboard(controller, now):
  button.neg {{ background: #6b3030; }}
  button.ok {{ background: #2f7a45; }}
  .locked {{ color: #ff8b8b; }}
+ .curfew {{ color: #ffc46b; margin: .2rem 0; font-size: .95rem; }}
  form {{ display: inline; }}
+ /* Week x 24h grid. The horizontal scroller is for narrow phones: 24
+    columns cannot shrink below legibility, so let it overflow rather
+    than collapse into unreadable slivers. */
+ .calwrap {{ overflow-x: auto; margin: .6rem 0 .2rem; }}
+ .cal {{ display: grid; grid-template-columns: 2.2rem repeat(24, 1fr) 2.4rem;
+         gap: 1px; min-width: 22rem; }}
+ .cal > div {{ height: 1rem; }}
+ .cal .hh {{ font-size: .55rem; color: #7d8794; text-align: left;
+             line-height: 1rem; }}
+ .cal .dl {{ font-size: .7rem; color: #9aa4b2; line-height: 1rem; }}
+ .cal .dl.today {{ color: #e6e6e6; font-weight: 600; }}
+ .cal .bd {{ font-size: .6rem; color: #7d8794; line-height: 1rem;
+             text-align: right; }}
+ .cal .on {{ background: #2f6bd8; }}
+ .cal .off {{ background: #262a33; }}
+ .cal .now {{ outline: 2px solid #ffc46b; outline-offset: -2px; }}
+ .legend {{ font-size: .75rem; }}
+ .sw {{ display: inline-block; width: .7rem; height: .7rem;
+        vertical-align: -1px; margin: 0 .2rem 0 .5rem; }}
+ .sw.on {{ background: #2f6bd8; }}
+ .sw.off {{ background: #262a33; }}
+ .sw.now {{ background: #262a33; outline: 2px solid #ffc46b;
+            outline-offset: -2px; }}
 </style></head><body>
 <h1>screen time &middot; {now.strftime('%A %Y-%m-%d %H:%M')}</h1>
 {''.join(rows)}

@@ -37,6 +37,14 @@
 # rule (see flake-modules/homelab/secrets.nix): `adminPasswordFile` gates
 # the dashboard, optional `tokenFile` gates /report.
 #
+# The dashboard shows a week x 24h calendar of the allowed window
+# alongside the budget. Those are two INDEPENDENT axes in timekpr — the
+# daemon takes min(budget left, hour limits), so granting time can never
+# open a blocked hour — and a dashboard showing only the budget is
+# therefore actively misleading: "4h 59m left" at 23:35 is true and
+# unusable at the same time. `allowedHoursByDay` is fed in for display
+# only; this service still never enforces anything.
+#
 # Retire when: timekpr-nExT grows native multi-host accounting (upstream
 #   has no such feature and no issue tracking one), OR the household stops
 #   needing a shared budget (one host per kid, or the kids age out).
@@ -51,7 +59,9 @@
         adminPasswordFile = cfg.adminPasswordFile;
         token = cfg.token;
         tokenFile = cfg.tokenFile;
-        users = lib.mapAttrs (_: u: { inherit (u) budgetMinutesByDay; }) cfg.users;
+        users = lib.mapAttrs
+          (_: u: { inherit (u) budgetMinutesByDay allowedHoursByDay; })
+          cfg.users;
       });
     in
     {
@@ -67,9 +77,17 @@
           '';
           example = lib.literalExpression ''
             {
-              m.budgetMinutesByDay = {
-                mon = 240; tue = 240; wed = 240; thu = 240;
-                fri = 240; sat = 360; sun = 360;
+              m = {
+                budgetMinutesByDay = {
+                  mon = 240; tue = 240; wed = 240; thu = 240;
+                  fri = 240; sat = 360; sun = 360;
+                };
+                allowedHoursByDay = {
+                  mon = "06:00-22:00"; tue = "06:00-22:00";
+                  wed = "06:00-22:00"; thu = "06:00-22:00";
+                  fri = "06:00-23:00"; sat = "06:00-23:00";
+                  sun = "06:00-22:00";
+                };
               };
             }
           '';
@@ -84,6 +102,39 @@
                 options = lib.genAttrs
                   [ "mon" "tue" "wed" "thu" "fri" "sat" "sun" ]
                   (_: lib.mkOption { type = lib.types.ints.positive; });
+              };
+            };
+
+            # Display only — the controller never enforces the window. The
+            # kid's own timekpr daemon already does, and it is the only thing
+            # that can (it is the one watching the session). This exists so
+            # the dashboard can SHOW the curfew: without it a parent sees
+            # "4h 59m left" at 23:35 and reasonably concludes the system is
+            # broken, when in fact the daily window closed at 22:00 and
+            # timekpr is locking correctly. Budget and window are independent
+            # axes and a grant cannot open a blocked hour, so a dashboard
+            # that shows only the budget is actively misleading.
+            options.allowedHoursByDay = lib.mkOption {
+              description = ''
+                Per-weekday allowed window as "HH:MM-HH:MM", start inclusive
+                and end EXCLUSIVE at hour grain — "06:00-22:00" permits
+                06:00..21:59. Must match the `allowedHoursByDay` the kid
+                hosts render into their local timekpr config, so single-source
+                both from the same policy attrset (on ursa that is
+                `pub.lib.kidTimekprPolicy`). All seven days must be given,
+                for the same reason as the budget above.
+              '';
+              example = lib.literalExpression ''
+                {
+                  mon = "06:00-22:00"; tue = "06:00-22:00"; wed = "06:00-22:00";
+                  thu = "06:00-22:00"; fri = "06:00-23:00"; sat = "06:00-23:00";
+                  sun = "06:00-22:00";
+                }
+              '';
+              type = lib.types.submodule {
+                options = lib.genAttrs
+                  [ "mon" "tue" "wed" "thu" "fri" "sat" "sun" ]
+                  (_: lib.mkOption { type = lib.types.strMatching "[0-9]{1,2}:[0-9]{2}-[0-9]{1,2}:[0-9]{2}"; });
               };
             };
           });
