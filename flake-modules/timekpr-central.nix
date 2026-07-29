@@ -115,14 +115,21 @@
             # axes and a grant cannot open a blocked hour, so a dashboard
             # that shows only the budget is actively misleading.
             options.allowedHoursByDay = lib.mkOption {
+              default = null;
               description = ''
                 Per-weekday allowed window as "HH:MM-HH:MM", start inclusive
                 and end EXCLUSIVE at hour grain — "06:00-22:00" permits
                 06:00..21:59. Must match the `allowedHoursByDay` the kid
                 hosts render into their local timekpr config, so single-source
                 both from the same policy attrset (on ursa that is
-                `pub.lib.kidTimekprPolicy`). All seven days must be given,
-                for the same reason as the budget above.
+                `pub.lib.kidTimekprPolicy`).
+
+                Optional, unlike the budget: the controller cannot enforce a
+                window and the dashboard simply omits the calendar when this
+                is null, so requiring it would break existing deployments to
+                buy nothing. But if you DO give it, all seven days are
+                required — a half-specified week would draw a calendar that
+                lies about the days it omits, which is worse than no calendar.
               '';
               example = lib.literalExpression ''
                 {
@@ -131,11 +138,11 @@
                   sun = "06:00-22:00";
                 }
               '';
-              type = lib.types.submodule {
+              type = lib.types.nullOr (lib.types.submodule {
                 options = lib.genAttrs
                   [ "mon" "tue" "wed" "thu" "fri" "sat" "sun" ]
                   (_: lib.mkOption { type = lib.types.strMatching "[0-9]{1,2}:[0-9]{2}-[0-9]{1,2}:[0-9]{2}"; });
-              };
+              });
             };
           });
         };

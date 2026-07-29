@@ -72,8 +72,13 @@ reasons:
 `pub.lib.kidTimekprPolicy.allowedHoursByDay` — the same attrset the kid
 hosts render into their local timekpr config. Retyping it would let the
 dashboard drift from what is actually enforced, which would be strictly
-worse than showing nothing. All seven days are required (build-time error
-on a missing day), matching `budgetMinutesByDay`.
+worse than showing nothing.
+
+The option is optional (unlike the budget) — the controller cannot enforce
+a window and the dashboard just omits the calendar when it is null, so
+requiring it would break existing deployments to buy nothing. Give it and
+all seven days become required: a half-specified week draws a calendar that
+lies about the days it omits, which is worse than no calendar.
 
 The controller parses the window with the same semantics the Nix renderer
 uses: hour grain, start inclusive, **end exclusive** — `06:00-22:00`
