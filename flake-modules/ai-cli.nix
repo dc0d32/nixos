@@ -57,7 +57,7 @@ in
   flake.modules.homeManager.ai-cli = { pkgs, lib, config, ... }:
     let
       # uv installs tool executables into its default user bin dir; surface
-      # it on PATH (zsh lacks it -- fish.nix already adds it for fish).
+      # it on PATH (zsh's login env doesn't include it by default).
       localBin = "${config.home.homeDirectory}/.local/bin";
     in
     {

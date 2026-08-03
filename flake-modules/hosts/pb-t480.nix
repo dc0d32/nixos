@@ -11,7 +11,7 @@
 # Kids' graphical session is the same niri / desktop-shell stack as p so
 # things look familiar across users. They get google-chrome (with
 # Family-Link-locking managed policies — see chrome-managed.nix),
-# alacritty, zsh, fish but no vscode / freecad / bitwarden / ai-cli /
+# alacritty, zsh but no vscode / freecad / bitwarden / ai-cli /
 # build-deps. Web filtering and DNS logging are NOT installed
 # (deferred per session notes 2026-04-30-family-laptop-host.md,
 # written before the rename).

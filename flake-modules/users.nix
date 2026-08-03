@@ -1,13 +1,11 @@
-# Cross-host user defaults: enable zsh + fish system-wide, pick zsh
-# as the default user shell, and declare the per-NixOS-config
-# `users.primary` option for other feature modules to reference.
+# Cross-host user defaults: enable zsh system-wide, pick it as the
+# default user shell, and declare the per-NixOS-config `users.primary`
+# option for other feature modules to reference.
 #
-# Both shells are enabled system-wide so they show up in /etc/shells
-# (precondition for `users.users.<u>.shell = pkgs.<shell>` to work as
-# a login shell). Switching from zsh to fish on a given host is a
-# one-line edit (`shell = pkgs.fish;` in that host's users.users
-# block); the fish HM module is still in the home-base bundle and
-# the fish config is still generated.
+# zsh is enabled system-wide so it shows up in /etc/shells
+# (precondition for `users.users.<u>.shell = pkgs.zsh` to work as a
+# login shell). zsh is the only interactive shell this flake ships —
+# fish was removed 2026-08-03.
 #
 # `users.primary` is a NixOS option (per-host), not a flake-parts
 # option (per-flake). Each host bridge sets it inside its
@@ -44,7 +42,6 @@
     };
 
     config = {
-      programs.fish.enable = lib.mkDefault true;
       programs.zsh.enable = lib.mkDefault true;
       # Plain value (priority 100) so we beat nixpkgs' bash module,
       # which sets users.defaultUserShell = mkDefault pkgs.bashInteractive

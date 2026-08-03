@@ -185,7 +185,6 @@
           '';
           default = [
             ".local/share/zsh"
-            ".local/share/fish"
             ".local/share/atuin"
             ".local/state/nix"
             ".local/state/home-manager"

@@ -7,10 +7,6 @@
 # Members:
 #   - btop          system monitor
 #   - direnv        per-project env
-#   - fish          secondary shell, kept installed and configured so
-#                   flipping a single host to fish is a one-line edit
-#                   (`shell = pkgs.fish;` in the host bridge's
-#                   users.users block); see flake-modules/fish.nix
 #   - gh            GitHub CLI
 #   - git           version control + identity
 #   - nix-settings  user-profile GC policy (mirrors NixOS-side
@@ -19,9 +15,9 @@
 #   - vim           base editor + source of EDITOR/VISUAL (replaced
 #                   neovim 2026-05-02; the neovim module was removed
 #                   entirely 2026-06-25)
-#   - zsh           login shell (default across all hosts; the
-#                   2026-05 fish-default cutover was reverted, fish
-#                   stays installed but zsh is the default again)
+#   - zsh           login shell and the only interactive shell in this
+#                   flake (a 2026-05 fish cutover was reverted, and
+#                   fish was removed entirely 2026-08-03)
 #
 # Adding a new universally-needed HM module: add it here and it
 # propagates to every account in the flake.
@@ -39,7 +35,6 @@
   flake.lib.bundles.homeManager.base = with config.flake.modules.homeManager; [
     btop
     direnv
-    fish
     gh
     git
     nix-settings

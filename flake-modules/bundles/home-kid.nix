@@ -36,7 +36,7 @@
 #
 # Members = dev ++ the kid desktop set:
 #   dev (= base ++ ai-cli ++ build-deps):
-#     btop direnv fish gh git nix-settings tmux vim zsh
+#     btop direnv gh git nix-settings tmux vim zsh
 #     + ai-cli (github-copilot-cli, opencode)
 #     + build-deps (gcc/make/cmake, python3, nodejs, tree-sitter,
 #       archive/transfer CLIs, …)

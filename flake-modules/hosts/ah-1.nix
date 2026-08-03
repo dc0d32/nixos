@@ -33,7 +33,7 @@
 #   No GUI (niri/desktop-shell/lockscreen/wallpaper/idle/desktop-extras),
 #   no GUI-only HM (alacritty, chrome, vscode, freecad), no audio,
 #   no battery, no biometrics, no hardware-hacking groups. The HM
-#   bundle mirrors the wsl.nix headless set (zsh, fish, tmux, vim, btop,
+#   bundle mirrors the wsl.nix headless set (zsh, tmux, vim, btop,
 #   git, direnv, gh, ai-cli, build-deps) so SSHing into any homelab
 #   VM feels like SSHing into WSL: same shell, same prompt, same
 #   muscle memory.
