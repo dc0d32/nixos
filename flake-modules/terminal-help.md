@@ -51,6 +51,8 @@ up on this machine. Most commands accept `--help` for more, and
 | **Home** / **Ctrl-A** | Jump to the start of the line |
 | **End** / **Ctrl-E** | Jump to the end of the line |
 | **Ctrl-←** / **Ctrl-→** | Move one word left / right |
+| **Ctrl-W** | Delete the word before the cursor |
+| **Ctrl-U** / **Ctrl-K** | Delete to the start / end of the line |
 | **Ctrl-R** | Search commands you typed before (atuin) |
 | **Tab** | Auto-complete (press twice to see the choices) |
 | **Ctrl-C** | Stop the command that is running |

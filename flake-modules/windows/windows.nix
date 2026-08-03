@@ -132,6 +132,19 @@ let
     "ruff"
     "numbat"
     "sd"
+    # GNU coreutils, natively. uutils is a Rust reimplementation compiled
+    # with MSVC — real Win32 binaries, no Cygwin/MSYS emulation layer and
+    # no path translation. Gives head/tail/wc/cut/tr/uniq/seq/realpath/
+    # sha256sum/… which PowerShell simply lacks, plus GNU semantics for
+    # ls/cat/cp/mv/rm once profile.ps1 drops the shadowing PS aliases.
+    # See the "GNU coreutils" block in profile.ps1 for the conflict list.
+    #
+    # Native-build safety: uutils also ships `link.exe` and `expand.exe`
+    # shims, which would sit ahead of the MSVC linker and Windows' CAB
+    # tool on PATH. setup.ps1 deletes both shims after every install
+    # (Step 4), and profile.ps1 leaves the PowerShell aliases alone
+    # inside a Visual Studio developer shell.
+    "uutils-coreutils"
   ];
 
   # Nerd Font for the Windows-Terminal face "FantasqueSansM Nerd Font
@@ -305,6 +318,24 @@ let
             Write-Host "  winget uninstall $id (now provided by Scoop)"
             winget uninstall --exact --id $id --silent --disable-interactivity 2>$null
           }
+        }
+
+        # uutils ships two shims whose names collide with native-build
+        # tooling: `link.exe` (the Visual C++ linker) and `expand.exe`
+        # (Windows' CAB extractor). scoop\shims sits early on PATH, so
+        # leaving them in place risks a VC build resolving GNU link(1)
+        # instead of the linker. Neither GNU tool earns that risk — `ln`
+        # already covers link(1), and expand(1) (tabs → spaces) is
+        # trivially replaceable. Pruned after every run because scoop
+        # recreates shims on install and on update.
+        $shimDir = Join-Path $scoopRoot 'shims'
+        foreach ($shim in 'link', 'expand') {
+          Get-ChildItem -Path $shimDir -Filter "$shim.*" -ErrorAction SilentlyContinue |
+            Where-Object { $_.BaseName -eq $shim } |
+            ForEach-Object {
+              Write-Host "  removing shim $($_.Name) (collides with the MSVC toolchain)"
+              Remove-Item $_.FullName -Force
+            }
         }
 
         Write-Host '== Step 5/5: cursor theme (Bibata-Modern-Classic) =='
