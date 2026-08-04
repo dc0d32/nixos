@@ -18,15 +18,41 @@
 #     dismissed.
 #
 # Per-sink scoping:
-#   EasyEffects 8.x has no global "process all outputs" toggle. Per-sink
-#   selection is done entirely via autoload rules in
-#   ~/.config/easyeffects/autoload/output/. A rule
-#   "<device>:<profile>.json" tells EE: "when this PipeWire sink
-#   appears, load this preset on it." Sinks with no rule are left
-#   flat/passthrough. We therefore deliberately do NOT write a global
-#   `lastLoadedOutputPreset` into easyeffectsrc — that key would make
-#   the configured preset apply to whatever sink happens to be default
-#   on startup (e.g. bluetooth headphones), defeating per-sink scope.
+#   EasyEffects 8.x has no global "process all outputs" toggle, and it
+#   runs exactly ONE output pipeline bound to whatever sink is current
+#   (`DbStreamOutputs::outputDevice`). Per-sink selection is therefore
+#   done entirely via autoload rules in
+#   ~/.local/share/easyeffects/autoload/output/. A rule
+#   "<device>:<route-description>.json" tells EE: "when this PipeWire
+#   sink becomes current, load this preset." We deliberately do NOT
+#   write a global `lastLoadedOutputPreset` into easyeffectsrc — that
+#   key would make the configured preset apply to whatever sink happens
+#   to be default on startup (e.g. bluetooth headphones), defeating
+#   per-sink scope.
+#
+#   TWO non-obvious upstream behaviours drive the shape of this module:
+#
+#   1. Autoload rules live under XDG_DATA_HOME, not XDG_CONFIG_HOME.
+#      presets_directory_manager.cpp builds autoload_output_dir as
+#      `AppDataLocation / "autoload/output"`. EE ships an
+#      `xdg_migration()` that copies a legacy ~/.config/easyeffects/
+#      autoload/ tree into the data dir — but `copy_file` inherits the
+#      source's mode, and a nix-store source is 0444, so the *second*
+#      migration fails with EPERM and aborts. Deploying to
+#      xdg.configFile therefore froze the rule at whatever it happened
+#      to be on the first successful run. Everything goes to
+#      xdg.dataFile now; the activation script below sweeps up the
+#      0444 leftovers and the stale config-side tree.
+#
+#   2. When no rule matches, `AutoloadManager::load()` returns WITHOUT
+#      touching the pipeline unless the fallback is enabled — so the
+#      previously-loaded preset (built-in speaker EQ + speaker
+#      convolver IR) stayed applied to bluetooth headphones, HDMI and
+#      dock sinks. The fix is EE's own fallback mechanism: we ship a
+#      neutral `Passthrough` preset (empty plugins_order) and point
+#      `output/inputAutoloadingFallbackPreset` at it. Any device
+#      without an explicit rule now gets an EMPTY effects chain, i.e.
+#      the untouched default audio path.
 #
 # Pattern A: hosts opt in by importing this module on either class.
 # WSL / headless / desktops without speakers simply don't import the
@@ -44,6 +70,26 @@
 # shipping its own systemd unit and we can drop the inline one.
 { lib, ... }:
 let
+  # Name of the neutral preset this module generates and points EE's
+  # autoload fallback at. Empty plugins_order → EE tears the effects
+  # chain down to nothing, i.e. the stock audio path.
+  passthroughPresetName = "Passthrough";
+
+  mkPassthroughPreset = pipeline: builtins.toJSON {
+    ${pipeline} = {
+      blocklist = [ ];
+      plugins_order = [ ];
+    };
+  };
+
+  # Byte-for-byte the shape AutoloadManager::add() writes from the GUI.
+  mkAutoloadRule = rule: builtins.toJSON {
+    device = rule.device;
+    device-description = rule.description;
+    device-profile = rule.profile;
+    preset-name = rule.preset;
+  };
+
   autoloadType = lib.types.submodule {
     options = {
       device = lib.mkOption {
@@ -57,7 +103,13 @@ let
       profile = lib.mkOption {
         type = lib.types.str;
         example = "Speaker";
-        description = "ALSA card profile (used in the autoload rule filename).";
+        description = ''
+          PipeWire *route description* for the device (what EE calls the
+          "device profile" in the autoload rule filename). This is the
+          `description` of the device's active Route param, NOT the ALSA
+          card profile name — e.g. "Speaker", "Headphones", "Digital
+          Microphone". Get it with `./scripts/audio-discover.sh`.
+        '';
       };
       description = lib.mkOption {
         type = lib.types.str;
@@ -157,10 +209,81 @@ in
           '';
           description = ''
             List of per-sink autoload rules. Each entry binds a single
-            PipeWire sink (by node-name) to a single preset; sinks with
-            no entry are left flat/passthrough. There is intentionally no
-            global default — see the per-sink scoping note in the file
-            header.
+            PipeWire sink (by node-name) to a single preset. Sinks with
+            no entry fall back to `fallbackPreset` (a flat passthrough
+            chain by default), which is what keeps bluetooth headphones,
+            HDMI and dock outputs on the untouched default audio path.
+            There is intentionally no global "apply everywhere" default
+            — see the per-sink scoping note in the file header.
+          '';
+        };
+
+        inputPresetsDir = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          example = lib.literalExpression "./audio-presets-input";
+          description = ''
+            Directory of EasyEffects *input* (microphone) preset JSON
+            files to deploy under ~/.local/share/easyeffects/input/.
+            Same deal as `presetsDir`, other pipeline.
+          '';
+        };
+
+        inputAutoloads = lib.mkOption {
+          type = lib.types.listOf autoloadType;
+          default = [ ];
+          example = lib.literalExpression ''
+            [
+              {
+                device = "alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Mic1__source";
+                profile = "Digital Microphone";
+                description = "Alder Lake PCH-P High Definition Audio Controller Digital Microphone";
+                preset = "X1Yoga7-Mic";
+              }
+            ]
+          '';
+          description = ''
+            Per-source autoload rules for the input (microphone)
+            pipeline. Same semantics as `autoloads`; sources with no
+            entry get `inputFallbackPreset`.
+          '';
+        };
+
+        fallbackPreset = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = passthroughPresetName;
+          description = ''
+            EasyEffects output preset autoloaded for any sink that has no
+            entry in `autoloads`. Defaults to the module-generated
+            "${passthroughPresetName}" preset — an empty effects chain, so
+            bluetooth / HDMI / dock outputs stay on the stock audio path
+            instead of inheriting the built-in speaker's correction.
+
+            Set to null to disable the fallback entirely, which restores
+            upstream EasyEffects behaviour: the last-loaded preset stays
+            applied to whatever device you switch to.
+          '';
+        };
+
+        inputFallbackPreset = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = passthroughPresetName;
+          description = ''
+            Input-pipeline twin of `fallbackPreset`. Applies to any
+            source with no entry in `inputAutoloads`.
+          '';
+        };
+
+        clearBypass = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Reset EasyEffects' global Bypass switch to off on every
+            home-manager activation. Scoping is handled by autoload rules
+            now, so a sticky global bypass (the usual manual workaround
+            for "my speaker preset followed me onto my headphones") would
+            just disable the DSP everywhere. Set to false if you want the
+            GUI toggle to survive activations.
           '';
         };
       };
@@ -247,16 +370,21 @@ in
           Install.WantedBy = [ "graphical-session.target" ];
         };
 
-        # EasyEffects (newer versions) stores presets and IRS under
-        # ~/.local/share/easyeffects/. Deploying to ~/.config/easyeffects/
-        # output/ triggers a migration that fails on nix store read-only
-        # symlinks, so everything goes to xdg.dataFile instead.
+        # EasyEffects 8.x keeps presets, IRS *and* autoload rules under
+        # XDG_DATA_HOME (QStandardPaths::AppDataLocation), i.e.
+        # ~/.local/share/easyeffects/. Its xdg_migration() will happily
+        # copy a legacy ~/.config/easyeffects/ tree over, but the copy
+        # preserves the 0444 mode of a nix-store source and then fails
+        # with EPERM forever after — so never deploy any of this via
+        # xdg.configFile. `force = true` everywhere so the activation
+        # takes over files left behind by that migration.
         xdg.dataFile = lib.mkMerge [
           (lib.optionalAttrs (cfg.irsDir != null)
             (lib.mapAttrs'
               (name: _:
                 lib.nameValuePair "easyeffects/irs/${name}" {
                   source = "${cfg.irsDir}/${name}";
+                  force = true;
                 })
               (builtins.readDir cfg.irsDir)))
 
@@ -268,26 +396,140 @@ in
                   force = true;
                 })
               (builtins.readDir cfg.presetsDir)))
+
+          (lib.optionalAttrs (cfg.inputPresetsDir != null)
+            (lib.mapAttrs'
+              (name: _:
+                lib.nameValuePair "easyeffects/input/${name}" {
+                  source = "${cfg.inputPresetsDir}/${name}";
+                  force = true;
+                })
+              (builtins.readDir cfg.inputPresetsDir)))
+
+          # The neutral fallback preset. Deployed whenever a fallback is
+          # configured under the generated name; a host that points
+          # `fallbackPreset` at one of its own presets gets nothing extra.
+          (lib.optionalAttrs (cfg.fallbackPreset == passthroughPresetName) {
+            "easyeffects/output/${passthroughPresetName}.json" = {
+              force = true;
+              text = mkPassthroughPreset "output";
+            };
+          })
+          (lib.optionalAttrs (cfg.inputFallbackPreset == passthroughPresetName) {
+            "easyeffects/input/${passthroughPresetName}.json" = {
+              force = true;
+              text = mkPassthroughPreset "input";
+            };
+          })
+
+          # Per-device autoload rules. Filename format is
+          # "<device>:<route-description>.json" — exactly what
+          # EasyEffects writes when you add an autoload profile from the
+          # Presets → Autoloading tab. One rule per device keeps each
+          # device's preset isolated; devices without a rule get the
+          # fallback preset instead of silently inheriting whatever was
+          # loaded last.
+          (lib.listToAttrs (map
+            (rule: lib.nameValuePair
+              "easyeffects/autoload/output/${rule.device}:${rule.profile}.json"
+              {
+                force = true;
+                text = mkAutoloadRule rule;
+              })
+            cfg.autoloads))
+
+          (lib.listToAttrs (map
+            (rule: lib.nameValuePair
+              "easyeffects/autoload/input/${rule.device}:${rule.profile}.json"
+              {
+                force = true;
+                text = mkAutoloadRule rule;
+              })
+            cfg.inputAutoloads))
         ];
 
-        # Per-sink autoload rules. Filename format is
-        # "<device>:<profile>.json" — exactly what EasyEffects writes when
-        # you set up an autoload via the UI. One rule per sink keeps each
-        # sink's preset isolated from the others; sinks without a rule
-        # stay flat.
-        xdg.configFile = lib.listToAttrs (map
-          (rule: lib.nameValuePair
-            "easyeffects/autoload/output/${rule.device}:${rule.profile}.json"
-            {
-              force = true;
-              text = builtins.toJSON {
-                device = rule.device;
-                device-description = rule.description;
-                device-profile = rule.profile;
-                preset-name = rule.preset;
-              };
-            })
-          cfg.autoloads);
+        # EasyEffects' own settings database. The autoload FALLBACK is
+        # the piece that actually turns the DSP off on unlisted devices
+        # (see header note 2), and it lives in easyeffectsrc rather than
+        # in a file we can own outright: EasyEffects rewrites that file
+        # itself (window geometry, most-used presets, current device …),
+        # so a nix-store symlink would either be clobbered or block the
+        # app's own writes. Seed just our keys with kwriteconfig6 and
+        # leave the rest of the file alone.
+        #
+        # `kcfgfile name="easyeffects/db/easyeffectsrc"` is relative to
+        # XDG_CONFIG_HOME, and the autoloading keys live in the [Window]
+        # group (easyeffects_db.kcfg — the group spans the whole first
+        # block, the name is historical).
+        #
+        # Ordering: entryBetween keeps this after linkGeneration (so the
+        # Passthrough preset and the autoload rules are on disk before EE
+        # is restarted into them) and before home-manager reloads
+        # systemd.
+        #
+        # The stop-then-start dance is NOT optional. EasyEffects installs
+        # a SIGTERM handler (main.cpp SignalHandler → QCoreApplication::
+        # quit()), so a graceful shutdown runs db::Manager::~Manager() →
+        # saveAll() → writes its whole in-memory settings tree back to
+        # easyeffectsrc. Writing our keys while the daemon is alive and
+        # then restarting it would therefore lose them on the way down.
+        # Stop first, edit the file nobody is holding, start again.
+        home.activation.easyeffectsDb =
+          lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "linkGeneration" ] ''
+            eeRc="${config.xdg.configHome}/easyeffects/db/easyeffectsrc"
+            eeData="${config.xdg.dataHome}/easyeffects"
+
+            # Sweep up the pre-2026-08 mistake: autoload rules used to be
+            # deployed to ~/.config/easyeffects/autoload/, which EE then
+            # copied into the data dir as 0444 regular files. Those
+            # copies shadow the ones home-manager now manages (and cannot
+            # be overwritten by EE's own migration, which is why the rule
+            # froze at its first-ever value). Drop every unwritable plain
+            # file — home-manager's own entries are symlinks and hand-made
+            # GUI rules are 0644, so both survive. Then drop the legacy
+            # config-side tree that keeps re-triggering the migration.
+            for d in output input; do
+              if [ -d "$eeData/autoload/$d" ]; then
+                find "$eeData/autoload/$d" -maxdepth 1 -type f ! -writable \
+                  -name '*.json' -exec $DRY_RUN_CMD rm -f {} +
+              fi
+            done
+            if [ -d "${config.xdg.configHome}/easyeffects/autoload" ]; then
+              $DRY_RUN_CMD rm -rf "${config.xdg.configHome}/easyeffects/autoload"
+            fi
+
+            # systemd is NOT on home-manager's activation PATH — reference
+            # systemctl by store path the way home-manager's own
+            # reloadSystemd entry does, or this silently no-ops with
+            # "systemctl: command not found".
+            systemctl=${lib.getExe' pkgs.systemd "systemctl"}
+
+            eeWasRunning=0
+            if [ -n "''${XDG_RUNTIME_DIR:-}" ] \
+              && "$systemctl" --user is-active --quiet easyeffects.service; then
+              eeWasRunning=1
+              $DRY_RUN_CMD "$systemctl" --user stop easyeffects.service
+            fi
+
+            $DRY_RUN_CMD mkdir -p "$(dirname "$eeRc")"
+
+            kw() {
+              $DRY_RUN_CMD ${lib.getExe' pkgs.kdePackages.kconfig "kwriteconfig6"} \
+                --file "$eeRc" --group "$1" --key "$2" "$3"
+            }
+
+            kw Window outputAutoloadingUsesFallback ${lib.boolToString (cfg.fallbackPreset != null)}
+            kw Window outputAutoloadingFallbackPreset ${lib.escapeShellArg (toString cfg.fallbackPreset)}
+            kw Window inputAutoloadingUsesFallback ${lib.boolToString (cfg.inputFallbackPreset != null)}
+            kw Window inputAutoloadingFallbackPreset ${lib.escapeShellArg (toString cfg.inputFallbackPreset)}
+            ${lib.optionalString cfg.clearBypass ''
+              kw EffectsPipelines bypass false
+            ''}
+
+            if [ "$eeWasRunning" = 1 ]; then
+              $DRY_RUN_CMD "$systemctl" --user start easyeffects.service || true
+            fi
+          '';
       };
     };
 }

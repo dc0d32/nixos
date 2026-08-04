@@ -220,12 +220,18 @@ in
       # don't conflict on these values. See flake-modules/audio.nix.
       #
       # autoloads: each entry binds a single PipeWire sink (by
-      # node-name) to a single EasyEffects preset; sinks without an
-      # entry are left flat/passthrough. Get a sink's node-name with:
-      #   wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
-      # Add a second entry here when you author a preset for bluetooth
-      # headphones (device = "bluez_output.<MAC>.1", profile is the
-      # PipeWire profile name shown by `wpctl status`).
+      # node-name) to a single EasyEffects preset. The built-in speaker
+      # is the ONLY entry on purpose — bluetooth headphones, the
+      # DisplayLink/Thunderbolt dock and HDMI have no rule, so they get
+      # `audio.fallbackPreset` (the generated "Passthrough" preset, an
+      # empty effects chain). Plugging in headphones therefore drops the
+      # X1's speaker EQ + convolver IR, and switching back to the
+      # speaker re-applies it. Without that fallback EasyEffects leaves
+      # the last-loaded preset running on whatever sink you moved to.
+      #
+      # `profile` is the PipeWire *route description*, not the ALSA card
+      # profile. Generate a ready-to-paste entry for the current default
+      # sink/source with ./scripts/audio-discover.sh.
       audio = {
         presetsDir = ../../hosts/pb-x1/audio-presets;
         irsDir = ../../hosts/pb-x1/audio-irs;
@@ -237,6 +243,10 @@ in
             preset = "X1Yoga7-Dynamic-Detailed";
           }
         ];
+        # No mic preset authored yet, so inputAutoloads stays empty and
+        # the built-in "Digital Microphone" route runs unprocessed. Add
+        # hosts/pb-x1/audio-presets-input/<name>.json + inputPresetsDir
+        # + an inputAutoloads entry to change that.
       };
 
       # EDITOR/VISUAL default to "vim" via flake-modules/vim.nix.

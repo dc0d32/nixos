@@ -65,15 +65,23 @@ let
   # captured on real hardware. Run on the T480 itself, from a
   # checkout of this flake:
   #   ./scripts/audio-discover.sh
-  # which prints a ready-to-paste autoload entry like:
+  # which prints ready-to-paste autoload entries like:
   #   {
   #     device = "alsa_output.pci-0000_00_1f.3.analog-stereo";
-  #     profile = "analog-stereo";
+  #     profile = "Speaker";
   #     description = "...";
   #     preset = "T480-Music";
   #   }
-  # Until then EasyEffects runs in passthrough; users can apply
-  # T480-Music or T480-Voice by hand from the EE GUI to audition.
+  # `profile` is the PipeWire *route description* ("Speaker",
+  # "Headphones", …), NOT the ALSA card profile ("analog-stereo") —
+  # EasyEffects keys its autoload rule filename on the former. Do not
+  # hand-guess it; the script reads it out of pw-dump.
+  #
+  # Until an entry exists here every output — including the built-in
+  # speakers — resolves to audio.fallbackPreset, i.e. the generated
+  # "Passthrough" preset (no processing). Once the speaker rule is
+  # added, the T480 behaves like pb-x1: preset on the built-in
+  # speakers, stock audio path on bluetooth / HDMI / dock.
   audioCfg = {
     presetsDir = ../../hosts/pb-t480/audio-presets;
     # No IRS files — the presets don't reference convolver#0.
