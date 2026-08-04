@@ -17,14 +17,42 @@
 # How: for every HM configuration named `<user>@<hostname>` matching
 # this host's hostname, contribute a oneshot systemd service
 # `nixos-clone-<user>.service` that runs `git clone <url> ~/nixos`
-# as that user. Idempotency comes from
+# as that user, plus a timer that keeps retrying until it lands.
+# Idempotency comes from
 #   ConditionPathExists=!/home/<user>/nixos/.git
-# so the unit is a no-op once the clone exists. Users who delete
-# their clone deliberately can re-trigger it with
-#   sudo systemctl start nixos-clone-<user>.service
-# but it will not auto-recreate on its own — by design (lets
-# advanced users move ~/nixos elsewhere without the unit clobbering
-# their layout on next boot).
+# so every fire after the first success is a microsecond no-op.
+#
+# ── This is a guarantee, not a nicety ────────────────────────────────
+# `~/nixos` is the fallback you reach for *when auto-update has
+# failed* — the checkout you `home-manager switch --flake ~/nixos#…`
+# from by hand. That makes its delivery path load-bearing, and it must
+# not share fate with the thing it rescues you from.
+#
+# Two independent triggers, on purpose:
+#   1. `nixos-clone-<user>.timer` — OnBootSec=2min, then OnCalendar
+#      hourly, ungated. This is the one that matters.
+#   2. `autoUpdate.bestEffortSteps` — the auto-update sequencer also
+#      runs it ahead of each system rebuild, so `sudo auto-update-now`
+#      guarantees a checkout too.
+#
+# (1) exists because (2) alone would be circular: every condition that
+# stops auto-update — on battery, outside the quiet window, inside the
+# 6h throttle, offline, or simply broken — would also stop the clone.
+#
+# Earlier revisions of this module had a single `WantedBy=
+# multi-user.target` trigger and no retry. `Type=oneshot` forbids
+# `Restart=`, so that meant exactly ONE attempt per boot: a transient
+# DNS hiccup while WiFi was still associating, on a desktop rebooted
+# monthly, left the clone silently absent for weeks. Observed on m-pc,
+# where `~/nixos` for user `m` had to be created by hand.
+#
+# `OnBootSec` + `OnCalendar` rather than `OnUnitActiveSec`: a unit
+# that keeps being condition-skipped never *becomes* active, so an
+# activity-relative timer would arm once and never re-fire.
+#
+# Consequence worth knowing: deleting `~/nixos` now gets it recreated
+# within the hour. To keep a checkout elsewhere, leave a `.git` at the
+# default path or drop this module from the host.
 #
 # User enumeration mirrors home-manager-bootstrap.nix exactly: same
 # `<user>@<hostname>` naming convention, same outerHm capture
@@ -33,10 +61,15 @@
 # bootstrap set and the clone set automatically.
 #
 # Network gating: `Wants=network-online.target` +
-# `After=network-online.target`. If wait-online times out (e.g. WiFi
-# never authenticated), the unit fails this boot — but
-# ConditionPathExists still passes next boot, so it retries
-# automatically until the clone succeeds.
+# `After=network-online.target` for the boot-time fire. If wait-online
+# times out (e.g. WiFi never authenticated), the unit fails — and the
+# hourly timer picks it up, rather than waiting for the next reboot.
+#
+# The checkout is for reading, hacking and manual activation. It is
+# NEVER the source of an automatic upgrade: both real auto-update
+# steps fetch `github:dc0d32/nixos` into the nix store as root, so a
+# dirty or stale `~/nixos` cannot affect what gets deployed. Nothing
+# here ever pulls, fetches or resets an existing checkout.
 #
 # HTTPS over SSH: the clone URL is HTTPS (`https://github.com/…`)
 # so no per-user SSH key is required. Users who want to push from
@@ -134,14 +167,59 @@ in
       };
     in
     {
-      # Retried on every auto-update poll instead of only once per boot.
-      # `Type=oneshot` forbids `Restart=`, and the unit is otherwise just
-      # `WantedBy=multi-user.target`, so it gets exactly one attempt per
-      # boot -- one transient DNS hiccup on a desktop that reboots
-      # monthly means the clone silently never happens (observed on
-      # m-pc). best-effort, not a required step: a clone that fails for a
-      # persistent reason must not withhold the driver's `last-success`
-      # stamp and turn every poll into a full rebuild.
+      # ── Retry, independently of auto-update ─────────────────────
+      #
+      # Each clone unit gets its own hourly timer. This is deliberately
+      # NOT delegated to the auto-update driver, even though the clone
+      # is also registered there as a best-effort step (below).
+      #
+      # The reason is a circular dependency: `~/nixos` is the fallback
+      # you reach for *when auto-update has failed* -- the checkout you
+      # `home-manager switch --flake ~/nixos#...` from by hand. If its
+      # only retry were the auto-update sequencer, then every condition
+      # that stops auto-update (on battery, outside the quiet window,
+      # inside the 6h throttle, offline, or simply broken) would also
+      # stop the clone. The escape hatch would be behind the thing it
+      # exists to rescue you from.
+      #
+      # So: cheap, ungated, hourly, on every host, for every user.
+      # A `git clone` of this repo is a few MB and the unit is
+      # condition-skipped in microseconds once `~/nixos/.git` exists
+      # (and, thanks to RemainAfterExit, is a total no-op after a
+      # success within the same boot).
+      #
+      # `OnBootSec` + `OnCalendar` are used rather than
+      # `OnUnitActiveSec`, because a unit that keeps being
+      # condition-skipped never *becomes* active, so an activity-relative
+      # timer would arm once and never re-fire.
+      systemd.timers = lib.mapAttrs'
+        (cfgName: _hm:
+          let user = lib.elemAt (lib.splitString "@" cfgName) 0; in
+          lib.nameValuePair "nixos-clone-${user}" {
+            description = "Retry ~${user}/nixos checkout until it exists";
+            wantedBy = [ "timers.target" ];
+            timerConfig = {
+              # Shortly after boot, then hourly forever. The unit's
+              # ConditionPathExists makes every fire after the first
+              # success free.
+              OnBootSec = "2min";
+              OnCalendar = "hourly";
+              RandomizedDelaySec = "5min";
+              AccuracySec = "1min";
+            };
+          })
+        forThisHost;
+
+      # Also run it from the auto-update sequencer, as a best-effort
+      # step ahead of the system rebuild. Redundant with the timer
+      # above by design -- it means `sudo auto-update-now` also
+      # guarantees the checkout, and it closes the window where a host
+      # is about to activate a new generation with no local checkout.
+      #
+      # best-effort, never required: a clone that fails for a persistent
+      # reason (`~/nixos` exists, non-empty, not a repo) must not
+      # withhold the driver's `last-success` stamp, or the staleness
+      # fallback would turn every poll into a full rebuild.
       autoUpdate.bestEffortSteps =
         lib.mkOrder 50 (map (u: "nixos-clone-${u}.service") users);
 
@@ -161,10 +239,11 @@ in
               "systemd-user-sessions.service"
             ];
             # Idempotency: skip if a clone (or any .git dir) already
-            # exists at the target path. Users who removed their
-            # clone deliberately can re-trigger via
-            #   systemctl start nixos-clone-<user>.service
-            # but the unit won't recreate on its own.
+            # exists at the target path. Deliberately removing the
+            # clone DOES get it recreated -- within the hour, by the
+            # timer above. Users who want `~/nixos` somewhere else
+            # should leave a checkout (or at least a `.git`) at the
+            # default path, or drop the module from their host.
             unitConfig.ConditionPathExists =
               "!/home/${user}/nixos/.git";
             serviceConfig = {

@@ -462,6 +462,36 @@ with three explicit outcomes, all tested:
   the path and the manual command, instead of git's bare "destination
   path already exists and is not an empty directory"
 
+### …and the first fix for it was circular
+
+Registering the clone as an auto-update best-effort step gave it a retry,
+but put that retry *behind the auto-update gate*. `~/nixos` is precisely
+the fallback you reach for when auto-update has failed — so every
+condition that stops the updater (battery, outside the quiet window,
+inside the 6h throttle, offline, or simply broken) would also have
+stopped the clone. The escape hatch was behind the thing it exists to
+rescue you from. Caught by the user immediately on reading it back.
+
+Each clone unit now also has its **own** timer: `OnBootSec=2min` then
+`OnCalendar` hourly, ungated. `OnBootSec`+`OnCalendar` rather than
+`OnUnitActiveSec`, because a unit that keeps being condition-skipped
+never *becomes* active, so an activity-relative timer would arm once and
+never re-fire — the same trap that ruled out a `.target`-based sequencer
+earlier in the session.
+
+The sequencer registration is kept as well, redundantly and on purpose:
+it means `sudo auto-update-now` also guarantees a checkout. Cost after
+the first success is nil, since `ConditionPathExists` skips the unit in
+microseconds.
+
+Behaviour change worth noting: deleting `~/nixos` now gets it recreated
+within the hour. The old module documented the opposite as deliberate
+("lets advanced users move ~/nixos elsewhere"), but the user's
+requirement is that the checkout be a guarantee on every machine for
+`p`, and a manual-trigger fallback for the kids' accounts. Verified: all
+five NixOS hosts emit a timer for every HM user (pb-x1 `p`; pb-t480
+`p`/`m`/`s`; m-pc `p`/`m`; wsl and wsl-arm `p`).
+
 ## Follow-up
 
 Backup is next: `backup.nix` still has a daily 03:00 calendar timer with
