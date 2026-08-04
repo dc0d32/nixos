@@ -43,7 +43,56 @@ sudo backup-restore                     # restore latest (whole /persist)
 sudo backup-restore --include /persist/home/p
 ./scripts/seed-from-host.sh --from pb-x1 --user p   # pull /persist/home/p
                                                      # from pb-x1's repo
+
+# Auto-update wrappers (installed system-wide on every host that imports
+# flake.lib.bundles.nixos.auto-deploy — i.e. all six NixOS hosts):
+auto-update-status                      # policy, last run/success, next fire
+sudo auto-update-now                    # run now, bypassing every gate
+sudo systemctl stop auto-update.timer   # quiet, for a long refactor
 ```
+
+## Auto-update
+
+Every NixOS host polls ~hourly (`auto-update.timer`) and, when the gate
+in `flake-modules/auto-update.nix` agrees — quiet window 02:00-09:00 or
+>24h since the last success, on wall power, GitHub reachable — runs
+`nixos-auto-upgrade.service` then `hm-auto-upgrade.service`, in that
+order, via a `systemctl start --wait` sequencer. Never reboots, never
+bumps `flake.lock`. Full write-up: `docs/auto-update.md`.
+
+Things to know before touching it:
+
+- The gate is an `ExecCondition=`, not an `ExecStartPre=`. A "not now"
+  answer must leave the unit *inactive*, not *failed*, or hourly
+  polling permanently reds out `systemctl status`.
+- `autoUpdate.minIntervalHours` (default 6) is the rate limit and is
+  load-bearing. The window is 7h wide and the timer polls hourly, and
+  the staleness fallback keys on last-*success* — so without it a host
+  awake overnight rebuilds ~7x/night and a host with a permanently
+  failing step rebuilds every hour forever. It is stamped by the gate
+  (on decide-to-proceed), not by the sequencer (on finish), so a run
+  killed mid-switch still counts.
+- Every unit in the chain carries `restartIfChanged = false` /
+  `stopIfChanged = false` / `X-StopOnRemoval = false`. A
+  `nixos-rebuild switch` restarts changed units mid-flight and will
+  otherwise tear down the process performing the switch.
+- Step order comes from `autoUpdate.steps` + `lib.mkOrder` (100 system,
+  200 home-manager). Do NOT try to discover steps by testing
+  `config.systemd.services ? <name>` inside the `mkIf` that defines
+  `systemd.services.auto-update` — that is an infinite recursion.
+- `auto-upgrade` and `hm-auto-upgrade` read options declared by
+  `auto-update`, so the three are one bundle and importing either
+  without the driver is an eval error.
+- Unit scripts must not rely on session variables. A systemd service
+  has no `SSL_CERT_FILE`, so curl has no CA bundle; test any generated
+  unit script with `env -i PATH=/run/current-system/sw/bin <script>`.
+- Wall power comes from `flake.lib.mkAcCheck`
+  (`flake-modules/power-gate.nix`), shared with `backup.nix`. It scans
+  sysfs for `Mains`/`USB*` supplies and, inside WSL, asks Windows for
+  `PowerStatus.PowerLineStatus` over interop (recovering a
+  `WSL_INTEROP` socket from `/run/WSL/*_interop`, since system services
+  inherit none). Exit codes: 0 AC, 1 battery, 2 undeterminable —
+  callers treat 2 as "proceed".
 
 ## Placeholder hosts
 

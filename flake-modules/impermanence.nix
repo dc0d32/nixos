@@ -444,6 +444,12 @@
             "/var/lib/systemd"
             # NixOS internal state — `nixos-rebuild` writes here.
             "/var/lib/nixos"
+            # auto-update bookkeeping: the `last-success` stamp that
+            # drives the ">24h since a good run, go anyway" fallback in
+            # flake-modules/auto-update.nix. Not persisting it would
+            # make every boot look like "never updated" and fire an
+            # unwanted rebuild the moment the machine comes up.
+            "/var/lib/auto-update"
             # NetworkManager: declared connections + system-connection
             # secrets. Losing this means re-pairing every WiFi network.
             "/etc/NetworkManager/system-connections"

@@ -1,26 +1,35 @@
 # NixOS bundle: auto-deploy.
 #
-# The "pull from origin/main on a daily timer" automation trio. Hosts
-# that are deployed-and-left (the family laptops/desktops and the
-# homelab VMs) import all three together so they stay in lockstep with
-# the repo without anyone SSHing in. Extracted on 2026-06-25 because
-# m-pc, pb-t480, ah-1 and wsl each listed the same three modules.
-#
-# The dev box (pb-x1) deliberately does NOT import this — a 04:40
-# nixos-rebuild timer racing in-progress edits is more annoying than
-# useful there. See flake-modules/auto-upgrade.nix.
+# The pull-from-`origin/main` automation, imported as a set by every
+# host that should stay in lockstep with the repo without anyone SSHing
+# in. Extracted on 2026-06-25 because m-pc, pb-t480, ah-1 and wsl each
+# listed the same modules; pb-x1 (the dev box) joined on 2026-08-04
+# once the driver learned to prefer a quiet window and hold off on
+# battery, which removed the "a 04:40 rebuild races my in-progress
+# edits" objection.
 #
 # Members:
-#   auto-upgrade   daily `nixos-rebuild switch --refresh --flake
-#                  github:dc0d32/nixos` (no reboot)
-#   nixos-clone    per-user oneshot that clones the repo into ~/nixos
-#   hm-auto-upgrade daily `home-manager switch` from github: for every
-#                  HM user on the host
+#   auto-update     the driver: hourly poll, quiet-window + staleness +
+#                   wall-power + reachability gate, ordering, status
+#                   CLIs. Declares the `autoUpdate.*` options the other
+#                   two read.
+#   auto-upgrade    `nixos-auto-upgrade.service` — `nixos-rebuild
+#                   switch --refresh --flake github:dc0d32/nixos#<host>`
+#                   (never reboots, never bumps the lock)
+#   hm-auto-upgrade `hm-auto-upgrade.service` — `home-manager switch`
+#                   for every HM user on the host, run after the system
+#                   rebuild
+#   nixos-clone     per-user oneshot that clones the repo into ~/nixos
+#
+# The three auto-update members are one unit of deployment on purpose:
+# `auto-upgrade` and `hm-auto-upgrade` read options declared by
+# `auto-update`, so importing either without the driver is an eval
+# error. Splitting them would trade a clear eval error for a silent
+# "your timer exists but nothing schedules it".
 #
 # NOTE: home-manager-bootstrap is intentionally NOT in this bundle — it
-# is part of the workstation core (pb-x1 wants it without the rest of
-# the auto-deploy trio), and the headless hosts (ah-1, wsl) import it
-# explicitly alongside this bundle.
+# is part of the workstation core, and the headless hosts (ah-1, wsl)
+# import it explicitly alongside this bundle.
 #
 # Retire when: a different deployment driver replaces this (e.g.
 #   deploy-rs push-based deploys), OR the repo's lock-in-the-repo
@@ -28,6 +37,7 @@
 { config, ... }:
 {
   flake.lib.bundles.nixos.auto-deploy = with config.flake.modules.nixos; [
+    auto-update
     auto-upgrade
     nixos-clone
     hm-auto-upgrade

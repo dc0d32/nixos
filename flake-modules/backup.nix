@@ -23,9 +23,10 @@
 # even ciphertext at an attacker is useless.
 #
 # Wake-from-sleep: timer daily at 03:00 with Persistent=true (missed
-# runs fire on next wake). Service ExecStartPre polls
-# /sys/class/power_supply/AC* for up to 4h; no AC → exit → retry
-# next timer fire. No WakeSystem (laptop in bag stays asleep).
+# runs fire on next wake). Service ExecStartPre polls the shared
+# `ac-check` probe (flake-modules/power-gate.nix) for up to 4h; still
+# on battery → exit → retry next timer fire. No WakeSystem (laptop in
+# bag stays asleep).
 #
 # Per-host bootstrap is scripts/init-backup.sh. The TrueNAS-side
 # one-time setup recipe lives in docs/runbooks/truenas-restic.md.
@@ -35,7 +36,12 @@
 #   * The operator moves to a SaaS backup product (Backblaze B2,
 #     etc.). The AC-gate + btrfs-snapshot wrappers carry over;
 #     the SFTP-specific parts go.
-{ ... }:
+{ config, ... }:
+let
+  # Captured from the outer flake-parts config: the inner NixOS module's
+  # `config` shadows this one.
+  mkAcCheck = config.flake.lib.mkAcCheck;
+in
 {
   flake.modules.nixos.backup = { lib, pkgs, config, ... }:
     let
@@ -45,33 +51,34 @@
 
       sshCommand = "ssh -i ${toString cfg.sshIdentityFile} -o UserKnownHostsFile=${toString cfg.knownHostsFile} -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=30";
 
+      # Shared with flake-modules/auto-update.nix. Replaces a local copy
+      # that only knew four hardcoded node names (AC/ACAD/AC0/ADP1) and
+      # so read "no AC sysfs node found; assuming desktop" — i.e.
+      # "proceed" — on any laptop whose mains supply is named something
+      # else. See flake-modules/power-gate.nix.
+      acCheck = mkAcCheck { inherit pkgs; };
+
       waitForAcScript = pkgs.writeShellApplication {
         name = "backup-wait-for-ac";
-        runtimeInputs = [ pkgs.coreutils ];
+        runtimeInputs = [ pkgs.coreutils acCheck ];
         text = ''
-          set -euo pipefail
-          ac_nodes=(/sys/class/power_supply/AC /sys/class/power_supply/ACAD /sys/class/power_supply/AC0 /sys/class/power_supply/ADP1)
-          found_node=""
-          for n in "''${ac_nodes[@]}"; do
-            if [ -e "$n/online" ]; then
-              found_node="$n"
-              break
-            fi
-          done
-          if [ -z "$found_node" ]; then
-            echo "backup-wait-for-ac: no AC sysfs node found; assuming desktop, proceeding."
-            exit 0
-          fi
-          echo "backup-wait-for-ac: monitoring $found_node/online"
           deadline=$(( $(date +%s) + 4 * 3600 ))
-          while [ "$(date +%s)" -lt "$deadline" ]; do
-            if [ "$(cat "$found_node/online")" = "1" ]; then
-              echo "backup-wait-for-ac: AC online, proceeding."
-              exit 0
+          while :; do
+            set +e
+            ac-check --verbose
+            rc=$?
+            set -e
+            case "$rc" in
+              0) echo "backup-wait-for-ac: on wall power, proceeding."; exit 0 ;;
+              2) echo "backup-wait-for-ac: power state undeterminable, proceeding."; exit 0 ;;
+              *) ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              break
             fi
             sleep 60
           done
-          echo "backup-wait-for-ac: AC not present after 4h, aborting (next timer fire will retry)." >&2
+          echo "backup-wait-for-ac: still on battery after 4h, aborting (next timer fire will retry)." >&2
           exit 1
         '';
       };

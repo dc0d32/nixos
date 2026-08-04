@@ -95,6 +95,26 @@ nix flake check
 nix fmt .
 ```
 
+## Auto-update
+
+Every NixOS host in this flake keeps itself current without anyone
+SSHing in: it polls roughly hourly for a good moment — awake, on wall
+power, online, and either inside a quiet window (02:00–09:00) or overdue
+by more than 24h — then rebuilds the system from `github:dc0d32/nixos`
+and re-activates **every** user's home-manager profile, in that order.
+Laptops (including WSL, which asks Windows for the host's power state)
+hold off on battery. It never reboots and never bumps `flake.lock`.
+
+```sh
+auto-update-status        # window/AC policy, last run, per-step result, next fire
+sudo auto-update-now      # run now, ignoring every gate
+sudo systemctl stop auto-update.timer   # quiet, for a long refactor
+```
+
+Full write-up — hosts covered, ordering, WSL power detection, and the
+fallback behaviour at each layer — in
+[`docs/auto-update.md`](docs/auto-update.md).
+
 ## Docking stations, external displays
 
 Laptop hosts (`pb-x1`, `pb-t480`) support both dock families:

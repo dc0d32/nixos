@@ -114,16 +114,24 @@ in
         # and `thunderbolt.trustLocalUsers` is left at its `false`
         # default. See flake-modules/thunderbolt.nix.
         config.flake.modules.nixos.thunderbolt
-
-        # NOT imported on pb-x1: the auto-deploy bundle (auto-upgrade,
-        # nixos-clone, hm-auto-upgrade). This is the active dev box — a
-        # 04:40 nixos-rebuild timer racing in-progress edits and a 05:30
-        # `home-manager switch` from github: that blows away local HM
-        # iteration are more annoying than useful. `sudo nixos-rebuild
-        # switch --flake .#pb-x1` and `home-manager switch --flake
-        # .#'p@pb-x1'` are the workflow here. To opt in later, append
-        # `config.flake.lib.bundles.nixos.auto-deploy`.
-      ];
+      ]
+      # Auto-deploy from origin/main. pb-x1 is the dev box, and the
+      # original objection to auto-deploy here was real: a 04:40
+      # calendar rebuild racing in-progress edits, and a 05:30
+      # `home-manager switch` from github: blowing away local HM
+      # iteration. The opportunistic driver (flake-modules/
+      # auto-update.nix) defuses both — it only fires inside the
+      # 02:00-09:00 quiet window unless the host has gone >24h without
+      # a successful run, and it holds off entirely on battery.
+      #
+      # It still activates `github:dc0d32/nixos`, i.e. whatever is
+      # pushed, over the top of local iteration. That's the intended
+      # trade: local work here is expected to be committed and pushed,
+      # and the local workflow (`sudo nixos-rebuild switch --flake
+      # .#pb-x1` / `home-manager switch --flake .#'p@pb-x1'`) always
+      # wins until the next poll. `systemctl stop auto-update.timer`
+      # buys quiet for a long refactor.
+      ++ config.flake.lib.bundles.nixos.auto-deploy;
 
       # Host identity + base packages + primary user.
       networking.hostName = hostName;

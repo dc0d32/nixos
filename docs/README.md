@@ -22,6 +22,7 @@ scripts/
   biometrics-enroll.sh             one-shot fingerprint + face setup
 docs/
   README.md                        this file
+  auto-update.md                   how hosts keep themselves current
   runbooks/                        operator playbooks
   sessions/                        immutable agent session logs (history)
 ```
@@ -32,7 +33,15 @@ docs/
 sudo nixos-rebuild switch --flake .#<host>      # NixOS
 home-manager switch --flake .#'<user>@<host>'   # home-manager
 nix fmt                                          # format every .nix
+auto-update-status                               # what the auto-updater is doing
 ```
+
+## Auto-update
+
+[`auto-update.md`](auto-update.md) — the opportunistic updater: which
+hosts it covers, how the system rebuild and every user's home-manager
+profile are sequenced, how WSL learns whether the Windows host is on
+battery, and what it does when conditions aren't right.
 
 ## Installing a fresh host
 

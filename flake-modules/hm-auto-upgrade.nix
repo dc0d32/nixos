@@ -1,162 +1,209 @@
-# hm-auto-upgrade — daily `home-manager switch` per HM-enabled user
-# against this flake's `origin/main` on GitHub.
+# hm-auto-upgrade — the user half of auto-deploy: activate every
+# home-manager profile on this host from `origin/main` on GitHub.
 #
-# Why: `system.autoUpgrade` (see auto-upgrade.nix) refreshes the
-# NixOS system closure nightly, but it does NOT touch any user's
-# home-manager profile — by design (AGENTS.md: HM is standalone, not
-# wired in as a NixOS module). Without this module, dotfile/zsh/
-# waybar/EasyEffects changes that ship via HM only land when
-# the user manually runs
+# Why it's needed at all: home-manager runs *standalone* in this repo
+# (AGENTS.md forbids wiring it in as a NixOS module, so the same user
+# modules can also apply on macOS). That means
+# `nixos-auto-upgrade.service` refreshing the system closure does
+# nothing whatsoever to a user's dotfiles, zsh config, waybar, niri
+# bindings or EasyEffects presets. Without this module those changes
+# only land when someone types
 #   home-manager switch --flake github:dc0d32/nixos#'<user>@<host>'
-# which on a kid's laptop or a headless homelab account never
-# happens. This module closes that gap with a single system timer
-# that activates each user's HM profile.
+# which on a kid's laptop or a headless role account never happens.
 #
-# Why a system timer, not per-user systemd-user timers:
-#   - systemd-user units only run when the user has a session OR
-#     `loginctl enable-linger <user>` has been set. Lingering every
-#     HM user (kids, role accounts) is a deployment cliff (forgotten
-#     linger = silently no-op timer).
-#   - A single system timer is centrally observable
-#     (`systemctl status hm-auto-upgrade.timer`,
-#      `journalctl -u hm-auto-upgrade.service`) and naturally
-#     ordered against `nixos-upgrade.service`.
-#   - Running HM activation as the target user inside a system
-#     service is straightforward via `runuser -u <user>`.
+# It contributes ONE unit, `hm-auto-upgrade.service`, and no timer:
+# scheduling, gating and ordering belong to the driver,
+# flake-modules/auto-update.nix, which runs this unit *after*
+# `nixos-auto-upgrade.service` so HM activates against the freshly
+# switched system closure. (The previous design gave this module its own
+# 05:30 calendar timer 50 minutes after the system one, which held only
+# as long as neither run was ever late — and on a persistent catch-up
+# boot both timers elapsed simultaneously and raced.)
 #
-# Schedule: 05:30 local with 30min jitter, persistent. Staggered
-# AFTER `nixos-upgrade.timer` (04:40 + 30min jitter, worst-case
-# finish ~05:10) so HM activates against the freshly-rebuilt system
-# closure rather than the previous generation. Persistent timer
-# catches missed runs after a host was off.
+# ── Why a system service, not per-user systemd-user timers ───────────
+# systemd-user units only run when the user has a session or has been
+# granted `loginctl enable-linger`. Lingering every HM user (kids, role
+# accounts) is a deployment cliff: one forgotten linger is a silently
+# no-op timer. One system unit is centrally observable and trivially
+# ordered against the system rebuild.
 #
-# Ordering against clone units: `After=nixos-clone-<user>.service`
-# for each HM user. The clone units themselves have an idempotent
-# ConditionPathExists guard (see nixos-clone.nix) so they are no-ops
-# once a clone exists. Ordering means: on the first boot after
-# importing both modules, HM auto-upgrade waits for the clone to
-# land (or fail-trying) before running. After clones are present,
-# the After= relationship is essentially free.
+# ── Which users ──────────────────────────────────────────────────────
+# Every `homeConfigurations.<user>@<thishost>` in the flake, discovered
+# by capturing `config.flake.homeConfigurations` from the outer
+# flake-parts config. Same enumeration trick as nixos-clone.nix and
+# home-manager-bootstrap.nix, so all three cover exactly the same set
+# automatically. On pb-t480 that is p, m and s — no per-host list to
+# forget to update when a kid account is added.
 #
-# Source: pulled fresh from `github:dc0d32/nixos` each run via
-# `nix run` with `--refresh`, mirroring how auto-upgrade.nix fetches
-# the system flake. The user's local `~/nixos` clone is NOT used as
-# the activation source — that would couple HM upgrades to whatever
-# state the user left their working tree in (dirty tree, branch,
-# stale fetch). Activating from `github:` is hermetic and matches
-# what `system.autoUpgrade` does for the system closure.
+# ── How each user is activated ───────────────────────────────────────
+#   1. `nix build --refresh` the user's `activationPackage` as root.
+#      Root does the build so there's one shared download, and the
+#      resulting store path is world-readable.
+#   2. Compare it against that user's current generation
+#      (`~/.local/state/home-manager/gcroots/current-home`). Equal
+#      means nothing changed for this user; skip. This keeps a run
+#      cheap and keeps the journal readable, which matters when the
+#      driver polls hourly.
+#   3. `runuser -u <user> -- env … $out/activate`.
 #
-# Failure policy: per-user activation failures are logged and the
-# loop continues to the next user. The systemd service exits 0 even
-# if some users failed — visible in `journalctl -u
-# hm-auto-upgrade.service`. The alternative (exit non-zero on any
-# failure) would mean a transient WiFi flake on user A blocks the
-# timer's "succeeded last run" status and obscures real failures.
+# Three details of step 3 that are load-bearing:
 #
-# Per-user activation is invoked via `nix run nixpkgs#home-manager`
-# rather than relying on home-manager being on the system PATH, so
-# this module has no dependency on a particular HM CLI being
-# installed system-wide. The flake's pinned home-manager is what
-# materializes the activation package via the
-# `homeConfigurations.<user>@<host>` outputs anyway.
+#   * **USER/LOGNAME are set explicitly.** home-manager's activate
+#     script ends with `checkStringEq USER "$USER" <user>` and
+#     `checkPathEq HOME "$HOME" <home>` and hard-exits 1 on mismatch.
+#     runuser does set both itself, but this unit is the only thing
+#     standing between a kid's laptop and silently never updating, so
+#     it does not delegate that to a flag-dependent behaviour of
+#     runuser.
+#   * **HOME comes from `users.users.<user>.home`,** not a hardcoded
+#     `/home/<user>`, so a user with a non-default home doesn't fail
+#     the `checkPathEq` above forever.
+#   * **XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS are passed when the
+#     user actually has a session.** Without them the `systemctl --user`
+#     calls inside HM activation can't reach the user's systemd
+#     manager, so a logged-in user's waybar/mako/cliphist units keep
+#     running the *old* config until they log out and back in — the
+#     activation "succeeds" while visibly changing nothing. When there
+#     is no session (`/run/user/<uid>` absent) we say so in the journal
+#     and let the new config take effect at next login.
 #
-# Pattern A (importing IS enabling): hosts that want auto-HM-upgrade
-# import this module from their bridge. There is no per-feature
-# `enable` flag. Currently wired on the same hosts that import
-# auto-upgrade.nix (pb-t480, ah-1, m-pc, wsl, wsl-arm — NOT pb-x1,
-# the dev box).
+# ── Failure policy ───────────────────────────────────────────────────
+# Per-user failures do not abort the loop — one user with a stale
+# colliding dotfile must not stop the other two from updating. But the
+# unit **exits non-zero** if any user failed, unlike the original
+# version which always exited 0. Always-zero meant a user whose
+# activation had been failing every night for weeks looked identical to
+# a clean run in `systemctl status`, which is precisely how "not all
+# users update" went unnoticed. Non-zero also means the driver does not
+# advance its `last-success` stamp, so the staleness fallback keeps
+# retrying instead of waiting for tomorrow's quiet window.
 #
-# To watch what the timer is doing on a host:
-#   systemctl status hm-auto-upgrade.timer
-#   systemctl status hm-auto-upgrade.service
+# Source is `github:dc0d32/nixos`, never the user's local `~/nixos`
+# clone: activating from a working tree couples upgrades to whatever
+# state the user left it in (dirty, on a branch, stale fetch).
+# Hermetic, and matches what the system half does.
+#
+# Watching it:
+#   auto-update-status
 #   journalctl -u hm-auto-upgrade.service -n 200
-#
-# To trigger an HM upgrade manually (same code path the timer uses):
+# Running it by hand (bypasses the driver's gate):
 #   sudo systemctl start hm-auto-upgrade.service
 #
-# Retire when: a different deployment driver replaces this (e.g.
-# push-based HM deploys from CI), OR home-manager grows a built-in
-# auto-upgrade analog and we adopt that, OR the flake URL strategy
-# changes (e.g. switch to per-user channel tracking).
-flakeArgs@{ config, lib, ... }:
+# Retire when: push-based HM deploys replace pull-based auto-deploy, OR
+#   home-manager grows a built-in multi-user auto-upgrade analog and we
+#   adopt it.
+flakeArgs@{ config, ... }:
 let
-  outerHm = config.flake.homeConfigurations;
+  outerHm = flakeArgs.config.flake.homeConfigurations;
 in
 {
   flake.modules.nixos.hm-auto-upgrade =
     { config, pkgs, lib, ... }:
     let
+      cfg = config.autoUpdate;
       hostName = config.networking.hostName;
+
       forThisHost = lib.filterAttrs
         (cfgName: _: lib.hasSuffix "@${hostName}" cfgName)
         outerHm;
       users = lib.mapAttrsToList
         (cfgName: _: lib.elemAt (lib.splitString "@" cfgName) 0)
         forThisHost;
+
+      # Prefer the account's real home over a `/home/<user>` guess:
+      # home-manager's activation hard-fails on a HOME mismatch.
+      homeOf = user:
+        if config.users.users ? ${user}
+        then config.users.users.${user}.home
+        else "/home/${user}";
+
       cloneAfter = map (u: "nixos-clone-${u}.service") users;
 
-      # Build the per-user activation loop. Each user's failure is
-      # captured locally so the loop continues; the script always
-      # exits 0 (failures visible in the journal).
-      flakeUrl = "github:dc0d32/nixos";
       activateScript = pkgs.writeShellApplication {
         name = "hm-auto-upgrade-run";
-        runtimeInputs = with pkgs; [
-          nix
-          coreutils
-          util-linux # runuser
+        runtimeInputs = [
+          # The system's nix, not `pkgs.nix`: this talks to the running
+          # nix-daemon, and a client newer than the daemon is a
+          # protocol-mismatch waiting to happen on a host that hasn't
+          # switched yet.
+          config.nix.package
+          pkgs.coreutils
+          pkgs.util-linux # runuser
         ];
         text = ''
-          set -u
-          # Don't `set -e`: per-user failures must NOT abort the
-          # loop. We track failures explicitly and report at the
-          # end.
+          host=${lib.escapeShellArg hostName}
+          flake=${lib.escapeShellArg cfg.flake}
           fail_count=0
           fail_users=""
 
-          # Activation pattern: `nix build --refresh ...` materializes
-          # the per-user activationPackage (re-fetches the flake from
-          # GitHub each run, mirroring system.autoUpgrade), printing
-          # the resulting store path. Then we invoke
-          # `<out>/activate` as the target user. We can't use
-          # `nix run` because home-manager's activationPackage has no
-          # default executable — `activate` is what HM's standard CLI
-          # invokes too.
-          #
-          # The build runs as root (this service's User=root) so the
-          # store path is created with root daemon perms; the
-          # subsequent runuser activation only needs to read the
-          # store path, which is world-readable.
+          activate_user() {
+            local user="$1" home="$2"
+            local out current uid runtime
+            local -a env_args
 
-          ${lib.concatMapStringsSep "\n" (user: ''
             echo
-            echo "==> ${user}@${hostName}: building activationPackage from ${flakeUrl}"
-            if out=$(nix \
+            echo "==> $user@$host: building activationPackage from $flake"
+            if ! out=$(nix \
                 --extra-experimental-features "nix-command flakes" \
                 build \
                   --refresh \
                   --no-link \
                   --print-out-paths \
-                  '${flakeUrl}#homeConfigurations."${user}@${hostName}".activationPackage'); then
-              echo "==> ${user}@${hostName}: built $out, activating"
-              if runuser -u ${user} -- env \
-                  HOME=/home/${user} \
-                  XDG_CONFIG_HOME=/home/${user}/.config \
-                  XDG_DATA_HOME=/home/${user}/.local/share \
-                  XDG_STATE_HOME=/home/${user}/.local/state \
-                  XDG_CACHE_HOME=/home/${user}/.cache \
-                  PATH=/run/current-system/sw/bin:/run/wrappers/bin \
-                  "$out/activate"; then
-                echo "==> ${user}@${hostName}: ok"
-              else
-                rc=$?
-                echo "==> ${user}@${hostName}: ACTIVATE FAILED (exit $rc)" >&2
-                fail_count=$(( fail_count + 1 ))
-                fail_users="$fail_users ${user}"
-              fi
+                  "$flake#homeConfigurations.\"$user@$host\".activationPackage"); then
+              echo "==> $user@$host: BUILD FAILED" >&2
+              return 1
+            fi
+
+            current=""
+            if [ -L "$home/.local/state/home-manager/gcroots/current-home" ]; then
+              current=$(readlink -f "$home/.local/state/home-manager/gcroots/current-home" || true)
+            fi
+            if [ -n "$current" ] && [ "$current" = "$out" ]; then
+              echo "==> $user@$host: already on $out, nothing to do"
+              return 0
+            fi
+
+            if ! uid=$(id -u "$user" 2>/dev/null); then
+              echo "==> $user@$host: no such account on this host" >&2
+              return 1
+            fi
+
+            env_args=(
+              "HOME=$home"
+              "USER=$user"
+              "LOGNAME=$user"
+              "XDG_CONFIG_HOME=$home/.config"
+              "XDG_DATA_HOME=$home/.local/share"
+              "XDG_STATE_HOME=$home/.local/state"
+              "XDG_CACHE_HOME=$home/.cache"
+              "PATH=/run/current-system/sw/bin:/run/wrappers/bin"
+            )
+
+            # With a live session, hand activation the user bus so its
+            # `systemctl --user` calls actually restart waybar/mako/etc.
+            # Without one, the profile still updates and the new units
+            # start at next login.
+            runtime="/run/user/$uid"
+            if [ -d "$runtime" ]; then
+              env_args+=(
+                "XDG_RUNTIME_DIR=$runtime"
+                "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus"
+              )
             else
-              rc=$?
-              echo "==> ${user}@${hostName}: BUILD FAILED (exit $rc)" >&2
+              echo "==> $user@$host: no live session ($runtime absent); user services will pick up the change at next login"
+            fi
+
+            echo "==> $user@$host: activating $out"
+            if runuser -u "$user" -- env "''${env_args[@]}" "$out/activate"; then
+              echo "==> $user@$host: ok"
+              return 0
+            fi
+            echo "==> $user@$host: ACTIVATION FAILED" >&2
+            return 1
+          }
+
+          ${lib.concatMapStringsSep "\n" (user: ''
+            if ! activate_user ${lib.escapeShellArg user} ${lib.escapeShellArg (homeOf user)}; then
               fail_count=$(( fail_count + 1 ))
               fail_users="$fail_users ${user}"
             fi
@@ -164,54 +211,47 @@ in
 
           echo
           if [ "$fail_count" -gt 0 ]; then
-            echo ">> hm-auto-upgrade: $fail_count user(s) failed:$fail_users" >&2
-            echo ">> hm-auto-upgrade: see journal entries above for details." >&2
-            echo ">> hm-auto-upgrade: exiting 0 anyway (failures are non-fatal;" >&2
-            echo "   timer will retry tomorrow)." >&2
-          else
-            echo ">> hm-auto-upgrade: all ${toString (lib.length users)} user(s) ok"
+            echo ">> hm-auto-upgrade: $fail_count of ${toString (lib.length users)} user(s) failed:$fail_users" >&2
+            exit 1
           fi
-          exit 0
+          echo ">> hm-auto-upgrade: all ${toString (lib.length users)} user(s) ok"
         '';
       };
     in
     lib.mkIf (users != [ ]) {
+      # mkOrder 200: after the system rebuild (mkOrder 100).
+      autoUpdate.steps = lib.mkOrder 200 [ "hm-auto-upgrade.service" ];
+
       systemd.services.hm-auto-upgrade = {
         description =
-          "Daily home-manager switch for all HM users on ${hostName}";
-        # Ordering: wait for the clone units (no-op if clones exist)
-        # so a brand-new host's first auto-HM-upgrade doesn't race a
-        # user's clone landing. Pure ordering — we do NOT
-        # `Requires=` them, so a failed clone doesn't block HM
-        # upgrade (HM activates from github: anyway, not from the
-        # local clone).
+          "home-manager switch for all HM users on ${hostName}";
+
+        # Started by auto-update.service (or by hand), never by a timer.
+        wantedBy = [ ];
+
+        # The system rebuild that ran just before this may have queued
+        # restarts; don't let the switch stop this unit mid-activation.
+        restartIfChanged = false;
+        stopIfChanged = false;
+        unitConfig.X-StopOnRemoval = false;
+
+        # Ordering only, never `requires`: the clone units are
+        # idempotent no-ops once `~/<user>/nixos` exists (see
+        # nixos-clone.nix), and HM activates from github: regardless, so
+        # a failed clone must not block the upgrade.
         after = [ "network-online.target" ] ++ cloneAfter;
         wants = [ "network-online.target" ];
+
+        environment = {
+          HOME = "/root";
+        };
+
         serviceConfig = {
           Type = "oneshot";
-          # Runs as root because it `runuser`s into each user.
+          # Root, because it `runuser`s into each account.
           User = "root";
           ExecStart = "${activateScript}/bin/hm-auto-upgrade-run";
-          # Activations can take minutes if substituters are cold;
-          # bound the whole loop generously.
-          TimeoutStartSec = "30min";
-        };
-      };
-
-      systemd.timers.hm-auto-upgrade = {
-        description =
-          "Daily home-manager switch for all HM users on ${hostName}";
-        wantedBy = [ "timers.target" ];
-        timerConfig = {
-          # 05:30 local, 30min after the system auto-upgrade window
-          # closes (04:40 + 30min jitter = up to ~05:10 finish).
-          # Format: see systemd.time(7).
-          OnCalendar = "*-*-* 05:30:00";
-          # 30-minute jitter so multiple hosts don't hit GitHub at
-          # the same second.
-          RandomizedDelaySec = "30min";
-          # Catch up after the host was off at 05:30.
-          Persistent = true;
+          TimeoutStartSec = "1h";
         };
       };
     };

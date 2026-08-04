@@ -93,3 +93,7 @@ errors.
   asset directories (audio presets, IRS).
 - `overlays/` — package overrides; see Conventions.
 - `README.md` — user-facing layout, install, day-to-day commands.
+- `docs/auto-update.md` — how every host pulls `origin/main` on its own
+  (opportunistic timer, wall-power gate incl. WSL, system-then-all-users
+  ordering). Read before touching `flake-modules/auto-update.nix`,
+  `auto-upgrade.nix`, `hm-auto-upgrade.nix` or `power-gate.nix`.
