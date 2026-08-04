@@ -90,8 +90,61 @@ in
         (cfgName: _: lib.hasSuffix "@${hostName}" cfgName)
         outerHm;
       cloneUrl = flakeArgs.config.nixos-clone.url;
+
+      users = lib.mapAttrsToList
+        (cfgName: _: lib.elemAt (lib.splitString "@" cfgName) 0)
+        forThisHost;
+
+      # A real script rather than a bare `git clone`, so the two
+      # not-actually-an-error cases exit 0 instead of leaving the unit
+      # in `failed`, and the one genuine error says what to do about it.
+      #
+      # The empty-directory case is not hypothetical: hosts with
+      # impermanence pre-create `~/nixos` as an empty bind mount (the
+      # persisted `userDirectories` list contains "nixos"), so the unit
+      # always runs against a directory that already exists. `git clone`
+      # into an existing *empty* directory is fine; into a non-empty one
+      # it aborts, which is the behaviour we want but not a message
+      # anyone would find on their own.
+      cloneScript = pkgs.writeShellApplication {
+        name = "nixos-clone-run";
+        runtimeInputs = [ pkgs.git pkgs.coreutils pkgs.findutils pkgs.openssh ];
+        text = ''
+          url="$1"
+          target="$2"
+
+          if [ -e "$target/.git" ]; then
+            echo "nixos-clone: $target is already a git repo, nothing to do"
+            exit 0
+          fi
+
+          if [ -d "$target" ] \
+            && [ -n "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]; then
+            echo "nixos-clone: $target exists, is not empty, and has no .git." >&2
+            echo "nixos-clone: refusing to clone over it. Move it aside and" >&2
+            echo "nixos-clone: re-run this unit, or clone by hand:" >&2
+            echo "nixos-clone:   git clone $url $target" >&2
+            exit 1
+          fi
+
+          echo "nixos-clone: cloning $url into $target"
+          git clone "$url" "$target"
+          echo "nixos-clone: done"
+        '';
+      };
     in
     {
+      # Retried on every auto-update poll instead of only once per boot.
+      # `Type=oneshot` forbids `Restart=`, and the unit is otherwise just
+      # `WantedBy=multi-user.target`, so it gets exactly one attempt per
+      # boot -- one transient DNS hiccup on a desktop that reboots
+      # monthly means the clone silently never happens (observed on
+      # m-pc). best-effort, not a required step: a clone that fails for a
+      # persistent reason must not withhold the driver's `last-success`
+      # stamp and turn every poll into a full rebuild.
+      autoUpdate.bestEffortSteps =
+        lib.mkOrder 50 (map (u: "nixos-clone-${u}.service") users);
+
       systemd.services = lib.mapAttrs'
         (cfgName: _hm:
           let
@@ -127,13 +180,8 @@ in
                   pkgs.openssh
                 ]}"
               ];
-              # `git clone` into a fresh dir. If `~/nixos` exists
-              # but isn't a git repo (e.g. user mkdir'd it for some
-              # other purpose), this command refuses — surfacing
-              # the conflict in the journal rather than silently
-              # turning their dir into a clone.
               ExecStart =
-                "${pkgs.git}/bin/git clone ${cloneUrl} /home/${user}/nixos";
+                "${cloneScript}/bin/nixos-clone-run ${cloneUrl} /home/${user}/nixos";
               # Network-bound clone of a small repo; 5min is
               # generous even on a slow link.
               TimeoutStartSec = "5min";

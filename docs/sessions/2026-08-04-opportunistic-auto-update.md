@@ -405,6 +405,63 @@ bridges. Checked module-by-module before deleting.
 Remaining host set: pb-x1, pb-t480, m-pc, wsl, wsl-arm (NixOS) and
 pb-mb (standalone HM on macOS).
 
+## Postscript 2: nixos-clone only ever got one shot per boot
+
+Reported during the same session: `~/nixos` had to be cloned by hand for
+user `m` on m-pc, even though `nixos-clone-m.service` exists to do
+exactly that.
+
+The clone mechanics turned out to be fine — verified by running the
+unit's exact `ExecStart` under `env -i` with only the unit's `PATH` and
+`HOME`, which cloned successfully (so it is not the missing-CA-bundle
+class of bug that bit the reachability probe), and by checking that
+`git clone` into an existing *empty* directory succeeds, which matters
+because hosts with impermanence pre-create `~/nixos` as an empty bind
+mount ("nixos" is in the persisted `userDirectories` list).
+
+The defect is delivery, not cloning:
+
+- `Type=oneshot` — systemd forbids `Restart=` on it.
+- `WantedBy=multi-user.target` and nothing else.
+
+So the unit gets **exactly one attempt per boot**, and if that attempt
+fails (DNS not up yet, WiFi still associating) it never retries until
+the next reboot. On a desktop rebooted monthly that is indistinguishable
+from "the feature doesn't exist", and nothing surfaces it — nobody runs
+`systemctl status nixos-clone-m.service` unprompted.
+
+(The other candidate root cause is that m-pc's running generation simply
+predates 2026-05-10, when nixos-clone was added, because its
+auto-upgrade was never landing — which is the same underlying story as
+the rest of this session. Both are fixed by the same change.)
+
+Fix: the clone units are now sequenced by the auto-update driver, so
+they get a retry on every poll instead of once per boot. They are
+registered as **best-effort** steps (`autoUpdate.bestEffortSteps`,
+mkOrder 50, ahead of the system rebuild), a new distinction added for
+this:
+
+- required step fails → run fails, `last-success` withheld, staleness
+  fallback keeps retrying.
+- best-effort step fails → logged loudly, recorded in `last-status`,
+  run continues and can still succeed.
+
+The clone *must* be best-effort. If it were required, a clone failing
+for a persistent reason (`~/nixos` exists, non-empty, not a repo) would
+withhold `last-success` forever, and the staleness fallback would then
+run a full `nixos-rebuild switch --refresh` on every poll — precisely
+the unbounded-retry pathology `minIntervalHours` was added to prevent.
+
+`ExecStart` also stopped being a bare `git clone`. It is now a script
+with three explicit outcomes, all tested:
+
+- already a repo → `exit 0`, "nothing to do" (so re-running every poll
+  is free and the unit doesn't sit in `failed`)
+- directory absent or empty → clone
+- directory non-empty without `.git` → `exit 1` with a message naming
+  the path and the manual command, instead of git's bare "destination
+  path already exists and is not an empty directory"
+
 ## Follow-up
 
 Backup is next: `backup.nix` still has a daily 03:00 calendar timer with

@@ -122,6 +122,8 @@ in
       # the name set requires evaluating the very `mkIf` condition being
       # computed.
       steps = cfg.steps;
+      bestEffortSteps = cfg.bestEffortSteps;
+      allSteps = bestEffortSteps ++ steps;
 
       # Host part of the flake URI, used for the reachability probe.
       # "github:dc0d32/nixos" -> "github.com". Anything we can't parse
@@ -293,26 +295,34 @@ in
           failed=0
 
           run_step() {
-            local unit="$1"
+            local unit="$1" required="$2"
             local t0 t1
             t0=$(date +%s)
             echo "==> starting $unit"
             # `--wait` blocks until the (oneshot) unit finishes and
             # propagates its result, which is what lets us sequence
-            # NixOS-then-HM without either owning a timer.
+            # NixOS-then-HM without either owning a timer. A unit whose
+            # ExecCondition/ConditionPathExists says "nothing to do" is
+            # skipped and reports success, so re-running an already-done
+            # oneshot every poll is free.
             if systemctl start --wait "$unit"; then
               t1=$(date +%s)
               echo "==> $unit: ok ($(( t1 - t0 ))s)"
               echo "$unit ok $(( t1 - t0 ))s" >> "$state_dir/last-status"
-            else
+            elif [ "$required" = required ]; then
               t1=$(date +%s)
               echo "==> $unit: FAILED ($(( t1 - t0 ))s)" >&2
               echo "$unit FAILED $(( t1 - t0 ))s" >> "$state_dir/last-status"
               failed=1
+            else
+              t1=$(date +%s)
+              echo "==> $unit: failed, continuing (best-effort) ($(( t1 - t0 ))s)" >&2
+              echo "$unit failed-best-effort $(( t1 - t0 ))s" >> "$state_dir/last-status"
             fi
           }
 
-          ${lib.concatMapStringsSep "\n" (u: ''run_step "${u}"'') steps}
+          ${lib.concatMapStringsSep "\n" (u: ''run_step "${u}" best-effort'') bestEffortSteps}
+          ${lib.concatMapStringsSep "\n" (u: ''run_step "${u}" required'') steps}
 
           date +%s > "$state_dir/last-run"
           finished=$(date +%s)
@@ -324,8 +334,8 @@ in
             exit 0
           fi
 
-          echo ">> auto-update: one or more steps FAILED; see" >&2
-          echo "   journalctl -u auto-update.service -u nixos-auto-upgrade.service -u hm-auto-upgrade.service" >&2
+          echo ">> auto-update: one or more required steps FAILED; see" >&2
+          echo "   journalctl${lib.concatMapStrings (u: " -u ${u}") ([ "auto-update.service" ] ++ allSteps)}" >&2
           # Non-zero on purpose: `systemctl status auto-update.service`
           # and auto-update-status must show red. `last-success` is NOT
           # advanced, so the staleness fallback keeps trying outside the
@@ -342,6 +352,8 @@ in
           echo "── auto-update on $(hostname) ──────────────────────────"
           echo "flake:      ${cfg.flake}"
           echo "steps:      ${if steps == [ ] then "(none)" else lib.concatStringsSep " -> " steps}"
+          ${lib.optionalString (bestEffortSteps != [ ])
+              ''echo "best-effort: ${lib.concatStringsSep " -> " bestEffortSteps} (failures don't block the run)"''}
           echo "window:     ${if cfg.quietWindow == null then "always" else "${cfg.quietWindow.start}-${cfg.quietWindow.end} (fallback after ${toString cfg.staleAfterHours}h)"}"
           echo "min gap:    ${toString cfg.minIntervalHours}h between attempts"
           echo "needs AC:   ${if cfg.requireAC then "yes" else "no"}"
@@ -364,7 +376,7 @@ in
           fi
           systemctl list-timers --all --no-pager auto-update.timer || true
           echo
-          systemctl --no-pager --lines=0 status auto-update.service ${lib.concatStringsSep " " steps} 2>&1 \
+          systemctl --no-pager --lines=0 status auto-update.service ${lib.concatStringsSep " " allSteps} 2>&1 \
             | grep -E '^(●|.?[A-Za-z ]*Loaded:|.?[A-Za-z ]*Active:|[[:space:]]*Process:)' || true
         '';
       };
@@ -390,16 +402,46 @@ in
           example = [ "nixos-auto-upgrade.service" "hm-auto-upgrade.service" ];
           description = ''
             Ordered list of oneshot units the sequencer runs, each via
-            `systemctl start --wait`. Feature modules append to this
-            with an explicit `lib.mkOrder` rather than relying on module
-            import order:
+            `systemctl start --wait`. A failure here fails the whole run
+            and withholds the `last-success` stamp. Feature modules
+            append with an explicit `lib.mkOrder` rather than relying on
+            module import order:
 
               100  nixos-auto-upgrade.service
               200  hm-auto-upgrade.service
 
-            An empty list disables the whole driver (no timer, no
-            units), which is what makes importing this module on a host
-            with no auto-deploy feature modules a harmless no-op.
+            An empty list (together with `bestEffortSteps`) disables the
+            whole driver, which is what makes importing this module on a
+            host with no auto-deploy feature modules a harmless no-op.
+          '';
+        };
+
+        bestEffortSteps = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "nixos-clone-p.service" ];
+          description = ''
+            Units run *before* `steps`, whose failure is logged loudly
+            and recorded in the status file but does NOT fail the run or
+            withhold `last-success`.
+
+            This exists for convenience work that must not be able to
+            wedge the updater. `nixos-clone-<user>.service` is the
+            motivating case: it is a `Type=oneshot`, so systemd will not
+            let it carry `Restart=`, and being merely `WantedBy=
+            multi-user.target` it gets exactly one attempt per boot. On
+            a desktop that is rebooted once a month, a single transient
+            DNS hiccup at boot means the clone never happens — silently,
+            which is exactly what was observed on m-pc. Running it from
+            here gives it a retry on every update poll.
+
+            It must not be a required step, though: a clone that fails
+            for a *persistent* reason (`~/nixos` exists, is non-empty,
+            and isn't a repo) would otherwise withhold `last-success`
+            forever, and the staleness fallback would then re-run a full
+            `nixos-rebuild switch --refresh` on every poll — the exact
+            unbounded-retry pathology `minIntervalHours` exists to
+            prevent.
           '';
         };
 
@@ -522,7 +564,7 @@ in
         };
       };
 
-      config = lib.mkIf (steps != [ ]) {
+      config = lib.mkIf (allSteps != [ ]) {
         systemd.services.auto-update = {
           description = "Opportunistic system + home-manager update";
 
