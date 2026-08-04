@@ -1,10 +1,10 @@
 name: flake check
 
-# Server-side gate. The secondary hosts (pb-t480, m-pc, ah-1, wsl)
-# auto-upgrade from origin/main daily (flake-modules/auto-upgrade.nix), so
-# a broken main bricks their next 24h of upgrades. This runs the same
-# `nix flake check` the local pre-push hook does, but on GitHub — catching
-# anything pushed with --no-verify or from a machine without the hook.
+# Server-side gate. Every host (pb-x1, pb-t480, m-pc, wsl, wsl-arm)
+# auto-deploys from origin/main (flake-modules/auto-update.nix), so a
+# broken main stalls their upgrades. This runs the same `nix flake check`
+# the local pre-push hook does, but on GitHub — catching anything pushed
+# with --no-verify or from a machine without the hook.
 
 on:
   push:
@@ -40,11 +40,26 @@ jobs:
             extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
       - name: nix flake check
-        # NIXOS_ALLOW_PLACEHOLDER + --impure: the placeholder hosts (m-pc,
-        # ah-1) assert on system.build.toplevel unless the env var is set,
-        # and `nix flake check` walks every nixosConfiguration regardless
-        # of which subset ends up in `checks`. Same invocation as the
-        # local pre-push smoke build (flake-modules/dev-shell.nix). Only
-        # builds the runner's native arch (x86_64-linux); wsl-arm is
-        # evaluated but not built here.
-        run: NIXOS_ALLOW_PLACEHOLDER=1 nix flake check --impure --print-build-logs
+        # PURE, deliberately — no --impure, no NIXOS_ALLOW_PLACEHOLDER.
+        #
+        # This used to run `NIXOS_ALLOW_PLACEHOLDER=1 nix flake check
+        # --impure`, because `nix flake check` walks every entry in
+        # nixosConfigurations regardless of which subset ends up in
+        # `checks`, and the placeholder hosts asserted on
+        # system.build.toplevel. That flag defeated the entire point of
+        # this workflow: a real host runs `nixos-rebuild --flake
+        # github:…`, which evaluates *purely*, and under pure eval
+        # `builtins.getEnv` always returns "" — so the assertion could
+        # never pass there no matter what. This gate was green while
+        # ah-1's auto-upgrade aborted on literally every run.
+        #
+        # ah-1 and nixtest are retired, no placeholder hosts remain, and
+        # CI now evaluates exactly what a host evaluates. If a future
+        # host needs the placeholder pattern, keep it OUT of the
+        # auto-deploy bundle until its hardware-configuration.nix is
+        # real, and smoke-build it by hand — do not reintroduce the flag
+        # here.
+        #
+        # Only builds the runner's native arch (x86_64-linux); wsl-arm is
+        # evaluated but not built.
+        run: nix flake check --print-build-logs

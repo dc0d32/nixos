@@ -20,7 +20,7 @@
 #     icon lands in waybar's SystemTray automatically.
 #
 # Pattern A: hosts opt in by importing this module on either class.
-# WSL doesn't get bluetooth; ah-1 (NAS) doesn't either.
+# WSL doesn't get bluetooth.
 #
 # Top-level options:
 #   - bluetooth.enable — see the WARNING below. Read by nothing today.
@@ -29,7 +29,7 @@
 # `bluetooth.enable` is a flake-parts *top-level* option, and
 # import-tree loads every file under flake-modules/ unconditionally, so
 # the `mkDefault true` below is applied once for the whole flake. The
-# flag therefore reads `true` on EVERY host — including WSL and ah-1,
+# flag therefore reads `true` on EVERY host — including WSL,
 # which deliberately do not import this module. It is not, and cannot
 # be, "true iff this module is imported on this host".
 #

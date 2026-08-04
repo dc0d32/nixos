@@ -11,7 +11,7 @@
 #
 # Retire when: home-base is retired (this bundle can't outlive its
 #   parent), OR the distinction between dev and headless accounts
-#   collapses (e.g. you stop running wsl/ah-1 entirely).
+#   collapses (e.g. you stop running wsl entirely).
 { config, ... }:
 {
   flake.lib.bundles.homeManager.dev =

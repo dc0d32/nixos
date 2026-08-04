@@ -40,7 +40,7 @@
 #   - **No reboots.** Kernel/initrd updates land in the new generation
 #     but only take effect when a human reboots. This is the single
 #     biggest "you'll regret it" knob: a bad initrd auto-installed and
-#     auto-rebooted on a remote host (ah-1) is a remote brick with no
+#     auto-rebooted on a headless or remote host is a brick with no
 #     console. The unit logs a note when the kernel changed so the
 #     reboot is at least visible.
 #   - **No garbage collection.** GC is its own timer with its own

@@ -69,7 +69,7 @@
 #       swapfile-resume-offset complexity that comes with it).
 #   * flake.lib.diskoLayouts.vm
 #       Factory: `{ disk, swapSize ? null, luks ? false }: <module attrset>`
-#       for VM hosts (ah-1):
+#       for VM hosts:
 #         p1: 1 GiB vfat ESP                        → /boot
 #         p2: <swapSize> swap (present only when swapSize != null)
 #                                                   partlabel=disk-main-swap
@@ -104,7 +104,7 @@
 #
 # Why not encode the disk path inside the factory:
 #   /dev/nvme0n1 on the laptops, /dev/sda on m-pc (SATA SSD), /dev/vda
-#   on ah-1 (virtio) — there is no shared default. Forcing the call
+#   on a VM guest (virtio) — there is no shared default. Forcing the call
 #   site to name it keeps "which disk this host installs to" visible in
 #   the per-host file rather than buried in a shared module.
 #

@@ -43,7 +43,7 @@
 # this module; no per-host wiring needed.
 #
 # Pattern A: hosts opt in by importing. Headless / single-user hosts
-# (wsl, ah-1) where running `home-manager switch` once manually is
+# (wsl, wsl-arm) where running `home-manager switch` once manually is
 # fine can skip importing — but importing is harmless there too,
 # since the service is one-shot and self-disabling.
 #

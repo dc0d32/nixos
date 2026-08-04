@@ -27,16 +27,21 @@ They ship as one bundle, `flake.lib.bundles.nixos.auto-deploy`
 | `pb-x1` | ThinkPad X1 Yoga, primary dev laptop | yes | `p` |
 | `pb-t480` | ThinkPad T480, shared family laptop | yes | `p`, `m`, `s` |
 | `m-pc` | desktop | yes | `p`, `m` |
-| `ah-1` | headless VM | yes | `nas` |
 | `wsl` | NixOS in WSL2 (x86_64) | yes | `p` |
 | `wsl-arm` | NixOS in WSL2 (aarch64) | yes | `p` |
 | `pb-mb` | MacBook Air (macOS) | **no** | — |
-| `nixtest` | throwaway Proxmox VM | **no** | — |
 
 `pb-mb` is a standalone home-manager config on macOS — there is no NixOS,
 no systemd, and no `nixos-rebuild`. It updates when you run
-`home-manager switch --flake .#'p@pb-mb'`. `nixtest` is a scratch VM for
-validating the install loop and is destroyed rather than maintained.
+`home-manager switch --flake .#'p@pb-mb'`.
+
+**A host that is still on a placeholder `hardware-configuration.nix`
+must not be given this bundle.** `nixos-rebuild --flake github:…`
+evaluates purely, where `builtins.getEnv` returns `""`, so the
+placeholder assertion can never pass and every run aborts — silently,
+because the unit failing looks the same as a host that is simply off.
+The retired `ah-1` did exactly this for months. See AGENTS.md >
+"Placeholder hosts".
 
 The homelab (`homelab/` submodule: ursa, andromeda, draco, …) is a
 separate flake with its own deploy story and is **not** covered here.
@@ -185,7 +190,7 @@ promptly rather than waiting for a calendar slot it already missed.
    costing anyone battery anyway.
 3. **Neither.** No battery and no line-power node and not WSL → a
    desktop, VM or server. Always "on AC". This is what makes `m-pc` and
-   `ah-1` unconditional.
+   `m-pc` unconditional.
 
 Exit codes: `0` on wall power, `1` on battery, `2` undeterminable.
 `ac-check --verbose` prints its reasoning, which is what lands in the

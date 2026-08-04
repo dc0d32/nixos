@@ -9,13 +9,13 @@
 #   pb-t480) stay free of an SSH listener they never use.
 #
 # Why defaults rather than an opinionated hardening preset:
-#   The host bridge (flake-modules/hosts/ah-1.nix) explicitly chose
+#   The importing host bridge explicitly chose
 #   "Defaults" for the SSH auth policy. Hardening (PermitRootLogin
 #   prohibit-password, PasswordAuthentication false, key-only auth,
 #   port hardening, fail2ban) is a follow-up that should happen as a
 #   conscious decision once the host is reachable on the network.
 #   When you do harden, the natural place is per-host overrides in the
-#   ah-1.nix bridge, NOT this module -- this module stays a "just
+#   host bridge, NOT this module -- this module stays a "just
 #   enable sshd" primitive so other hosts with different policies can
 #   share it.
 #

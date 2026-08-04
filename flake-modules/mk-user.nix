@@ -1,6 +1,6 @@
 # Factory for a NixOS `users.users.<name>` entry.
 #
-# The bare-metal bridges (pb-x1, m-pc, pb-t480, ah-1) each hand-wrote a
+# The bare-metal bridges (pb-x1, m-pc, pb-t480) each hand-wrote a
 # near-identical account block (isNormalUser, description, shell = zsh,
 # initialPassword = "changeme", extraGroups). This publishes the shared
 # shape on `flake.lib.mkUser` so a bridge writes:

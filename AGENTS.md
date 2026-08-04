@@ -23,18 +23,14 @@ home-manager switch --flake .#'p@pb-x1'
 # reading stdin)
 nix fmt .
 
-# Evaluate without building (use --impure if any host is a placeholder;
-# see "Placeholder hosts" below)
+# Evaluate without building. PURE — there are no placeholder hosts, and
+# it must stay that way: a real host runs `nixos-rebuild --flake
+# github:...`, which evaluates purely. See "Placeholder hosts" below.
 nix flake check
-NIXOS_ALLOW_PLACEHOLDER=1 nix flake check --impure
 
 # Agent-side smoke build (no activation, no sudo)
 nix build .#nixosConfigurations.pb-x1.config.system.build.toplevel
 nix build .#homeConfigurations.'p@pb-x1'.activationPackage
-
-# Smoke-build a placeholder host (pb-t480, m-pc, ah-1):
-NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
-    .#nixosConfigurations.pb-t480.config.system.build.toplevel
 
 # Backup wrappers (installed system-wide when flake.modules.nixos.backup
 # is imported by the host bridge — see "Impermanence + backup" below):
@@ -96,19 +92,47 @@ Things to know before touching it:
 
 ## Placeholder hosts
 
-Hosts whose `hosts/<name>/hardware-configuration.nix` is the all-zeros
-sentinel (currently `pb-t480`, `m-pc`, and `ah-1`) carry an assertion
-that aborts evaluation of `system.build.toplevel` unless
-`NIXOS_ALLOW_PLACEHOLDER=1` is in the environment. This keeps a real
-`sudo nixos-rebuild switch` from accidentally activating an unbootable
-config, while still letting smoke-builds proceed on a dev machine.
+**There are currently none, and `nix flake check` / CI therefore run
+PURE. Keep it that way.**
 
-The host bridge marks the config with `placeholder = true;` so the
-auto-generated `flake.checks.<system>.configurations:nixos:<name>`
-entry is filtered out — but `nix flake check` itself also walks every
-entry in `nixosConfigurations`, which is built-in CLI behavior we
-can't suppress. Use `--impure` for `nix flake check` while any host
-is still placeholder.
+The mechanism still exists for bringing up a new host: stub
+`hosts/<name>/hardware-configuration.nix` with an assertion gated on
+`NIXOS_ALLOW_PLACEHOLDER=1`, and mark the bridge `placeholder = true;`
+so the auto-generated `flake.checks.<system>.configurations:nixos:<name>`
+entry is filtered out.
+
+### The trap (learned the hard way, 2026-08-04)
+
+`nix flake check` walks every entry in `nixosConfigurations` regardless
+of which subset ends up in `checks` — built-in CLI behavior we can't
+suppress — so a placeholder host makes a pure `nix flake check` fail.
+The obvious fix was to run CI and the pre-push hook with
+`NIXOS_ALLOW_PLACEHOLDER=1 ... --impure`. **That was actively harmful.**
+
+A real host deploys with `nixos-rebuild --flake github:dc0d32/nixos#<h>`,
+which evaluates **purely**, and under pure eval `builtins.getEnv` always
+returns `""`. So the assertion can never pass on the real host, no matter
+what is in its environment — while CI, running impure with the flag,
+stayed green. `ah-1` imported the auto-deploy bundle and its
+auto-upgrade aborted on *literally every run* for months, with a green
+check on every push.
+
+Rules that follow:
+
+- **Never add `--impure` / `NIXOS_ALLOW_PLACEHOLDER=1` to
+  `.github/workflows/flake-check.yml` or `smoke-build-hosts` in
+  `flake-modules/dev-shell.nix`.** Those two gates must evaluate exactly
+  what a host evaluates.
+- **A placeholder host must not import
+  `flake.lib.bundles.nixos.auto-deploy`.** Placeholder + auto-deploy is
+  a statically guaranteed-broken combination.
+- Smoke-build a placeholder by hand instead, and keep it out of the
+  pushed set of deployable hosts until its
+  `hardware-configuration.nix` is real:
+  ```sh
+  NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure \
+      .#nixosConfigurations.<name>.config.system.build.toplevel
+  ```
 
 ## Architecture
 
@@ -169,7 +193,7 @@ NixOS does not ship `/bin/bash` on a default install — only `/bin/sh`
 populate `/bin/bash` for compat with Linux tooling that hardcodes the
 path, which makes it easy to author a script on WSL that works locally
 but fails with `bad interpreter: No such file or directory` the
-moment it runs on bare-metal `pb-x1` / `pb-t480` / `ah-1`.
+moment it runs on bare-metal `pb-x1` / `pb-t480` / `m-pc`.
 
 For scripts embedded in `.nix` files, use `pkgs.writeShellApplication`
 or `pkgs.writeShellScript` — those generate a Nix-store shebang that's
@@ -262,9 +286,11 @@ rebuild — same flake-is-git-tracked caveat applies.
    for no swap partition. LUKS is opt-in via `luks = true;`
    (prompts at install time via the disko TTY askpass).
 2. Stub `hosts/<name>/hardware-configuration.nix` with the
-   placeholder pattern shipping in `m-pc.nix`/`pb-t480.nix` (an
-   assertion gated on `NIXOS_ALLOW_PLACEHOLDER=1`) until you can
-   regenerate it on the live hardware.
+   placeholder pattern (an assertion gated on
+   `NIXOS_ALLOW_PLACEHOLDER=1`) until you can regenerate it on the
+   live hardware. While it is a placeholder, do NOT give the host
+   the auto-deploy bundle, and do NOT relax `nix flake check` to
+   `--impure` to accommodate it — see "Placeholder hosts" above.
 3. Pick which feature modules to import; set their option values.
 4. `git add` everything new — flake builds only see git-tracked
    files.

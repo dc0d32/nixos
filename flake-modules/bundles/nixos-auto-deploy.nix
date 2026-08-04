@@ -2,7 +2,7 @@
 #
 # The pull-from-`origin/main` automation, imported as a set by every
 # host that should stay in lockstep with the repo without anyone SSHing
-# in. Extracted on 2026-06-25 because m-pc, pb-t480, ah-1 and wsl each
+# in. Extracted on 2026-06-25 because m-pc, pb-t480 and wsl each
 # listed the same modules; pb-x1 (the dev box) joined on 2026-08-04
 # once the driver learned to prefer a quiet window and hold off on
 # battery, which removed the "a 04:40 rebuild races my in-progress
@@ -28,8 +28,14 @@
 # "your timer exists but nothing schedules it".
 #
 # NOTE: home-manager-bootstrap is intentionally NOT in this bundle — it
-# is part of the workstation core, and the headless hosts (ah-1, wsl)
-# import it explicitly alongside this bundle.
+# is part of the workstation core, and the headless WSL hosts import it
+# explicitly alongside this bundle.
+#
+# A host on a placeholder hardware-configuration.nix must NOT be given
+# this bundle: `nixos-rebuild --flake github:…` evaluates purely, where
+# `builtins.getEnv` returns "", so the placeholder assertion can never
+# pass and every single run aborts. The retired ah-1 did exactly that for
+# months behind a green CI. See AGENTS.md > "Placeholder hosts".
 #
 # Retire when: a different deployment driver replaces this (e.g.
 #   deploy-rs push-based deploys), OR the repo's lock-in-the-repo

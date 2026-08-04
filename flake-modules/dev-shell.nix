@@ -48,18 +48,18 @@
 #                           reusable modules here use documentation-range
 #                           placeholders. Diff-based, like gitleaks.
 #   - smoke-build-hosts   : pre-PUSH hook (not pre-commit). Runs
-#                           `nix flake check --impure` with
-#                           NIXOS_ALLOW_PLACEHOLDER=1 so every
-#                           non-placeholder, native-arch NixOS and
-#                           home-manager configuration gets evaluated
-#                           AND built before the push completes.
-#                           Catches both eval breakage and build
-#                           failures before they reach origin/main —
-#                           critical now that secondary hosts
-#                           (pb-t480, ah-1, m-pc, wsl) auto-upgrade
-#                           from origin/main daily via flake-modules/
-#                           auto-upgrade.nix; pushing a broken main
-#                           bricks their next 24h of upgrades.
+#                           `nix flake check` — PURE, no
+#                           NIXOS_ALLOW_PLACEHOLDER escape hatch — so
+#                           every native-arch NixOS and home-manager
+#                           configuration is evaluated AND built the
+#                           same way a real host evaluates it, before
+#                           the push completes. Catches eval breakage
+#                           and build failures before they reach
+#                           origin/main — critical because every host
+#                           (pb-x1, pb-t480, m-pc, wsl, wsl-arm)
+#                           auto-deploys from origin/main via
+#                           flake-modules/auto-update.nix; pushing a
+#                           broken main stalls their upgrades.
 #                           Skip with `git push --no-verify` only if
 #                           there's an explicit reason (AGENTS.md).
 #
@@ -197,31 +197,45 @@
         '';
       };
 
-      # Pre-push smoke build: evaluate-and-build every non-placeholder,
-      # native-arch NixOS and home-manager configuration before letting
-      # the push complete. Catches eval breakage AND build failures
-      # before they hit GitHub — which matters because the secondary
-      # hosts (pb-t480, ah-1, m-pc, wsl) auto-upgrade from origin/main
-      # via flake-modules/auto-upgrade.nix. A broken main branch means
-      # those hosts spend the next 24h trying and failing to upgrade.
+      # Pre-push smoke build: evaluate-and-build every native-arch NixOS
+      # and home-manager configuration before letting the push complete.
+      # Catches eval breakage AND build failures before they hit GitHub —
+      # which matters because every host auto-deploys from origin/main
+      # (flake-modules/auto-update.nix). A broken main means those hosts
+      # spend the next day trying and failing to upgrade.
       #
       # Implementation: `nix flake check` builds every entry in
       # `flake.checks.<currentSystem>` (assembled by
       # flake-modules/nixos.nix and the home-manager dispatcher).
       # That auto-list already filters out placeholders and
       # non-native arches, so we don't redo that filtering here.
-      # `--impure` + `NIXOS_ALLOW_PLACEHOLDER=1` is required because
-      # `nix flake check` walks every entry in `nixosConfigurations`
-      # regardless of which subset ends up in checks (a built-in CLI
-      # behavior we can't suppress) and the placeholder hosts'
-      # toplevel evaluation would otherwise abort. See AGENTS.md >
-      # "Placeholder hosts".
+      #
+      # **Runs PURE, deliberately.** This used to be
+      # `NIXOS_ALLOW_PLACEHOLDER=1 nix flake check --impure`, needed
+      # because `nix flake check` walks every entry in
+      # `nixosConfigurations` regardless of which subset ends up in
+      # checks, and the placeholder hosts' toplevel evaluation would
+      # otherwise abort. That escape hatch was actively harmful: a real
+      # host runs `nixos-rebuild --flake github:…`, which evaluates
+      # *purely*, where `builtins.getEnv` returns "" and the assertion
+      # can never pass. So the gate protecting the auto-deploying hosts
+      # was validating a configuration those hosts could never reach —
+      # ah-1's auto-upgrade aborted on every single run for months and
+      # CI stayed green throughout. With ah-1 and nixtest retired there
+      # are no placeholder hosts left, so the flag is gone and this now
+      # evaluates exactly what a host evaluates.
+      #
+      # If a future host needs the placeholder pattern again: do NOT
+      # reintroduce the flag here. Leave it out of the auto-deploy
+      # bundle until its hardware-configuration.nix is real, and
+      # smoke-build it by hand with
+      #   NIXOS_ALLOW_PLACEHOLDER=1 nix build --impure .#nixosConfigurations.<h>…
       #
       # `--all-systems` is intentionally NOT passed: we only build
       # for the local arch. Cross-arch hosts (e.g. wsl-arm) get
       # validated when their owner runs the hook from a matching
       # machine. With one of each arch in the loop (x86_64-linux on
-      # pb-x1/pb-t480/ah-1/m-pc/wsl, aarch64-linux on wsl-arm) the
+      # pb-x1/pb-t480/m-pc/wsl, aarch64-linux on wsl-arm) the
       # union of pre-push checks across users covers everything.
       #
       # Runtime: warm cache ~5-15s for the eval pass, plus whatever
@@ -234,14 +248,7 @@
         runtimeInputs = with pkgs; [ nix coreutils ];
         text = ''
           echo "→ smoke-build: nix flake check (all native-arch hosts)" >&2
-          # NIXOS_ALLOW_PLACEHOLDER=1 lets nixosConfigurations walk
-          # past the placeholder-host assertions that protect against
-          # accidental `nixos-rebuild switch` on an unbootable config.
-          # --impure is then required by `nix flake check` to honor
-          # any environment-variable reads in the eval. See
-          # flake-modules/nixos.nix and AGENTS.md > "Placeholder
-          # hosts".
-          NIXOS_ALLOW_PLACEHOLDER=1 exec nix flake check --impure --print-build-logs
+          exec nix flake check --print-build-logs
         '';
       };
 

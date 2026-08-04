@@ -7,7 +7,6 @@ Configured hosts:
 - `pb-x1` — primary dev laptop (Lenovo X1 Yoga gen 7, x86_64-linux).
 - `pb-t480` — kids' shared laptop (Lenovo ThinkPad T480, x86_64-linux).
 - `m-pc` — kid desktop (Compaq Pro 4300 SFF, x86_64-linux).
-- `ah-1` — homelab service-host VM (x86_64-linux, headless).
 - `wsl` — NixOS inside WSL2 on x86_64 Windows.
 - `wsl-arm` — NixOS inside WSL2 on Windows on ARM (aarch64-linux).
 - `pb-mb` — MacBook Air M4 (standalone home-manager only).
@@ -212,8 +211,15 @@ and (2) the condition under which it can be deleted.
    `config.flake.lib.diskoLayouts.bare-metal` (BIOS+UEFI, btrfs
    subvols + optional swap partition) or `.vm` (UEFI-only ext4).
 2. Stub `hosts/<name>/hardware-configuration.nix` with the
-   placeholder pattern used by `pb-t480` and `m-pc` until you can
-   regenerate it on the live hardware.
+   placeholder pattern (an assertion gated on
+   `NIXOS_ALLOW_PLACEHOLDER=1`) until you can regenerate it on the
+   live hardware. While it is a placeholder, leave the host out of
+   `flake.lib.bundles.nixos.auto-deploy` and do NOT relax
+   `nix flake check` to `--impure` to accommodate it — a real host
+   evaluates purely, where the assertion can never pass, so an
+   `--impure` gate would go green while that host silently failed
+   every upgrade. (This is not hypothetical; see
+   `docs/sessions/2026-08-04-opportunistic-auto-update.md`.)
 3. Pick which feature modules to import; set their option values.
 4. Set `users.primary = "<your-user>";` inside the per-config
    `module` block (declared by `flake-modules/users.nix`).

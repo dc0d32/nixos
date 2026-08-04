@@ -346,6 +346,65 @@ pushed over the top of local iteration — the accepted trade — and
   `udevadm trigger`, so the AC udev rule can't re-fire mid-switch; and
   that `mkOrder` merges correctly through the `mkIf` on all six hosts.
 
+## Postscript: ah-1 and nixtest retired, and CI made pure
+
+Checking whether hosts needed a manual `nixos-rebuild switch` to pick up
+the new driver turned up something worse than a stale host.
+
+`hosts/ah-1/hardware-configuration.nix` was still the all-zeros
+placeholder, carrying
+
+```nix
+assertion = builtins.getEnv "NIXOS_ALLOW_PLACEHOLDER" == "1";
+```
+
+and ah-1 imported the auto-deploy bundle. A real host deploys with
+`nixos-rebuild --flake github:dc0d32/nixos#ah-1`, which evaluates
+**purely** — and under pure eval `builtins.getEnv` always returns `""`.
+So the assertion could never pass on that host, in any environment.
+ah-1's nightly auto-upgrade aborted on *literally every run* since it was
+set up.
+
+The reason nobody noticed is the part worth remembering. Both gates that
+exist specifically to protect the auto-upgrading hosts —
+`.github/workflows/flake-check.yml` and the `smoke-build-hosts` pre-push
+hook — ran as
+
+```
+NIXOS_ALLOW_PLACEHOLDER=1 nix flake check --impure
+```
+
+because `nix flake check` walks every entry in `nixosConfigurations`
+regardless of which subset ends up in `checks`, and a placeholder host
+would otherwise fail it. That flag is precisely the thing the real host
+cannot have. **The gate was green because it was validating a
+configuration the protected host could never reach.** The CI workflow's
+own header comment even named ah-1 among the hosts it was protecting.
+
+`nixos.nix`'s `placeholder = true` filter compounded it by removing the
+host from `flake.checks` entirely, so its closure was never built either.
+
+Both hosts are now retired at the user's request (ah-1 superseded by the
+real homelab nodes in the `homelab/` submodule; nixtest was always a
+throwaway Proxmox VM for validating the install loop). With them gone
+there are no placeholder hosts left, so:
+
+- `.github/workflows/flake-check.yml` and `smoke-build-hosts` both drop
+  `--impure` and `NIXOS_ALLOW_PLACEHOLDER=1`. **They now evaluate exactly
+  what a host evaluates.** Verified: pure `nix flake check` passes.
+- AGENTS.md's "Placeholder hosts" section is rewritten around the trap,
+  with two rules: never reintroduce the flag into those two gates, and
+  never give a placeholder host the auto-deploy bundle (placeholder +
+  auto-deploy is a statically guaranteed-broken combination).
+
+Nothing was orphaned by the removal — every `flake-modules/homelab/*`
+module and `flake.lib.bundles.homeManager.homelab` is consumed by the
+`homelab/` submodule flake through `inputs.pub`, not by the deleted
+bridges. Checked module-by-module before deleting.
+
+Remaining host set: pb-x1, pb-t480, m-pc, wsl, wsl-arm (NixOS) and
+pb-mb (standalone HM on macOS).
+
 ## Follow-up
 
 Backup is next: `backup.nix` still has a daily 03:00 calendar timer with

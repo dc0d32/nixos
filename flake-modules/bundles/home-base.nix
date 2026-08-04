@@ -1,7 +1,7 @@
 # Home-manager bundle: base.
 #
 # The minimum HM module set that every account in this flake imports
-# regardless of role. Headless hosts (wsl, ah-1) consume this directly;
+# regardless of role. Headless hosts (wsl, wsl-arm) consume this directly;
 # desktop bundles compose on top.
 #
 # Members:

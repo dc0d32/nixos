@@ -21,7 +21,7 @@
 # It is a flake-parts *top-level* option, and import-tree loads every
 # file under flake-modules/ unconditionally, so the `mkDefault true`
 # below applies once for the whole flake. The flag reads `true` on
-# EVERY host, including m-pc, wsl and ah-1 which never import this
+# EVERY host, including m-pc and wsl which never import this
 # module. It is not "true iff imported into the host". Do not gate
 # anything on it without replacing the mechanism. Same caveat applies
 # to bluetooth.enable; see flake-modules/bluetooth.nix for why moving

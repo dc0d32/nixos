@@ -37,7 +37,7 @@
 #
 # Pattern A: hosts opt in by importing. Imported by every NixOS host in
 # this flake — via bundles/nixos-workstation.nix for pb-x1 / m-pc /
-# pb-t480, directly by wsl / nixtest / ah-1 — because the Copilot CLI is
+# pb-t480, directly by wsl / wsl-arm — because the Copilot CLI is
 # used on all of them. pb-mb is macOS (userland-only, no NixOS config)
 # and ships /bin/bash already.
 #

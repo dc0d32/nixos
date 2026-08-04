@@ -14,7 +14,7 @@
 # Heavier EDA (KiCad) and CAD (FreeCAD) live in their own modules; this
 # is the "just getting started" tier. Carried by the desktop + kid HM
 # bundles, so every graphical user on every graphical host gets it;
-# headless (wsl, ah-1) and macOS (pb-mb) don't import those bundles.
+# headless (wsl, wsl-arm) and macOS (pb-mb) don't import those bundles.
 #
 # Retire when: nobody on the host is learning electronics, OR CircuitJS
 #   lands in stable nixpkgs (then swap the launcher for the package).
