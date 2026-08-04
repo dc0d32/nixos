@@ -64,10 +64,6 @@ auto-update.timer          OnBootSec=10min, OnUnitActiveSec=1h, jitter 10min
 auto-update.service        ExecCondition = auto-update-gate   ← decides "now?"
         │                  ExecStart     = auto-update-run     ← sequencer
         │
-        ├─(0)─► nixos-clone-<user>.service      [best-effort]
-        │         git clone github.com/dc0d32/nixos ~<user>/nixos
-        │         (no-op once ~/nixos/.git exists)
-        │
         ├─(1)─► nixos-auto-upgrade.service      [required]
         │         nixos-rebuild switch --refresh \
         │           --flake github:dc0d32/nixos#<host>
@@ -81,35 +77,38 @@ auto-update.service        ExecCondition = auto-update-gate   ← decides "now?"
 **Required vs best-effort.** A failing *required* step fails the run and
 withholds the `last-success` stamp, so the 24h staleness fallback keeps
 retrying. A failing *best-effort* step is logged loudly and recorded in
-the status file but doesn't block anything. `nixos-clone` must not be
-required: a clone failing for a persistent reason (`~/nixos` exists, is
-non-empty, isn't a repo) would otherwise withhold `last-success` forever
-and turn every poll into a full rebuild.
+the status file but doesn't block anything. Nothing currently uses the
+best-effort class; it exists so that convenience work can be added later
+without being able to wedge the updater.
 
-## `~/nixos` is guaranteed, independently of all of the above
+## `~/nixos`, the hand-deploy fallback
 
 `~/nixos` is what you reach for **when auto-update has failed** — the
 checkout you activate from by hand. That makes its delivery path
 load-bearing, and it must not share fate with the thing it rescues you
-from. So it has **two independent triggers**:
+from. So `nixos-clone-<user>.timer` is completely independent of
+everything above: `OnBootSec=2min`, then `OnCalendar` hourly, ungated.
 
-1. **`nixos-clone-<user>.timer`** — `OnBootSec=2min`, then `OnCalendar`
-   hourly, completely ungated. This is the one that matters.
-2. The auto-update sequencer, as step (0) above, so
-   `sudo auto-update-now` guarantees a checkout too.
+An earlier revision retried it from the auto-update sequencer instead,
+which was circular — every condition that stops auto-update (battery,
+outside the window, inside the 6h throttle, offline, or simply broken)
+would also have stopped the clone. To force one right now:
 
-(1) exists because (2) alone is circular: every condition that stops
-auto-update — on battery, outside the quiet window, inside the 6h
-throttle, offline, or simply broken — would also stop the clone.
+```sh
+sudo systemctl start nixos-clone-<user>.service
+```
 
-Every HM user on every NixOS host gets one:
+Coverage is the **bare-metal** hosts only — it ships in the
+`workstation` bundle, not `auto-deploy`, because its applicable set is
+"machines someone sits down at and may need to deploy from by hand":
 
 | host | clone timers |
 | --- | --- |
 | `pb-x1` | `p` |
 | `pb-t480` | `p`, `m`, `s` |
 | `m-pc` | `p`, `m` |
-| `wsl` / `wsl-arm` | `p` |
+| `wsl` / `wsl-arm` | — (created by the WSL install procedure) |
+| `pb-mb` | — (`git clone … ~/nixos` is step 2 of the macOS bootstrap, since the first `home-manager switch` needs it) |
 
 Cost after the first success is nil — `ConditionPathExists=!~/nixos/.git`
 skips the unit in microseconds.
@@ -324,8 +323,8 @@ all users update" used to happen silently:
 | power state unreadable (odd hardware, WSL with no session) | proceeds anyway rather than wedging forever. |
 | outside the quiet window | skipped — **unless** nothing has succeeded in 24h, then it runs anyway. |
 | a run happened recently | skipped for 6h regardless of window or staleness, so a 7h-wide window and an hourly poll can't mean seven rebuilds a night. |
-| `~/nixos` clone missing or previously failed | retried hourly by its own ungated timer, *and* on every update poll — never once-per-boot. |
-| auto-update itself broken/gated | the clone timer is independent, so the manual-fallback checkout still lands. |
+| `~/nixos` clone missing or previously failed | retried hourly by its own ungated timer, never once-per-boot. |
+| auto-update itself broken/gated | the clone timer is independent of it, so the hand-deploy checkout still lands. |
 | `~/nixos` exists, non-empty, not a repo | refuses with an explicit "move it aside" message and does not fail the run. |
 | one user's HM activation fails | loop continues to the remaining users; the unit exits **non-zero** so it shows red. |
 | any step failed | `last-success` is **not** advanced, so the 24h staleness fallback keeps retrying — throttled to once every 6h, not once an hour, so a permanently-broken step can't become a rebuild loop. |

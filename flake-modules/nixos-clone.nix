@@ -28,16 +28,15 @@
 # from by hand. That makes its delivery path load-bearing, and it must
 # not share fate with the thing it rescues you from.
 #
-# Two independent triggers, on purpose:
-#   1. `nixos-clone-<user>.timer` — OnBootSec=2min, then OnCalendar
-#      hourly, ungated. This is the one that matters.
-#   2. `autoUpdate.bestEffortSteps` — the auto-update sequencer also
-#      runs it ahead of each system rebuild, so `sudo auto-update-now`
-#      guarantees a checkout too.
+# Delivery is `nixos-clone-<user>.timer`: OnBootSec=2min, then
+# OnCalendar hourly, ungated, with no dependency on the auto-update
+# driver whatsoever.
 #
-# (1) exists because (2) alone would be circular: every condition that
-# stops auto-update — on battery, outside the quiet window, inside the
-# 6h throttle, offline, or simply broken — would also stop the clone.
+# An earlier revision retried it from the auto-update sequencer instead.
+# That was circular: every condition that stops auto-update — on
+# battery, outside the quiet window, inside the 6h throttle, offline, or
+# simply broken — would also have stopped the clone. To get a checkout
+# *now*: `sudo systemctl start nixos-clone-<user>.service`.
 #
 # Earlier revisions of this module had a single `WantedBy=
 # multi-user.target` trigger and no retry. `Type=oneshot` forbids
@@ -169,9 +168,9 @@ in
     {
       # ── Retry, independently of auto-update ─────────────────────
       #
-      # Each clone unit gets its own hourly timer. This is deliberately
-      # NOT delegated to the auto-update driver, even though the clone
-      # is also registered there as a best-effort step (below).
+      # Each clone unit gets its own hourly timer, and that is the ONLY
+      # retry mechanism -- deliberately not delegated to the auto-update
+      # driver.
       #
       # The reason is a circular dependency: `~/nixos` is the fallback
       # you reach for *when auto-update has failed* -- the checkout you
@@ -182,7 +181,13 @@ in
       # stop the clone. The escape hatch would be behind the thing it
       # exists to rescue you from.
       #
-      # So: cheap, ungated, hourly, on every host, for every user.
+      # Staying standalone also keeps this module free of any dependency
+      # on the auto-update driver, which matters now that the two ship in
+      # different bundles (`workstation` vs `auto-deploy`). To force a
+      # checkout right now:
+      #   sudo systemctl start nixos-clone-<user>.service
+      #
+      # So: cheap, ungated, hourly, for every HM user on the host.
       # A `git clone` of this repo is a few MB and the unit is
       # condition-skipped in microseconds once `~/nixos/.git` exists
       # (and, thanks to RemainAfterExit, is a total no-op after a
@@ -210,18 +215,6 @@ in
           })
         forThisHost;
 
-      # Also run it from the auto-update sequencer, as a best-effort
-      # step ahead of the system rebuild. Redundant with the timer
-      # above by design -- it means `sudo auto-update-now` also
-      # guarantees the checkout, and it closes the window where a host
-      # is about to activate a new generation with no local checkout.
-      #
-      # best-effort, never required: a clone that fails for a persistent
-      # reason (`~/nixos` exists, non-empty, not a repo) must not
-      # withhold the driver's `last-success` stamp, or the staleness
-      # fallback would turn every poll into a full rebuild.
-      autoUpdate.bestEffortSteps =
-        lib.mkOrder 50 (map (u: "nixos-clone-${u}.service") users);
 
       systemd.services = lib.mapAttrs'
         (cfgName: _hm:

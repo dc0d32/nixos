@@ -19,7 +19,14 @@
 #   hm-auto-upgrade `hm-auto-upgrade.service` — `home-manager switch`
 #                   for every HM user on the host, run after the system
 #                   rebuild
-#   nixos-clone     per-user oneshot that clones the repo into ~/nixos
+#
+# NOT a member: `nixos-clone` (the per-user ~/nixos checkout). It lives
+# in the `workstation` bundle instead, because its applicable set is
+# "bare-metal hosts someone sits down at and may need to deploy from by
+# hand", not "hosts that auto-deploy". WSL and macOS get their checkout
+# from their install procedure — on macOS `git clone … ~/nixos` is
+# literally step 2 of the bootstrap, since the first `home-manager
+# switch` needs it.
 #
 # The three auto-update members are one unit of deployment on purpose:
 # `auto-upgrade` and `hm-auto-upgrade` read options declared by
@@ -45,7 +52,6 @@
   flake.lib.bundles.nixos.auto-deploy = with config.flake.modules.nixos; [
     auto-update
     auto-upgrade
-    nixos-clone
     hm-auto-upgrade
   ];
 }

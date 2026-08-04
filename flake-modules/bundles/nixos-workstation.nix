@@ -16,7 +16,13 @@
 #   impermanence backup gpu power networking nix-settings system-utils
 #   bin-bash users fonts locale battery audio bluetooth boot
 #   kernel-latest file-manager login-ly niri lockscreen
-#   home-manager-bootstrap
+#   home-manager-bootstrap nixos-clone
+#
+# `nixos-clone` (the per-user ~/nixos checkout) is here rather than in
+# the auto-deploy bundle on purpose: its applicable set is "bare-metal
+# hosts someone sits down at and may need to deploy from by hand", which
+# is exactly this bundle. The WSL hosts and the Mac get their checkout
+# from their install procedure instead.
 #
 # Published under flake.lib.bundles.nixos.workstation (lists live under
 # flake.lib because flake-parts only recognizes a fixed set of top-level
@@ -31,6 +37,11 @@
     # Root-rollback impermanence + daily restic backup of /persist.
     impermanence
     backup
+
+    # Per-user ~/nixos checkout, kept present by its own hourly timer.
+    # The hand-deploy fallback for when auto-update is the thing that's
+    # broken. See flake-modules/nixos-clone.nix.
+    nixos-clone
 
     gpu
     power

@@ -479,18 +479,36 @@ never *becomes* active, so an activity-relative timer would arm once and
 never re-fire — the same trap that ruled out a `.target`-based sequencer
 earlier in the session.
 
-The sequencer registration is kept as well, redundantly and on purpose:
-it means `sudo auto-update-now` also guarantees a checkout. Cost after
-the first success is nil, since `ConditionPathExists` skips the unit in
-microseconds.
+The sequencer registration was then dropped entirely. Two reasons. It
+was redundant once the timer existed; and scoping the module correctly
+(next paragraph) moved it into a different bundle from the driver, so
+`autoUpdate.bestEffortSteps` was no longer guaranteed to be a declared
+option. Guarding with `lib.optionalAttrs (config ? autoUpdate)` looked
+like the fix and is not: testing membership on `config` forces
+`_module.freeformType`, which forces the whole merge, which includes
+this module's own output — infinite recursion, the third variant of
+that trap hit in this session. Dropping the hook removes the coupling
+rather than hiding it, and costs nothing the timer doesn't already
+cover.
+
+Scope corrected at the same time: `nixos-clone` moved out of the
+`auto-deploy` bundle and into `workstation`. Its applicable set is
+"bare-metal hosts someone sits down at and may need to deploy from by
+hand", not "hosts that auto-deploy". WSL and the Mac get their checkout
+from their install procedure — on macOS `git clone … ~/nixos` is
+literally step 2 of the documented bootstrap, since the first
+`home-manager switch` needs it. Verified: clone units and timers now
+appear on pb-x1 (`p`), pb-t480 (`p`/`m`/`s`) and m-pc (`p`/`m`), and on
+neither WSL host.
+
+Cost after the first success is nil, since `ConditionPathExists` skips
+the unit in microseconds.
 
 Behaviour change worth noting: deleting `~/nixos` now gets it recreated
 within the hour. The old module documented the opposite as deliberate
 ("lets advanced users move ~/nixos elsewhere"), but the user's
 requirement is that the checkout be a guarantee on every machine for
-`p`, and a manual-trigger fallback for the kids' accounts. Verified: all
-five NixOS hosts emit a timer for every HM user (pb-x1 `p`; pb-t480
-`p`/`m`/`s`; m-pc `p`/`m`; wsl and wsl-arm `p`).
+`p`, and a manual-trigger fallback for the kids' accounts.
 
 ## Follow-up
 
