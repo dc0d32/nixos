@@ -233,8 +233,101 @@ in
     in
     pkgs.writeShellApplication {
       name = "md-view";
-      runtimeInputs = [ pkgs.coreutils pkgs.glow ];
+      runtimeInputs = [ pkgs.coreutils pkgs.glow pkgs.gnugrep pkgs.mermaid-ascii ];
+      # The mermaid emitter printf's literal Markdown fences, and
+      # shellcheck reads a backtick inside single quotes as an attempted
+      # command substitution (SC2016). They are fences. Same false
+      # positive as flake-modules/displays.nix's embedded Python.
+      excludeShellChecks = [ "SC2016" ];
       text = ''
+        # ── Mermaid ───────────────────────────────────────────────────
+        # glow renders a ```mermaid block as a syntax-highlighted code
+        # block, i.e. as source. mermaid-ascii turns the common diagram
+        # types into text, which is what a pager can actually show
+        # (alacritty implements no image protocol, so the PNG/SVG that
+        # mermaid-cli would emit is not displayable — and mermaid-cli is
+        # a 2.1 GiB Chromium closure besides).
+        #
+        # It is applied CONSERVATIVELY, because mermaid-ascii 1.4.0
+        # handles only a subset and fails in two different ways:
+        #
+        #   * Unsupported diagram TYPES (classDiagram, stateDiagram,
+        #     erDiagram, pie, gantt, mindmap, …) exit non-zero. Easy —
+        #     we keep the source.
+        #   * Unsupported node SHAPES inside a flowchart exit ZERO and
+        #     produce a WRONG diagram: `B{AC power}` renders as a box
+        #     labelled "B{AC power}" *plus* a phantom node "B". Only
+        #     `id[square]` is understood; `(round)`, `((circle))`,
+        #     `{diamond}`, `>flag]`, `[[sub]]`, `[(db)]` are not.
+        #
+        # A silently wrong diagram is worse than none — decision
+        # diamonds are everywhere in real READMEs — so blocks using
+        # those shapes are left as source. Sequence diagrams and
+        # square-node flowcharts (including edge labels and subgraphs)
+        # render correctly and are the case this exists for.
+        #
+        # Net effect: never worse than before, better where it is safe.
+        mermaid_emit() {
+          local src="$1" head="" line art
+          local shapes='[A-Za-z0-9_](\[\[|\[\(|\[/|\[\\|[({>])'
+
+          # First meaningful line decides the diagram type.
+          while IFS= read -r line; do
+            line="''${line#"''${line%%[![:space:]]*}"}"
+            [ -z "$line" ] && continue
+            case "$line" in '%%'*) continue ;; esac
+            head="$line"
+            break
+          done <<<"$src"
+
+          if [[ $head == graph* || $head == flowchart* ]] \
+             && [[ $src =~ $shapes ]]; then
+            printf '```mermaid\n%s```\n' "$src"
+            return
+          fi
+
+          if art="$(mermaid-ascii -f /dev/stdin <<<"$src" 2>/dev/null)" \
+             && [ -n "$art" ]; then
+            # Fenced, so glow shows it verbatim instead of reflowing the
+            # box-drawing characters into prose. The explicit newline
+            # matters: mermaid-ascii does not terminate its last line,
+            # so the closing fence would otherwise land on it.
+            printf '```\n%s\n```\n' "$art"
+          else
+            printf '```mermaid\n%s```\n' "$src"
+          fi
+        }
+
+        # Rewrite ```mermaid blocks on stdin, pass everything else
+        # through. Pure bash: no grep/sed, so md-view's closure stays as
+        # small as the rendering allows.
+        mermaid_filter() {
+          local line block="" in_block=0
+          while IFS= read -r line || [ -n "$line" ]; do
+            if [ "$in_block" -eq 0 ]; then
+              case "$line" in
+                '```mermaid' | '```mermaid '* | '~~~mermaid' | '~~~mermaid '*)
+                  in_block=1
+                  block=""
+                  ;;
+                *) printf '%s\n' "$line" ;;
+              esac
+              continue
+            fi
+            case "$line" in
+              '```'* | '~~~'*)
+                in_block=0
+                mermaid_emit "$block"
+                ;;
+              *) block+="$line"$'\n' ;;
+            esac
+          done
+          # Unterminated block: emit what we swallowed, verbatim.
+          if [ "$in_block" -eq 1 ]; then
+            printf '```mermaid\n%s' "$block"
+          fi
+        }
+
         if [ "$#" -gt 1 ]; then
           echo "usage: md-view [file]   (no file, or '-', reads stdin)" >&2
           exit 2
@@ -265,17 +358,29 @@ in
         # anything else through as plain text (see this module's header),
         # so stdin, a `.markdown`, or a plain `README` would otherwise
         # render as source. Copying is cheap next to what glow then does.
+        #
+        # Mermaid blocks are rewritten in the same pass, which is why a
+        # `.md` input can still need a temp copy.
+        tmp=""
         case "$src" in
-          *.md)
-            doc="$src"
-            ;;
+          *.md) doc="$src" ;;
           *)
-            doc="$(mktemp --suffix=.md)"
-            # shellcheck disable=SC2064  # expand $doc now, not at exit
-            trap "rm -f '$doc'" EXIT
+            tmp="$(mktemp --suffix=.md)"
+            doc="$tmp"
             if [ "$src" = "-" ]; then cat >"$doc"; else cat "$src" >"$doc"; fi
             ;;
         esac
+        # shellcheck disable=SC2064  # expand the paths now, not at exit
+        trap "rm -f '$tmp'" EXIT
+
+        if grep -q '^\(```\|~~~\)mermaid' "$doc" 2>/dev/null; then
+          rendered="$(mktemp --suffix=.md)"
+          # shellcheck disable=SC2064
+          trap "rm -f '$tmp' '$rendered'" EXIT
+          if mermaid_filter <"$doc" >"$rendered"; then
+            doc="$rendered"
+          fi
+        fi
 
         # Reattach stdin to the terminal before rendering. Three things
         # depend on it:

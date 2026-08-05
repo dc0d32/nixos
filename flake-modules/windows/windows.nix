@@ -218,6 +218,28 @@ let
       # Windows has no usable equivalent of, so ship a real empty file.
       mdViewGlowConf = pkgs.writeText "md-view-glow.yml" "";
 
+      # mermaid-ascii, cross-compiled to a native Windows .exe so the
+      # PowerShell `md-view` can render ```mermaid blocks like the Linux
+      # one does. Go cross-compiles cleanly, so this needs no Windows
+      # toolchain — just GOOS/GOARCH. ~14 MiB, a single static binary
+      # with no runtime dependency, which is the only reason it is worth
+      # shipping through hm_win at all: the alternative (mermaid-cli)
+      # would mean a Chromium install on Windows too.
+      #
+      # `env` rather than plain attrs: buildGoModule puts GOOS/GOARCH/
+      # CGO_ENABLED in `env`, and setting them as derivation arguments
+      # instead is a "cannot contain any attributes passed to derivation"
+      # eval error.
+      mermaidAsciiExe = pkgs.mermaid-ascii.overrideAttrs (o: {
+        pname = "mermaid-ascii-windows";
+        env = (o.env or { }) // {
+          GOOS = "windows";
+          GOARCH = "amd64";
+          CGO_ENABLED = 0;
+        };
+      });
+
+
 
       setupScript = pkgs.writeText "setup.ps1" ''
         #Requires -Version 5.1
@@ -432,6 +454,7 @@ let
       cp ${../terminal-help.md}  "$out/terminal-help.md"
       cp ${mdViewStyle}          "$out/md-view-style.json"
       cp ${mdViewGlowConf}       "$out/md-view-glow.yml"
+      cp ${mermaidAsciiExe}/bin/windows_amd64/mermaid-ascii.exe "$out/mermaid-ascii.exe"
       cp ${setupScript}          "$out/setup.ps1"
     '';
 
@@ -553,6 +576,12 @@ let
       # profile.ps1 — the same glamour style the Linux md-view uses.
       deploy "$src/md-view-style.json" "$nixwin/md-view-style.json"
       deploy "$src/md-view-glow.yml" "$nixwin/md-view-glow.yml"
+      # The only binary hm_win ships. 0755 because deploy() installs
+      # 0644, which would leave it non-executable under WSL — Windows
+      # itself ignores the mode, but running it from WSL for testing
+      # would fail confusingly.
+      deploy "$src/mermaid-ascii.exe" "$nixwin/bin/mermaid-ascii.exe"
+      chmod 0755 "$nixwin/bin/mermaid-ascii.exe"
       deploy "$src/setup.ps1" "$nixwin/setup.ps1"
 
       # Windows Terminal: set only the default font face/size, merged
@@ -625,7 +654,12 @@ in
     home.packages = [ (mkHmWin pkgs) ];
   };
 
-  perSystem = { pkgs, ... }: {
-    packages.windows-dotfiles = mkWindowsDotfiles pkgs;
+  # `config.flake.lib.mkPkgs system` rather than perSystem's own `pkgs`:
+  # flake-parts hands out a bare nixpkgs, without this repo's overlays,
+  # and the bundle needs one of them (mermaid-ascii, for the cross
+  # -compiled .exe). Same factory every host bridge uses, so the Windows
+  # bundle is built from exactly the same package set as everything else.
+  perSystem = { system, ... }: {
+    packages.windows-dotfiles = mkWindowsDotfiles (config.flake.lib.mkPkgs system);
   };
 }

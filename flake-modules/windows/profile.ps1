@@ -214,10 +214,63 @@ function md-view {
             return
         }
 
+        $mermaidTmp = $null
         try {
             $nixwin = Join-Path $HOME '.config\nixwin'
             $style = Join-Path $nixwin 'md-view-style.json'
             $conf = Join-Path $nixwin 'md-view-glow.yml'
+
+            # Mermaid: same conservative rules as the Linux md-view (see
+            # flake-modules/markdown-viewer.nix). mermaid-ascii renders
+            # sequence diagrams and square-node flowcharts correctly;
+            # unsupported diagram TYPES exit non-zero, but unsupported
+            # node SHAPES exit zero with a WRONG diagram, so those blocks
+            # are left as source rather than shown misleadingly.
+            $mmd = Join-Path $nixwin 'bin\mermaid-ascii.exe'
+            $raw = Get-Content -LiteralPath $doc -Raw
+            if ((Test-Path $mmd) -and ($raw -match '(?m)^(```|~~~)mermaid')) {
+                $shapes = '[A-Za-z0-9_](\[\[|\[\(|\[/|\[\\|[({>])'
+                $out = [System.Text.StringBuilder]::new()
+                $block = $null
+                foreach ($line in ($raw -split "\r?\n")) {
+                    if ($null -eq $block) {
+                        if ($line -match '^(```|~~~)mermaid\s*$') { $block = @() }
+                        else { [void]$out.AppendLine($line) }
+                        continue
+                    }
+                    if ($line -match '^(```|~~~)') {
+                        $src = ($block -join "`n")
+                        $head = ($block | Where-Object { $_.Trim() -and $_.Trim() -notmatch '^%%' } | Select-Object -First 1)
+                        $art = $null
+                        if (-not (($head -match '^\s*(graph|flowchart)') -and ($src -match $shapes))) {
+                            $mtmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + '.mmd')
+                            Set-Content -LiteralPath $mtmp -Value $src -Encoding utf8
+                            $art = & $mmd -f $mtmp 2>$null
+                            if ($LASTEXITCODE -ne 0) { $art = $null }
+                            Remove-Item $mtmp -ErrorAction SilentlyContinue
+                        }
+                        if ($art) {
+                            [void]$out.AppendLine('```')
+                            [void]$out.AppendLine(($art -join "`n"))
+                            [void]$out.AppendLine('```')
+                        } else {
+                            [void]$out.AppendLine('```mermaid')
+                            foreach ($b in $block) { [void]$out.AppendLine($b) }
+                            [void]$out.AppendLine('```')
+                        }
+                        $block = $null
+                        continue
+                    }
+                    $block += $line
+                }
+                if ($null -ne $block) {
+                    [void]$out.AppendLine('```mermaid')
+                    foreach ($b in $block) { [void]$out.AppendLine($b) }
+                }
+                $mermaidTmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + '.md')
+                Set-Content -LiteralPath $mermaidTmp -Value $out.ToString() -Encoding utf8
+                $doc = $mermaidTmp
+            }
 
             $width = 100
             $cols = $Host.UI.RawUI.WindowSize.Width
@@ -266,6 +319,7 @@ function md-view {
             }
         } finally {
             if ($tmp -and (Test-Path $tmp)) { Remove-Item $tmp -ErrorAction SilentlyContinue }
+            if ($mermaidTmp -and (Test-Path $mermaidTmp)) { Remove-Item $mermaidTmp -ErrorAction SilentlyContinue }
         }
     }
 }

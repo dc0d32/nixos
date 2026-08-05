@@ -34,7 +34,7 @@ up on this machine. Most commands accept `--help` for more, and
 | --- | --- |
 | `bat file` | Show a file with colours and line numbers |
 | `glow file.md` | Read a Markdown document, nicely formatted |
-| `md-view file.md` | Same, but with a pager, mouse scrolling and this machine's theme — and it works on files *not* named `.md`, and on piped input |
+| `md-view file.md` | Same, but with a pager, mouse scrolling and this machine's theme — and it works on files *not* named `.md`, and on piped input. Also draws `mermaid` diagrams as text |
 | `less file` | Scroll through a long file (press **q** to quit) |
 
 ## 🔎  Finding things

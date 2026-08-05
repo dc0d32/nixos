@@ -15,4 +15,10 @@
   # Retire when nixpkgs drops requireFile, or no host imports
   # flake.modules.nixos.displaylink. See the file header.
   (import ./displaylink.nix)
+
+  # mermaid-ascii: not in nixpkgs, and the packaged alternative
+  # (mermaid-cli) is a 2.1 GiB Chromium closure that only emits images
+  # alacritty can't display. Used by md-view to render ```mermaid blocks.
+  # Retire when nixpkgs packages it. See the file header.
+  (import ./mermaid-ascii.nix)
 ]

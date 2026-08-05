@@ -367,6 +367,19 @@ documented in `flake-modules/markdown-viewer.nix`:
   ships its own style because every built-in theme with colour leaves
   the literal `##`/`###` markers on headings.
 
+`md-view` also renders ```mermaid blocks via `mermaid-ascii`
+(`overlays/mermaid-ascii.nix` — not in nixpkgs; the packaged
+alternative, mermaid-cli, is a 2.1 GiB Chromium closure that emits
+images alacritty cannot display). **It is deliberately conservative,
+and must stay that way:** mermaid-ascii 1.4.0 exits non-zero on
+diagram types it doesn't support, which is easy to handle, but for
+unsupported node *shapes* inside a flowchart it exits **zero and
+renders a wrong diagram** — `B{decision}` becomes a box literally
+labelled `B{decision}` plus a phantom node `B`. Only `id[square]` is
+understood. Blocks using `(round)`, `((circle))`, `{diamond}`,
+`>flag]`, `[[sub]]` or `[(db)]` are therefore left as source; a
+silently wrong diagram is worse than none.
+
 ## Adding a new host
 
 1. Create `flake-modules/hosts/<name>.nix` modeled after

@@ -720,3 +720,81 @@ repeated runs.
 Not verified on an actual Windows machine — no access from here. The
 platform-specific risk is confined to the `less.exe` discovery, which
 degrades to unpaged rendering rather than failing.
+
+---
+
+# Phase 8 — mermaid diagrams in `md-view`
+
+## Why not the obvious tool
+
+`mermaid-cli` (mmdc) is in nixpkgs and is the standard answer. Measured:
+**2.1 GiB closure**, because it bundles Chromium. And it only emits
+PNG/SVG — which alacritty cannot display: mainline alacritty (0.17 here)
+implements no image protocol, neither sixel nor kitty graphics. The
+image would then need `chafa` (another 157 MiB) to become Unicode-block
+art, illegible for a diagram with text in it. ~2.3 GiB per host to
+render diagrams badly.
+
+`mermaid-ascii` emits plain text, which is what a pager can actually
+show. Single Go binary, 51 MiB, MIT, actively maintained (1.4.0,
+Jul 2026). Not in nixpkgs → `overlays/mermaid-ascii.nix`.
+
+## The finding that shaped the design
+
+mermaid-ascii covers a subset, and fails in **two different ways**:
+
+| Input | Behaviour |
+| --- | --- |
+| `sequenceDiagram` | renders correctly (incl. notes, alt/loop) |
+| `graph`/`flowchart` with `[square]` nodes | renders correctly (incl. edge labels, subgraphs) |
+| `classDiagram`, `stateDiagram`, `erDiagram`, `pie`, `gantt`, `mindmap` | **exit 1** — easy to detect |
+| `(round)`, `((circle))`, `{diamond}`, `>flag]`, `[[sub]]`, `[(db)]` | **exit 0, wrong output** |
+
+That last row is the dangerous one. `A[Boot] --> B{On AC power?}` yields
+a box literally labelled `B{On AC power?}` *and* a phantom node `B` —
+a diagram that is confidently, silently wrong. Decision diamonds are
+everywhere in real READMEs, and `md-view` is now a general-purpose tool
+pointed at arbitrary files.
+
+So rendering is **conservative**: the first meaningful line decides the
+diagram type; for flowcharts, the block is scanned for unsupported shape
+tokens and left as source if any are found; anything that exits non-zero
+or produces nothing is left as source. Net effect: never worse than
+before (glow already showed these as source), better where it is safe.
+
+Implemented in pure bash inside md-view — no awk/sed/python — so the
+closure grows only by mermaid-ascii itself. md-view's total closure is
+90 MiB against a 16.7 GiB home-manager path.
+
+## Windows
+
+Go cross-compiles, so `pkgs.mermaid-ascii.overrideAttrs` with
+`env.GOOS = "windows"` produces a 13.8 MiB static `.exe` with no Windows
+toolchain involved. It ships in the `windows-dotfiles` bundle and
+deploys to `~/.config/nixwin/bin/`, and the PowerShell `md-view`
+implements the same conservative rules. Verified under pwsh against the
+same test document: output identical to Linux, including both fallbacks.
+
+Note the `env` detail: buildGoModule keeps GOOS/GOARCH/CGO_ENABLED in
+`env`, and passing them as plain derivation arguments is a "cannot
+contain any attributes passed to derivation" eval error.
+
+This is the **first binary** hm_win ships (everything else is text
+config), hence the explicit `chmod 0755` after deploy — `deploy()`
+installs 0644, which Windows ignores but WSL does not.
+
+## A wiring bug this exposed
+
+`perSystem = { pkgs, ... }` gets flake-parts' **bare** nixpkgs, without
+this repo's overlays, so `pkgs.mermaid-ascii` was missing. Fixed by
+building the bundle from `config.flake.lib.mkPkgs system` — the same
+factory every host bridge uses. Worth knowing generally: anything in
+`perSystem` that needs an overlay must go through `mkPkgs`.
+
+## Verified
+
+- Both supported diagram types render; both unsupported cases fall back
+  to source. Checked on Linux through a real pty and on Windows under
+  pwsh, with byte-identical results.
+- Piped output still emits plain source; no stray temp files.
+- All 8 buildable HM configs build; `nix flake check` passes.

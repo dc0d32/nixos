@@ -112,7 +112,10 @@ tip     # the current tip. Rotates hourly; one is pushed automatically at
 md-view # what guide/tools render through: glow with this repo's theme,
         # a pager and mouse scrolling. Works on any Markdown, including
         # files not named .md and piped input (`… | md-view`), which
-        # bare glow renders as source.
+        # bare glow renders as source. Renders ```mermaid blocks as text
+        # where it can do so correctly (sequence diagrams, square-node
+        # flowcharts); anything else is left as source rather than
+        # drawn wrong. Same on native Windows.
 ```
 
 ## Auto-update
