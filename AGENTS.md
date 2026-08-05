@@ -370,15 +370,35 @@ documented in `flake-modules/markdown-viewer.nix`:
 `md-view` also renders ```mermaid blocks via `mermaid-ascii`
 (`overlays/mermaid-ascii.nix` — not in nixpkgs; the packaged
 alternative, mermaid-cli, is a 2.1 GiB Chromium closure that emits
-images alacritty cannot display). **It is deliberately conservative,
-and must stay that way:** mermaid-ascii 1.4.0 exits non-zero on
-diagram types it doesn't support, which is easy to handle, but for
-unsupported node *shapes* inside a flowchart it exits **zero and
-renders a wrong diagram** — `B{decision}` becomes a box literally
-labelled `B{decision}` plus a phantom node `B`. Only `id[square]` is
-understood. Blocks using `(round)`, `((circle))`, `{diamond}`,
-`>flag]`, `[[sub]]` or `[(db)]` are therefore left as source; a
-silently wrong diagram is worse than none.
+images alacritty cannot display).
+
+mermaid-ascii understands only a subset, and fails two ways:
+unsupported diagram *types* exit non-zero (easy), but unsupported node
+*shapes* inside a flowchart exit **zero and draw a wrong diagram** —
+`B{decision}` becomes a box labelled `B{decision}` plus a phantom node
+`B`. So md-view **normalises the dialect down to that subset** before
+rendering: all node shapes become `[label]`, and `==>` / `-.->` /
+`---` / `--o` / `--x` / `-- txt -->` become `-->` or `-->|txt|`. Only
+styling is lost; topology, labels and edge labels are preserved.
+
+Three rules to preserve when touching it:
+
+- **Normalisation runs in two passes.** The `[`-anchored shapes
+  (`[[sub]]`, `[(db)]`, `[/par/]`) go first because they cannot collide
+  with an ordinary label; only then is the label-safety check run, and
+  only then the rest. Reversing this makes `D[(db)]` look like a label
+  containing a paren and silently disables normalisation for the block.
+- **`mermaid_labels_simple` is the safety valve.** The rules are plain
+  text substitutions, so a label containing a brace, paren, bracket or
+  arrow (`C[a{b}]`, `A[call func(x)]`, `A[x ==> y]`) could be rewritten
+  by mistake. If any label looks like that, the block is not normalised
+  at all — that only ever costs an optimisation, never correctness.
+- **A block that still contains unsupported constructs after all that
+  is left as source**, as is anything mermaid-ascii exits non-zero on.
+  A silently wrong diagram is worse than none.
+
+The same three rules are implemented in PowerShell in
+`flake-modules/windows/profile.ps1`; keep the two in step.
 
 ## Adding a new host
 

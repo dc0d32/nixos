@@ -230,6 +230,42 @@ function md-view {
             $raw = Get-Content -LiteralPath $doc -Raw
             if ((Test-Path $mmd) -and ($raw -match '(?m)^(```|~~~)mermaid')) {
                 $shapes = '[A-Za-z0-9_](\[\[|\[\(|\[/|\[\\|[({>])'
+                # Same two-pass normalisation as the Linux md-view (see
+                # flake-modules/markdown-viewer.nix for why each rule
+                # exists and why the order matters). Bracket-anchored
+                # shapes first, then — only if no label contains the
+                # characters the remaining rules key on — the rest.
+                $normBracket = @(
+                    @('([A-Za-z0-9_])\[\[([^\]]*)\]\]', '$1[$2]'),
+                    @('([A-Za-z0-9_])\[\(([^\]]*)\)\]', '$1[$2]'),
+                    @('([A-Za-z0-9_])\[[/\\]([^\]]*)[/\\]\]', '$1[$2]')
+                )
+                $normRest = @(
+                    @('([A-Za-z0-9_])\(\(\(([^)]*)\)\)\)', '$1[$2]'),
+                    @('([A-Za-z0-9_])\(\(([^)]*)\)\)', '$1[$2]'),
+                    @('([A-Za-z0-9_])\(\[([^\]]*)\]\)', '$1[$2]'),
+                    @('([A-Za-z0-9_])\(([^)]*)\)', '$1[$2]'),
+                    @('([A-Za-z0-9_])\{\{([^}]*)\}\}', '$1[$2]'),
+                    @('([A-Za-z0-9_])\{([^}]*)\}', '$1[$2]'),
+                    @('([A-Za-z0-9_])>([^\]]*)\]', '$1[$2]'),
+                    @('--\s+([^->|]+[^->|\s])\s*-->', '-->|$1|'),
+                    @('==\s+([^=>|]+[^=>|\s])\s*==>', '-->|$1|'),
+                    @('-\.\s+([^.>|]+[^.>|\s])\s*\.->', '-->|$1|'),
+                    @('==>', '-->'),
+                    @('-\.->', '-->'),
+                    @('(\]|[A-Za-z0-9_])\s*--[ox]\s*', '$1 --> '),
+                    @('(\]|[A-Za-z0-9_])\s*---\s*([A-Za-z0-9_])', '$1 --> $2')
+                )
+                function Invoke-MermaidNorm([string]$t, $rules) {
+                    foreach ($r in $rules) { $t = [regex]::Replace($t, $r[0], $r[1]) }
+                    return $t
+                }
+                function Test-MermaidLabelsSimple([string]$t) {
+                    foreach ($m in [regex]::Matches($t, '\[([^\]]*)\]')) {
+                        if ($m.Groups[1].Value -match '[{(\[]|--|==|>') { return $false }
+                    }
+                    return $true
+                }
                 $out = [System.Text.StringBuilder]::new()
                 $block = $null
                 foreach ($line in ($raw -split "\r?\n")) {
@@ -240,11 +276,29 @@ function md-view {
                     }
                     if ($line -match '^(```|~~~)') {
                         $src = ($block -join "`n")
-                        $head = ($block | Where-Object { $_.Trim() -and $_.Trim() -notmatch '^%%' } | Select-Object -First 1)
+                        # Strip YAML front matter; mermaid-ascii aborts
+                        # with "missing graph definition" on it.
+                        $bodyLines = $block
+                        if (($bodyLines | Where-Object { $_.Trim() } | Select-Object -First 1) -match '^\s*---\s*$') {
+                            $seen = 0; $kept = @()
+                            foreach ($bl in $bodyLines) {
+                                if ($seen -lt 2 -and $bl.Trim() -eq '---') { $seen++; continue }
+                                if ($seen -ge 2) { $kept += $bl }
+                            }
+                            if ($kept.Count) { $bodyLines = $kept }
+                        }
+                        $body = ($bodyLines -join "`n")
+                        $head = ($bodyLines | Where-Object { $_.Trim() -and $_.Trim() -notmatch '^%%' } | Select-Object -First 1)
+                        if ($head -match '^\s*(graph|flowchart)') {
+                            $body = Invoke-MermaidNorm $body $normBracket
+                            if (Test-MermaidLabelsSimple $body) {
+                                $body = Invoke-MermaidNorm $body $normRest
+                            }
+                        }
                         $art = $null
-                        if (-not (($head -match '^\s*(graph|flowchart)') -and ($src -match $shapes))) {
+                        if (-not (($head -match '^\s*(graph|flowchart)') -and ($body -match $shapes))) {
                             $mtmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + '.mmd')
-                            Set-Content -LiteralPath $mtmp -Value $src -Encoding utf8
+                            Set-Content -LiteralPath $mtmp -Value $body -Encoding utf8
                             $art = & $mmd -f $mtmp 2>$null
                             if ($LASTEXITCODE -ne 0) { $art = $null }
                             Remove-Item $mtmp -ErrorAction SilentlyContinue

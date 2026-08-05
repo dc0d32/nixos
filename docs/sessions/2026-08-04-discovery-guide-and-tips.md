@@ -798,3 +798,81 @@ factory every host bridge uses. Worth knowing generally: anything in
   pwsh, with byte-identical results.
 - Piped output still emits plain source; no stray temp files.
 - All 8 buildable HM configs build; `nix flake check` passes.
+
+---
+
+# Phase 9 — looking harder at mermaid
+
+Asked to look harder for ASCII-renderable mermaid options. Three
+candidates were evaluated properly before improving the existing one.
+
+## Candidates rejected
+
+**console-mermaid** (a Rust port of mermaid-ascii, found via upstream
+issue #46) has actually *fixed* the node-id/label bug. But: **no
+licence at all** — so not legally redistributable, which ends it for a
+packaged tool — plus 1 star, no releases, untouched since January, and
+itself an AI translation.
+
+**graph-easy** (in nixpkgs, 105 MiB Perl) renders noticeably better than
+mermaid-ascii: proper edge routing, more compact. But it consumes DOT or
+its own syntax, so it needs a hand-written mermaid→DOT converter — the
+fragile part — and it **ignores `shape=` in ASCII output**, so it does
+not solve the diamond problem either. It also cannot do sequence
+diagrams. Better renderer, worse parser, no shape win: not worth it.
+
+**mermaid-cli** was re-confirmed as the wrong tool: 2.1 GiB Chromium,
+emits images alacritty cannot display.
+
+## What actually fixed it: normalise, don't reject
+
+The insight from issue #46 is that mermaid-ascii's weakness is its
+*parser*, not its renderer — it handles `id[label]` correctly and
+simply doesn't recognise the other delimiters. So instead of refusing
+to draw those blocks, md-view now rewrites the dialect into the subset
+mermaid-ascii does understand:
+
+| From | To |
+| --- | --- |
+| `(round)` `((circle))` `([stadium])` `[[sub]]` `[(db)]` `{diamond}` `{{hex}}` `>flag]` `[/par/]` `[\tra/]` | `[label]` |
+| `==>` `-.->` `---` `--o` `--x` | `-->` |
+| `-- txt -->` `== txt ==>` `-. txt .->` | `-->\|txt\|` |
+
+Only *styling* is lost — topology, labels and edge labels survive
+exactly. A decision node draws as a box rather than a rhombus, which is
+a real but small loss next to not drawing it at all. YAML front matter
+is stripped (mermaid-ascii aborts on it).
+
+## Two traps found while building it
+
+**Ordering.** `D[(db)]` is a cylinder, but to a text substitution it
+looks like a label containing a paren, which tripped the safety check
+and disabled normalisation for the whole block. Fixed by splitting into
+two passes: `[`-anchored shapes first (they cannot collide with a real
+label), then the safety check, then the rest.
+
+**Label corruption.** The rules are plain substitutions with no idea
+what is a node and what is a label, so `C[a{b}]` became `C[a[b]]` and
+`A[x ==> y]` had its text rewritten — precisely the "confidently wrong"
+outcome the whole design exists to avoid. Fixed with
+`mermaid_labels_simple`: if any label contains a brace, paren, bracket
+or arrow, the block is not normalised at all. That only ever costs an
+optimisation; it can never produce a wrong diagram.
+
+Also a genuine bash bug, caught only by running the real render path:
+a failed `[[ =~ ]]` **resets `BASH_REMATCH` to an empty array**, so the
+loop's later `${BASH_REMATCH[0]}` tripped `set -o nounset` and md-view
+exited 1. The captures are now copied out immediately after the match.
+
+## Result
+
+A six-case fixture — decision diamond, every node shape, thick/dotted/
+labelled edges, front matter, a label containing `func(x)`, and a `pie`
+chart — renders correctly on **both** Linux and Windows: four drawn,
+and the last two (risky label, unsupported type) correctly left as
+source rather than mis-drawn. Byte-identical output on the two
+platforms.
+
+Net change: decision diamonds and styled edges — the overwhelmingly
+common cases in real READMEs — now draw instead of falling back to
+source, with no loss of the safety property.

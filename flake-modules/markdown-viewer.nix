@@ -233,7 +233,7 @@ in
     in
     pkgs.writeShellApplication {
       name = "md-view";
-      runtimeInputs = [ pkgs.coreutils pkgs.glow pkgs.gnugrep pkgs.mermaid-ascii ];
+      runtimeInputs = [ pkgs.coreutils pkgs.glow pkgs.gnugrep pkgs.gnused pkgs.mermaid-ascii ];
       # The mermaid emitter printf's literal Markdown fences, and
       # shellcheck reads a backtick inside single quotes as an attempted
       # command substitution (SC2016). They are fences. Same false
@@ -267,9 +267,111 @@ in
         # render correctly and are the case this exists for.
         #
         # Net effect: never worse than before, better where it is safe.
+        # Normalise the flowchart dialect down to the subset
+        # mermaid-ascii understands, so a diagram is DRAWN rather than
+        # dumped as source. Every rule is lossy in *styling* only —
+        # topology, labels and edge labels are preserved exactly:
+        #
+        #   node shapes  (round) ((circle)) ([stadium]) [[sub]] [(db)]
+        #                {diamond} {{hex}} >flag] [/par/] [\tra/]  ->  [label]
+        #   edge styles  ==>  -.->  ---  --o  --x                  ->  -->
+        #                -- txt -->  == txt ==>  -. txt .->        ->  -->|txt|
+        #
+        # A decision node therefore renders as a box rather than a
+        # rhombus. That is a real loss, but a small one next to the
+        # alternative — mermaid-ascii parses `B{Ready?}` as a node whose
+        # *id* is the whole string and invents a second node `B`, i.e. a
+        # confidently wrong picture. Reviewed the alternatives before
+        # settling on this (see this module's header).
+        #
+        # `sed -E`; the rules are ordered longest-delimiter-first so
+        # `((circle))` is not eaten by the `(round)` rule.
+        # Split in two passes on purpose — see mermaid_labels_simple
+        # below. These first rules are anchored on a `[` immediately
+        # after the node id, so they cannot collide with anything inside
+        # an ordinary `[label]`, and running them first turns compound
+        # shapes into plain labels *before* the label-safety check looks
+        # at them (otherwise `D[(db)]` reads as a label containing a
+        # paren and disables normalisation for the whole block).
+        mermaid_norm_bracket='
+          s/([A-Za-z0-9_])\[\[([^]]*)\]\]/\1[\2]/g
+          s/([A-Za-z0-9_])\[\(([^]]*)\)\]/\1[\2]/g
+          s|([A-Za-z0-9_])\[[/\\]([^]]*)[/\\]\]|\1[\2]|g
+        '
+
+        # These can match inside a label (`A[call func(x)]`), so they run
+        # only when every label is known to be free of the characters
+        # they key on. Ordered longest-delimiter-first so `((circle))` is
+        # not eaten by the `(round)` rule.
+        mermaid_norm_rest='
+          s/([A-Za-z0-9_])\(\(\(([^)]*)\)\)\)/\1[\2]/g
+          s/([A-Za-z0-9_])\(\(([^)]*)\)\)/\1[\2]/g
+          s/([A-Za-z0-9_])\(\[([^]]*)\]\)/\1[\2]/g
+          s/([A-Za-z0-9_])\(([^)]*)\)/\1[\2]/g
+          s/([A-Za-z0-9_])\{\{([^}]*)\}\}/\1[\2]/g
+          s/([A-Za-z0-9_])\{([^}]*)\}/\1[\2]/g
+          s/([A-Za-z0-9_])>([^]]*)\]/\1[\2]/g
+          s/--[[:space:]]+([^->|]+[^->|[:space:]])[[:space:]]*-->/-->|\1|/g
+          s/==[[:space:]]+([^=>|]+[^=>|[:space:]])[[:space:]]*==>/-->|\1|/g
+          s/-\.[[:space:]]+([^.>|]+[^.>|[:space:]])[[:space:]]*\.->/-->|\1|/g
+          s/==>/-->/g
+          s/-\.->/-->/g
+          s/(\]|[A-Za-z0-9_])[[:space:]]*--[ox][[:space:]]*/\1 --> /g
+          s/(\]|[A-Za-z0-9_])[[:space:]]*---[[:space:]]*([A-Za-z0-9_])/\1 --> \2/g
+        '
+
+        # The rules above are text substitutions with no notion of what
+        # is a node and what is a label, so a label that itself contains
+        # a bracket, brace, paren or arrow can be rewritten by mistake:
+        # `C[a{b}]` would become `C[a[b]]`, and `A[x ==> y]` would have
+        # its text altered. Both are exactly the "confidently wrong"
+        # outcome this whole design exists to avoid.
+        #
+        # So: if ANY label looks like that, don't normalise this block at
+        # all. That only ever costs an optimisation — a block needing no
+        # normalisation still renders, and one that did falls through to
+        # being shown as source. It can never produce a wrong diagram.
+        mermaid_labels_simple() {
+          local rest="$1" whole inner
+          while [[ $rest =~ \[([^]]*)\] ]]; do
+            # Copy the captures out IMMEDIATELY: the `=~` below is itself
+            # a match, and a failed match resets BASH_REMATCH to an empty
+            # array, so referring to BASH_REMATCH[0] afterwards trips
+            # `set -o nounset`.
+            whole="''${BASH_REMATCH[0]}"
+            inner="''${BASH_REMATCH[1]}"
+            if [[ $inner =~ [\{\(\[]|--|==|\> ]]; then
+              return 1
+            fi
+            rest="''${rest#*"$whole"}"
+          done
+          return 0
+        }
+
         mermaid_emit() {
-          local src="$1" head="" line art
+          local src="$1" head="" line art body
           local shapes='[A-Za-z0-9_](\[\[|\[\(|\[/|\[\\|[({>])'
+
+          # Strip YAML front matter (```mermaid blocks may open with a
+          # `---` / `title:` / `---` preamble). mermaid-ascii aborts with
+          # "missing graph definition" on it.
+          body=""
+          local in_fm=0 seen=0
+          while IFS= read -r line; do
+            if [ "$seen" -eq 0 ] && [ -n "''${line//[[:space:]]/}" ]; then
+              seen=1
+              if [ "''${line//[[:space:]]/}" = "---" ]; then
+                in_fm=1
+                continue
+              fi
+            fi
+            if [ "$in_fm" -eq 1 ]; then
+              [ "''${line//[[:space:]]/}" = "---" ] && in_fm=0
+              continue
+            fi
+            body+="$line"$'\n'
+          done <<<"$src"
+          [ -n "$body" ] || body="$src"
 
           # First meaningful line decides the diagram type.
           while IFS= read -r line; do
@@ -278,15 +380,27 @@ in
             case "$line" in '%%'*) continue ;; esac
             head="$line"
             break
-          done <<<"$src"
+          done <<<"$body"
 
+          # Flowcharts get normalised; sequence diagrams are already
+          # handled natively and the rules above are flowchart-specific,
+          # so they are left alone.
+          if [[ $head == graph* || $head == flowchart* ]]; then
+            body="$(sed -E "$mermaid_norm_bracket" <<<"$body")"
+            if mermaid_labels_simple "$body"; then
+              body="$(sed -E "$mermaid_norm_rest" <<<"$body")"
+            fi
+          fi
+
+          # Backstop: anything the normaliser could not reach is still a
+          # construct mermaid-ascii would mis-draw, so keep the source.
           if [[ $head == graph* || $head == flowchart* ]] \
-             && [[ $src =~ $shapes ]]; then
+             && [[ $body =~ $shapes ]]; then
             printf '```mermaid\n%s```\n' "$src"
             return
           fi
 
-          if art="$(mermaid-ascii -f /dev/stdin <<<"$src" 2>/dev/null)" \
+          if art="$(mermaid-ascii -f /dev/stdin <<<"$body" 2>/dev/null)" \
              && [ -n "$art" ]; then
             # Fenced, so glow shows it verbatim instead of reflowing the
             # box-drawing characters into prose. The explicit newline
