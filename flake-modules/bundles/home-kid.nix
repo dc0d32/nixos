@@ -76,6 +76,10 @@
 #                                          kids actually use
 #   - zoom                                 school meetings
 #
+# `discovery` (`guide` / `tip`) is NOT listed here — it rides in via the
+# base bundle, so every account on every host gets it. Its
+# "Running this machine" section is gated on wheel/admin membership at
+# runtime, so m and s see the tour without the maintenance commands.#
 # NOT in this bundle (per-host opt-in, to keep the kid-bundle
 # closure lean):
 #

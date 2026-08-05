@@ -149,13 +149,131 @@ function gl { git log --oneline --graph --decorate @args }
 function lg { lazygit @args }
 function gdft { git -c diff.external=difft diff @args }   # structural diff
 
-# --- tools: the terminal cheatsheet (rendered via glow) ----------------
+# --- md-view / tools: Markdown rendering ------------------------------
+# Mirrors the Linux `md-view` (flake-modules/markdown-viewer.nix). Read
+# that file's header before changing any of this; the short version:
+#
+#   * glow decides whether to render Markdown from the FILE EXTENSION,
+#     so anything not named *.md is copied to a .md temp file first.
+#     Without this, `md-view README` prints raw source.
+#   * every built-in glamour theme leaves the literal `##` markers on
+#     headings, so we ship our own style (md-view-style.json, generated
+#     from the same Nix definition the Linux side uses).
+#   * an empty glow config is passed explicitly so a stray `glow config`
+#     run can't change settings we don't set.
+#   * glow's 80-column fallback mangles the wider tables, so the width
+#     is measured and capped at 100.
+#
+# Paging: glow's --pager shells out to $env:PAGER, and Windows ships no
+# usable one. NO new dependency is pulled in for this — Git for Windows
+# (already a hard dependency, `Git.Git` in wingetCli) bundles GNU
+# less.exe under usr\bin, and that is what we use.
+#
+# The two things that are NOT substitutes, so nobody "simplifies" this
+# later: Windows' built-in more.com and uutils' `more` (which does come
+# with uutils-coreutils) both lack a raw-control-chars option, so
+# glow's ANSI would be printed literally rather than rendered.
+#
+# Order: anything named `less` on PATH, then Git's copy, then unpaged
+# output — the one behaviour that can't be mirrored from Linux.
+function md-view {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)] [string] $Path,
+        [Parameter(ValueFromPipeline = $true)] [string[]] $InputObject
+    )
+    begin { $piped = [System.Collections.Generic.List[string]]::new() }
+    process { if ($null -ne $InputObject) { $piped.AddRange($InputObject) } }
+    end {
+        if (-not (Get-Command glow -ErrorAction SilentlyContinue)) {
+            if ($Path -and (Test-Path -LiteralPath $Path)) { Get-Content -LiteralPath $Path }
+            elseif ($piped.Count) { $piped }
+            else { Write-Host 'md-view: glow not installed - run the generated setup.ps1.' }
+            return
+        }
+
+        $tmp = $null
+        if ($piped.Count) {
+            $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + '.md')
+            Set-Content -LiteralPath $tmp -Value $piped -Encoding utf8
+            $doc = $tmp
+        } elseif ($Path) {
+            if (-not (Test-Path -LiteralPath $Path)) {
+                Write-Error "md-view: cannot read '$Path'"; return
+            }
+            # Only files NAMED .md are rendered; copy anything else.
+            if ([System.IO.Path]::GetExtension($Path) -eq '.md') {
+                $doc = (Resolve-Path -LiteralPath $Path).Path
+            } else {
+                $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + '.md')
+                Copy-Item -LiteralPath $Path -Destination $tmp
+                $doc = $tmp
+            }
+        } else {
+            Write-Host 'usage: md-view <file>   (or pipe Markdown in)'
+            return
+        }
+
+        try {
+            $nixwin = Join-Path $HOME '.config\nixwin'
+            $style = Join-Path $nixwin 'md-view-style.json'
+            $conf = Join-Path $nixwin 'md-view-glow.yml'
+
+            $width = 100
+            $cols = $Host.UI.RawUI.WindowSize.Width
+            if ($cols -ge 40 -and $cols -lt $width) { $width = $cols }
+
+            $glowArgs = @()
+            if (Test-Path $conf) { $glowArgs += @('--config', $conf) }
+            if (Test-Path $style) { $glowArgs += @('--style', $style) }
+            $glowArgs += @('--width', $width)
+
+            # less.exe — from PATH, else the copy Git for Windows bundles
+            # (git is already a dependency, so this is expected to hit).
+            $less = (Get-Command less -ErrorAction SilentlyContinue).Source
+            if (-not $less) {
+                $gitCmd = (Get-Command git -ErrorAction SilentlyContinue).Source
+                $roots = @()
+                if ($gitCmd) {
+                    # ...\Git\cmd\git.exe or ...\Git\bin\git.exe -> ...\Git
+                    $roots += (Split-Path (Split-Path $gitCmd -Parent) -Parent)
+                }
+                $roots += @($Env:ProgramFiles, ${Env:ProgramFiles(x86)}, $Env:LOCALAPPDATA) |
+                    Where-Object { $_ } | ForEach-Object { Join-Path $_ 'Git' }
+                foreach ($root in $roots) {
+                    if (-not $root) { continue }
+                    $cand = Join-Path $root 'usr\bin\less.exe'
+                    if (Test-Path $cand) { $less = $cand; break }
+                }
+            }
+
+            $oldPager = $Env:PAGER
+            $oldLess = $Env:LESS
+            $oldForce = $Env:CLICOLOR_FORCE
+            try {
+                $Env:CLICOLOR_FORCE = '1'
+                if ($less) {
+                    $Env:PAGER = $less
+                    $Env:LESS = '--RAW-CONTROL-CHARS --mouse --quit-if-one-screen'
+                    glow @glowArgs --pager $doc
+                } else {
+                    glow @glowArgs $doc
+                }
+            } finally {
+                $Env:PAGER = $oldPager
+                $Env:LESS = $oldLess
+                $Env:CLICOLOR_FORCE = $oldForce
+            }
+        } finally {
+            if ($tmp -and (Test-Path $tmp)) { Remove-Item $tmp -ErrorAction SilentlyContinue }
+        }
+    }
+}
+
 function tools {
     $doc = Join-Path $HOME '.config\terminal-help.md'
-    if ((Get-Command glow -ErrorAction SilentlyContinue) -and (Test-Path $doc)) {
-        glow $doc
-    } elseif (Test-Path $doc) {
-        Get-Content $doc
+    if (Test-Path $doc) {
+        md-view $doc
     } else {
         Write-Host 'terminal-help.md not found - run hm_win in WSL to deploy it.'
     }

@@ -7,6 +7,9 @@ up on this machine. Most commands accept `--help` for more, and
 
 > Type `tools` any time to see this page again.
 
+> `guide` is the companion page: keyboard shortcuts (on a desktop) and a
+> tour of everything else set up on this machine.
+
 ## 📂  Moving around folders
 
 | Command | What it does |
@@ -31,6 +34,7 @@ up on this machine. Most commands accept `--help` for more, and
 | --- | --- |
 | `bat file` | Show a file with colours and line numbers |
 | `glow file.md` | Read a Markdown document, nicely formatted |
+| `md-view file.md` | Same, but with a pager, mouse scrolling and this machine's theme — and it works on files *not* named `.md`, and on piped input |
 | `less file` | Scroll through a long file (press **q** to quit) |
 
 ## 🔎  Finding things

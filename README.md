@@ -94,6 +94,27 @@ nix flake check
 nix fmt .
 ```
 
+Two commands exist for the humans rather than the maintainer — except
+one of them is very much for the maintainer. Both are in the **base**
+bundle, so every account on every host has them, including headless WSL
+and macOS (see `flake-modules/discovery.nix`):
+
+```sh
+guide   # keyboard shortcuts + a tour of what's installed on this machine.
+        # On a desktop: also Mod+Slash, the ? button in waybar, or
+        # "Help & Tips" in the launcher.
+        # Its "Running this machine" section — backup-restore,
+        # seed-from-host, auto-update-now, display-export, the rollback
+        # path — only appears for users in wheel/admin.
+tools   # the full terminal command guide (flake-modules/terminal-help.md)
+tip     # the current tip. Rotates hourly; one is pushed automatically at
+        # graphical login and in the first terminal you open each hour.
+md-view # what guide/tools render through: glow with this repo's theme,
+        # a pager and mouse scrolling. Works on any Markdown, including
+        # files not named .md and piped input (`… | md-view`), which
+        # bare glow renders as source.
+```
+
 ## Auto-update
 
 Every NixOS host in this flake keeps itself current without anyone

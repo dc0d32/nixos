@@ -259,6 +259,11 @@ wires:
 - **screenshot wrapper** — bash wrapper around grim + slurp + satty.
   Bound to `Print` (region) / `Shift+Print` (whole screen) /
   `Alt+Print` (focused window, niri-native).
+- **`custom/help`** — the waybar button that opens the discovery guide
+  (below). Defined in `desktop-shell.nix` rather than contributed from
+  `discovery.nix` because `programs.waybar.settings` is `types.anything`,
+  whose merge does NOT concatenate lists — two modules both defining
+  `modules-right` is an eval error, not a merge.
 
 Lockscreen lives separately in `flake-modules/lockscreen.nix` (cross-
 class because it carries a NixOS-side PAM service): `swaylock-effects`
@@ -270,6 +275,97 @@ session: see `docs/sessions/`).
 
 Each new HM file under the desktop-shell config needs `git add` before
 rebuild — same flake-is-git-tracked caveat applies.
+
+## Discovery (`guide` / `tip`)
+
+`flake-modules/discovery.nix` exists because the kids had a large
+toolset nobody had told them about — and because the maintainer forgets
+his own operational surface between the quarterly times it fires. It is
+in the **base** bundle, so every account on every host has it, including
+headless WSL and macOS.
+
+- `guide` — the cheat sheet. On a desktop it opens from `Mod+Slash`, the
+  `?` button in waybar, or "Help & Tips" in fuzzel; everywhere it's just
+  `guide`. Re-execs itself inside alacritty when it has no tty on stdin
+  *and* stdout, so one command serves the launcher and the shell.
+- `tip` — a rotating tip. The **content advances every hour**; the push
+  surfaces are a mako notification at graphical login
+  (`discovery-tip.service`) and a one-line zsh greeting in the first
+  terminal opened each hour. Both share one stamp under
+  `$XDG_STATE_HOME/discovery/`, so you get the tip from whichever
+  surface you reach first, never both. There is deliberately **no
+  hourly notification timer** — a popup every hour on a machine you sit
+  in front of all day is a tax, not a feature. On a headless host the
+  zsh greeting is the only push surface, which is why it is NOT gated
+  on `hasNiri`.
+
+Four invariants to preserve when editing it:
+
+- **A bind appears in the guide iff it has a `hotkey-overlay.title`.**
+  The title is simultaneously what niri's own `Mod+Shift+/` overlay
+  shows and this module's curation marker, so the cheat sheet cannot
+  drift from `flake-modules/niri/binds.nix`. Adding a bind worth
+  knowing about = giving it a title, nothing else. Binds sharing a
+  title collapse onto one row, so give the arrow-key and vim-key forms
+  of one action the SAME title.
+- **Tips are gated at RUNTIME, not eval time.** `probe` is a command
+  that must be on PATH; `admin = true` additionally requires
+  wheel/admin membership (`id -nG`). The maintenance wrappers
+  (`backup-restore`, `auto-update-now`, `display-export`, …) are
+  installed system-wide and therefore sit on the kids' PATH too, so a
+  probe alone would leak them. Keep new tips gated the same way.
+  GUI-only tips probe `niri` so they don't surface on WSL/macOS.
+- **Many tips point at things that are NOT installed**, reached with
+  `,` (comma, from nix-index-database) or `nix run nixpkgs#<attr>` —
+  Blender, Godot, OpenSCAD, Sonic Pi, Krita, Step, Stellarium, ngspice,
+  Maxima. Those tips probe `nix-locate`/`niri`, never the absent
+  program. Check any new package name before writing it down:
+  `nix eval nixpkgs#<attr>.name` and `nix-locate --minimal -w /bin/<cmd>`
+  — several binaries (`step`, `godot`, `krita`, `octave`, `love`) are
+  provided by more than one package, so `,` stops and asks and the tip
+  should give the exact `nix run nixpkgs#…` form instead.
+- **`hasNiri` comes from `options.programs ? niri`, the DECLARED-option
+  tree** — never from `config`, which would recurse with this module's
+  own bind definition. The desktop-only outputs are attached with
+  `lib.optional` inside a `lib.mkMerge`, not `mkIf`, because on a
+  headless config `programs.niri` is not a declared option at all and a
+  `mkIf false` definition still trips the unknown-option check. For the
+  same reason the module body is wrapped in an explicit
+  `config = … ;`: the module system reads the top-level attrset's KEYS
+  before it finishes building `options`, so a bare set whose key set
+  depends on `options` is an infinite recursion.
+- **Combine the two blocks with `lib.mkMerge`, never `//`.** Both define
+  something under `programs.*` (`programs.zsh.initContent` and
+  `programs.niri.settings.binds`), and `//` is a *shallow* update — it
+  replaces the whole `programs` attribute and silently drops the zsh
+  greeting. This shipped undetected for a whole phase because the
+  headless configs, where the second block is empty, looked fine.
+- **The rotation index and the "already shown" gate must stay the same
+  number.** Both are `floor(epoch_seconds / 3600)`; if they diverge you
+  get a tip that changes without the gate reopening, or vice versa.
+  The index is `(bucket * 7919 + cksum(user)) % n` — 7919 is prime, so
+  it's a full-cycle permutation (every tip appears once before any
+  repeat) that still jumps between sections hour to hour.
+- **The generated page must be written to a file ending in `.md`.**
+  glow decides whether to render Markdown from the file *extension*; an
+  extensionless `mktemp` path is passed through as plain text, which is
+  how the notification surface ended up showing raw `# heading` source.
+  Both `guide` and `tools` render through
+  `flake.lib.mkMarkdownViewer` (`flake-modules/markdown-viewer.nix`),
+  which also pins the style, width and pager so the page looks the same
+  from a shell, the launcher and a notification.
+
+Two further glow behaviours, both learned the hard way and both
+documented in `flake-modules/markdown-viewer.nix`:
+
+- **glow reads stdin in preference to its file argument** whenever
+  stdin is not a terminal, so anything that consumes stdin before
+  calling it must `exec </dev/tty` first or glow renders an empty
+  document. (`stty size` needs the same thing to measure width.)
+- **A glamour style file is used whole, not merged over a built-in.**
+  Every element that should be styled has to appear in it. The repo
+  ships its own style because every built-in theme with colour leaves
+  the literal `##`/`###` markers on headings.
 
 ## Adding a new host
 

@@ -35,6 +35,7 @@
   flake.lib.bundles.homeManager.base = with config.flake.modules.homeManager; [
     btop
     direnv
+    discovery
     gh
     git
     nix-settings

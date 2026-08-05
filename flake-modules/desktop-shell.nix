@@ -39,6 +39,7 @@
         modules-left = [ "niri/workspaces" "niri/window" ];
         modules-center = [ "clock" ];
         modules-right = [
+          "custom/help"
           "tray"
           "bluetooth"
           "network"
@@ -46,6 +47,20 @@
           "backlight"
           "battery"
         ];
+        # Opens the discovery guide (flake-modules/discovery.nix).
+        # Defined HERE rather than contributed from discovery.nix because
+        # `programs.waybar.settings` is `types.anything`, whose merge
+        # function does NOT concatenate lists — two modules both defining
+        # `modules-right` is an eval error, not a merge. `guide` is
+        # resolved from PATH: waybar spawns it without a terminal, and the
+        # wrapper re-execs itself inside alacritty when it notices.
+        # Degrades to a no-op button if discovery isn't imported.
+        "custom/help" = {
+          format = "<span size='x-large'>󰋗</span>";
+          tooltip = true;
+          tooltip-format = "Help & Tips — what this machine can do";
+          on-click = "guide";
+        };
         "niri/workspaces" = { format = "{value}"; };
         "niri/window" = {
           max-length = 60;
@@ -132,10 +147,12 @@
         #pulseaudio,
         #backlight,
         #bluetooth,
+        #custom-help,
         #tray,
         #window {
           padding: 0 8px;
         }
+        #custom-help { color: #88c0d0; }
         #battery.warning { color: #ebcb8b; }
         #battery.critical { color: #bf616a; }
       '';

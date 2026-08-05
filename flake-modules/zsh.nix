@@ -16,7 +16,7 @@
 # wants the companion tools split out per-feature.
 { config, ... }:
 {
-  flake.modules.homeManager.zsh = { pkgs, inputs, ... }:
+  flake.modules.homeManager.zsh = { pkgs, lib, inputs, ... }:
     let
       # The terminal guide shown by `tools`. Kept as an external Markdown
       # file (terminal-help.md) rather than inline — it spans the whole
@@ -362,27 +362,41 @@
         uv # fast Python package + venv manager
         # Docs / help
         glow # render markdown in the terminal
+        # `md-view <file>` — glow with this repo's settings pinned:
+        # our own heading style (no leftover `##`), a width that suits
+        # the docs, and a pager with mouse scrolling. Also normalises
+        # the input to a `.md` path first, because glow renders Markdown
+        # only for files NAMED `.md` and otherwise prints the source —
+        # so `md-view README`, `md-view notes.markdown` and
+        # `curl -s … | md-view` all work where bare `glow` would not.
+        # `tools` and `guide` are thin wrappers over this.
+        (config.flake.lib.mkMarkdownViewer pkgs)
         tealdeer # fast tldr cheatsheets (tldr)
         navi # interactive cheatsheet launcher (navi)
         # Misc
         numbat # unit-aware scientific calculator
 
         # Verbose, kid-followable terminal guide — run `tools`. Renders the
-        # `helpDoc` Markdown (defined in the `let` above) through glow on a
-        # terminal, falling back to plain text when piped/redirected. A
+        # `helpDoc` Markdown (defined in the `let` above) through the shared
+        # viewer, falling back to plain text when piped/redirected. A
         # future terminal-tools bundle refactor can carry this along.
         # (Named `tools`, not `help`: `help` is a builtin in PowerShell on
         # the Windows side, so the command name is kept identical across
         # both platforms.)
+        #
+        # Rendering goes through `flake.lib.mkMarkdownViewer`
+        # (flake-modules/markdown-viewer.nix) rather than a bare `glow`
+        # call. `tools` was NOT broken — terminal-help.md is a real .md
+        # file, which is exactly what `guide` was missing — but it was
+        # inheriting the terminal's style guess and glow's 80-column
+        # fallback, which mangles the wider tables. Sharing one pinned
+        # invocation with `guide` means the two pages look the same and
+        # can't drift. See that module's header.
         (writeShellApplication {
           name = "tools";
-          runtimeInputs = [ coreutils glow ];
+          runtimeInputs = [ coreutils ];
           text = ''
-            if [ -t 1 ]; then
-              glow "${helpDoc}"
-            else
-              cat "${helpDoc}"
-            fi
+            exec ${lib.getExe (config.flake.lib.mkMarkdownViewer pkgs)} "${helpDoc}"
           '';
         })
       ];

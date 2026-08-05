@@ -453,9 +453,19 @@ in
       # Mod+D opens the arranger; Mod+Shift+D saves the result.
       # Deliberately adjacent so "rearrange, then persist" is one
       # motion. Both were free in flake-modules/niri/binds.nix.
+      #
+      # The hotkey-overlay titles are load-bearing beyond niri's own
+      # overlay: flake-modules/discovery.nix lists a bind in the `guide`
+      # cheat sheet iff it carries one. See that file's header.
       config.programs.niri.settings.binds = {
-        "Mod+D".action.spawn = "wdisplays";
-        "Mod+Shift+D".action.spawn = "display-save";
+        "Mod+D" = {
+          hotkey-overlay.title = "Arrange your monitors (drag them into place)";
+          action.spawn = "wdisplays";
+        };
+        "Mod+Shift+D" = {
+          hotkey-overlay.title = "Remember this monitor arrangement";
+          action.spawn = "display-save";
+        };
       };
 
       # Declarative layer. Rendered into niri `output` blocks; overridden
