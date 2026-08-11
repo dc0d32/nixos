@@ -51,7 +51,15 @@
           gl = "git log --oneline --graph --decorate";
           lg = "lazygit";
         };
-        initContent = ''
+        initContent = lib.optionalString pkgs.stdenv.isDarwin ''
+          # macOS updates overwrite /etc/zshrc, nuking the Nix daemon
+          # hook the installer placed there. Source it from ~/.zshrc so
+          # nix stays on PATH regardless. Idempotent — harmless if
+          # /etc/zshrc also sources it.
+          if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
+            . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+          fi
+        '' + ''
           bindkey -e
 
           # Home / End / Delete — make the navigation keys work across
