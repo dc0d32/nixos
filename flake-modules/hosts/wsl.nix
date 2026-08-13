@@ -56,6 +56,7 @@ let
       config.flake.modules.nixos.wsl-user-manager-fix
 
       config.flake.modules.nixos.nix-settings
+      config.flake.modules.nixos.lan-nix-cache
       # Real dynamic loader at /lib64/ld-linux-x86-64.so.2 so prebuilt
       # "generic Linux" binaries run — specifically the VS Code
       # Remote-WSL server's bundled node under ~/.vscode-server/.

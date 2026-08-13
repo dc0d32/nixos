@@ -3,12 +3,12 @@
 # Why this exists: the home fleet shares most of its Linux closures, so each
 # host should try the signed Attic cache on the trusted LAN before downloading
 # the same paths from the internet. The endpoint and public key are mandatory
-# host policy: importing this module without both is an evaluation error rather
-# than silently weakening signature verification.
+# host should use one stable service alias and signing key. The endpoint is a
+# generic DNS service name rather than a physical host name, so moving the cache
+# later does not require touching every client.
 #
-# The module is intentionally not in a bundle yet. Attic generates the cache
-# signing keypair when the cache is first created on Andromeda; clients are
-# imported only after that one-time bootstrap exposes the public half.
+# The public key is safe to publish: only the private half can sign paths, and
+# that private key remains in the cache host's out-of-store secret storage.
 #
 # Retire when: the fleet stops using a LAN cache, or Nix gains an equivalent
 # authenticated peer/cache-discovery mechanism.
@@ -22,11 +22,13 @@
       options.lanNixCache = {
         endpoint = lib.mkOption {
           type = lib.types.str;
+          default = "http://nix-cache.lan:8080/nix";
           example = "http://cache.example.test:8080/nix";
           description = "Signed Attic binary-cache endpoint.";
         };
         publicKey = lib.mkOption {
           type = lib.types.str;
+          default = "home-nix-cache-1:5s+6+8LuJKjQ505gMSrxVi8XBpDNWhXTrM0ipdSZLNQ=";
           example = "nix:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
           description = "Nix public signing key advertised by the Attic cache.";
         };

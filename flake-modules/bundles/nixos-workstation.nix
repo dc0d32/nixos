@@ -13,7 +13,7 @@
 #   imports = config.flake.lib.bundles.nixos.workstation ++ [ … ];
 #
 # Members:
-#   impermanence backup gpu power networking nix-settings system-utils
+#   impermanence backup gpu power networking nix-settings lan-nix-cache system-utils
 #   bin-bash users fonts locale battery audio bluetooth boot
 #   kernel-latest file-manager login-ly niri lockscreen
 #   home-manager-bootstrap nixos-clone
@@ -47,6 +47,7 @@
     power
     networking
     nix-settings
+    lan-nix-cache
     system-utils
     # /bin/bash FHS shim — the Copilot CLI hardcodes that path and is
     # otherwise unusable as an agent here. See flake-modules/bin-bash.nix.
