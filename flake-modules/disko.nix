@@ -408,6 +408,11 @@
         # the legacy-mountpoint datasets need explicit fileSystems entries
         # with neededForBoot so /nix + /persist are up before switch-root
         # and the impermanence bind mounts.
+        #
+        # These unattended homelab servers prioritize recovering automatically
+        # after an unclean shutdown. This deliberately accepts the force-import
+        # risk rather than requiring an operator to boot once with zfs_force=1.
+        boot.zfs.forceImportRoot = lib.mkDefault true;
         fileSystems."/nix".neededForBoot = true;
         fileSystems."/persist".neededForBoot = true;
       };
