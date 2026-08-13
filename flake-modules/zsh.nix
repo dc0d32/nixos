@@ -163,19 +163,19 @@
 
           nr() {
             local host="$(_flake_host)"
-            sudo nixos-rebuild switch --flake ~/nixos#"$host"
-            nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
+            sudo nixos-rebuild switch --flake "$NH_FLAKE#$host"
+            nix run home-manager/master -- switch --flake "$NH_FLAKE#$USER@$host"
           }
 
           hm() {
             local host="$(_flake_host)"
-            nix run home-manager/master -- switch --flake ~/nixos#"$USER@$host"
+            nix run home-manager/master -- switch --flake "$NH_FLAKE#$USER@$host"
           }
 
           # nh (nix-helper) flake target — set here too (not just
           # home.sessionVariables) so running shells get it without a
           # re-login. `nh os switch` / `nh home switch` then need no path.
-          export NH_FLAKE="$HOME/nixos"
+          export NH_FLAKE="''${NH_FLAKE:-$HOME/nixos}"
 
           # nh wrapper: make `nh os|home switch` target the SAME flake host
           # as nr/hm. Plain nh derives the configuration name from the
@@ -422,6 +422,6 @@
 
       # nh (nix-helper, installed via dev-shell) reads NH_FLAKE so
       # `nh os switch` / `nh home switch` don't need a flake path arg.
-      home.sessionVariables.NH_FLAKE = "$HOME/nixos";
+      home.sessionVariables.NH_FLAKE = lib.mkDefault "$HOME/nixos";
     };
 }
