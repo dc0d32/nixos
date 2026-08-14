@@ -13,10 +13,10 @@ Three presets ship:
 | preset | what it is |
 | --- | --- |
 | `X1Yoga7-Dynamic-Detailed` | the unmodified vendor baseline |
-| `X1Yoga7-Bass` | baseline + bass enhancement — **the autoloaded default** |
-| `X1Yoga7-Bass-Presence` | as `-Bass`, plus a +2 dB / 3.2 kHz voice lift |
+| `X1Yoga7-Bass` | baseline + bass enhancement |
+| `X1Yoga7-Bass-Presence` | as `-Bass`, plus a +2 dB / 3.2 kHz voice lift — **the autoloaded default** |
 
-`X1Yoga7-Bass` is bound to the built-in speaker by `audio.autoloads` in
+`X1Yoga7-Bass-Presence` is bound to the built-in speaker by `audio.autoloads` in
 `flake-modules/hosts/pb-x1.nix`; the other two are selectable by hand
 (`easyeffects -l <name>`).
 
