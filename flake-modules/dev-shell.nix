@@ -80,7 +80,7 @@
 # native git server-side hook. The nh/nvd/nom additions can be dropped
 # independently if a different rebuild driver replaces them.
 { inputs, ... }: {
-  perSystem = { pkgs, system, ... }:
+  perSystem = { config, pkgs, system, ... }:
     let
       # Bash-shebang lint: reject scripts that hardcode a path to bash
       # (`#!/bin/bash`, `#!/usr/bin/bash`, `#!/usr/local/bin/bash`).
@@ -330,6 +330,10 @@
           nh
           nvd
           nix-output-monitor
+          # Speaker/preset maintenance tools (flake-modules/audio-tools.nix).
+          # Here only -- deliberately not installed on any host.
+          config.packages.preset-headroom
+          config.packages.speaker-measure
         ];
 
         # Run the pre-commit installer first, then resolve NH_FLAKE at shell-
