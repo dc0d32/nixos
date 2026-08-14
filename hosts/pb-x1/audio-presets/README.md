@@ -8,10 +8,22 @@ matching `<name>.irs` in `../audio-irs/`; the convolver stage references
 its impulse response by `kernel-name`, so the two must be renamed
 together.
 
-Only one of these is actually applied automatically:
-`X1Yoga7-Dynamic-Detailed`, bound to the built-in speaker by
-`audio.autoloads` in `flake-modules/hosts/pb-x1.nix`. The rest are
-selectable by hand from the EasyEffects GUI (or `easyeffects -l <name>`).
+Three presets ship:
+
+| preset | what it is |
+| --- | --- |
+| `X1Yoga7-Dynamic-Detailed` | the unmodified vendor baseline |
+| `X1Yoga7-Bass` | baseline + bass enhancement — **the autoloaded default** |
+| `X1Yoga7-Bass-Presence` | as `-Bass`, plus a +2 dB / 3.2 kHz voice lift |
+
+`X1Yoga7-Bass` is bound to the built-in speaker by `audio.autoloads` in
+`flake-modules/hosts/pb-x1.nix`; the other two are selectable by hand
+(`easyeffects -l <name>`).
+
+The other 24 vendor presets (Movie/Music/Game/Personalize/Voice, each in
+Balanced/Detailed/Warm) were deleted along with their IRs — unused in
+practice. They are recoverable from git history if ever wanted; the IRs
+are binary and cannot be regenerated without the Windows driver.
 
 ## Deliberate deviation from the vendor export
 
@@ -61,6 +73,37 @@ clear `limiter#0` after +3 dB (worst case +0.56 dB, the
 enabled `multiband_compressor#1` band. Zero presets came out risky. Only
 `Dynamic-Detailed` has actually been heard, so if another preset ever
 sounds strained at high volume, that gain is the first thing to suspect.
+
+## The bass work (2026-08-14)
+
+`X1Yoga7-Bass` prepends a `bass_enhancer` (amount 18, scope 130, floor 100
+with `floor-active`) and adds a +4.5 dB / 190 Hz bell to `equalizer#1`,
+with -2.0 dB of compensation so nothing rides `limiter#0`.
+`X1Yoga7-Bass-Presence` adds a further +2.0 dB / 3.2 kHz bell.
+
+Three findings, all measured electrically through the DSP loopback
+(speakers muted at the codec, so the measurements are silent and free of
+room noise):
+
+- **This driver breaks up above roughly +12.5 dB in the 81-182 Hz band**
+  relative to the vendor baseline. Auditioned variants at +10.6 and
+  +12.3 dB were clean; +12.6, +12.9, +13.5 and +15.1 dB all audibly
+  distorted. Both shipped presets sit at +10.5 dB. **Treat that as a hard
+  ceiling** — it is mechanical, and a compression test showed the chain
+  itself is barely limiting (0.32 dB), so the distortion is acoustic and
+  cannot be fixed downstream.
+- **`floor-active` matters.** The exciter works by saturating the low
+  band, so it boosts the *fundamental* as well as the harmonics. Without
+  a floor it put ~+11 dB into 0-81 Hz, which these drivers cannot
+  reproduce at all — pure wasted excursion. `floor = 100` cuts that to
+  +3 dB and *increases* the useful harmonics. Raising the floor further
+  is counter-productive: it moves the processed band up into the
+  excursion-limited 81-182 Hz range.
+- **Bass costs midrange if you are not careful.** Holding the bass at the
+  safe ceiling while pushing the exciter harder requires output
+  compensation, and that pulls 1-5 kHz down with it — one variant landed
+  3 dB *below* baseline there and was reported as "lower sharpness" on
+  voices. `-Bass-Presence` exists to counter exactly that.
 
 ## What could not be established
 

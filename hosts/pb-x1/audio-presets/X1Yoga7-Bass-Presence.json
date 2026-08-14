@@ -5,11 +5,12 @@
             "bypass": false,
             "input-gain": 0.0,
             "output-gain": 0.0,
-            "kernel-name": "X1Yoga7-Personalize_User1-Warm",
+            "kernel-name": "X1Yoga7-Dynamic-Detailed",
             "ir-width": 100,
             "autogain": false
         },
         "plugins_order": [
+            "bass_enhancer#0",
             "convolver#0",
             "stereo_tools#0",
             "equalizer#0",
@@ -34,7 +35,7 @@
             "side-balance": 0.0,
             "middle-level": 0.0,
             "middle-panorama": 0.0,
-            "stereo-base": 0.15,
+            "stereo-base": 0.3,
             "delay": 0.0,
             "sc-level": 1.0,
             "stereo-phase": 0.0
@@ -142,17 +143,39 @@
         "equalizer#1": {
             "bypass": false,
             "input-gain": 0.0,
-            "output-gain": 0.0,
+            "output-gain": -2.0,
             "mode": "IIR",
-            "num-bands": 1,
+            "num-bands": 3,
             "split-channels": false,
             "left": {
                 "band0": {
                     "frequency": 2500.0,
-                    "gain": 3.75,
+                    "gain": 1.88,
                     "mode": "RLC (BT)",
                     "mute": false,
                     "q": 0.7,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band1": {
+                    "frequency": 190.0,
+                    "gain": 4.5,
+                    "mode": "RLC (BT)",
+                    "mute": false,
+                    "q": 0.9,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band2": {
+                    "frequency": 3200.0,
+                    "gain": 2.0,
+                    "mode": "RLC (BT)",
+                    "mute": false,
+                    "q": 1.0,
                     "slope": "x1",
                     "solo": false,
                     "type": "Bell",
@@ -162,10 +185,32 @@
             "right": {
                 "band0": {
                     "frequency": 2500.0,
-                    "gain": 3.75,
+                    "gain": 1.88,
                     "mode": "RLC (BT)",
                     "mute": false,
                     "q": 0.7,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band1": {
+                    "frequency": 190.0,
+                    "gain": 4.5,
+                    "mode": "RLC (BT)",
+                    "mute": false,
+                    "q": 0.9,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band2": {
+                    "frequency": 3200.0,
+                    "gain": 2.0,
+                    "mode": "RLC (BT)",
+                    "mute": false,
+                    "q": 1.0,
                     "slope": "x1",
                     "solo": false,
                     "type": "Bell",
@@ -644,6 +689,17 @@
             "stereo-link": 100.0,
             "alr": false,
             "sidechain-preamp": 0.0
+        },
+        "bass_enhancer#0": {
+            "bypass": false,
+            "input-gain": 0.0,
+            "output-gain": 0.0,
+            "amount": 18.0,
+            "harmonics": 8.5,
+            "scope": 130.0,
+            "floor": 100.0,
+            "blend": 0.0,
+            "floor-active": true
         }
     }
 }

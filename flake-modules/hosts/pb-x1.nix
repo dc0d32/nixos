@@ -248,7 +248,11 @@ in
             device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
             profile = "Speaker";
             description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
-            preset = "X1Yoga7-Dynamic-Detailed";
+            # X1Yoga7-Bass (bass-enhanced) is the daily driver. The other
+            # two shipped presets are selectable by hand:
+            #   X1Yoga7-Dynamic-Detailed  unmodified vendor baseline
+            #   X1Yoga7-Bass-Presence     as -Bass plus a 3.2 kHz lift
+            preset = "X1Yoga7-Bass";
           }
         ];
         # No mic preset authored yet, so inputAutoloads stays empty and
