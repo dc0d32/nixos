@@ -99,7 +99,7 @@ def default_node(media_class, pattern=None):
     return nodes[0]
 
 
-def speaker_switches():
+def speaker_switches(card):
     """ALSA switches that actually mute the speakers, found BY NAME.
 
     Deliberately not by numid: those are unstable across machines and
@@ -107,7 +107,7 @@ def speaker_switches():
     every codec -- on the reference machine only these two did.
     """
     names = []
-    out = sh('amixer -c 0 controls').stdout
+    out = sh(f'amixer -c {card} controls').stdout
     for line in out.splitlines():
         if "name='" not in line:
             continue
@@ -117,10 +117,28 @@ def speaker_switches():
     return names
 
 
-def set_speakers(names, on):
+def set_speakers(card, names, on):
+    """Mute/unmute and VERIFY.
+
+    Must use `cset name=`, not `sset`: these are not ALSA *simple* mixer
+    controls, so `amixer sset 'Speaker Playback Switch' mute` fails with
+    "Unable to find simple control" and — because amixer still exits 0 in
+    some paths — silently leaves the speakers ON. A measurement taken
+    that way is contaminated by real acoustic output and the loopback
+    cancellation is meaningless, so the state is read back and a mismatch
+    is fatal rather than a warning.
+    """
+    want = 'on' if on else 'off'
     for nm in names:
-        sh(f'amixer -c 0 sset "{nm}" {"unmute" if on else "mute"}')
+        sh(f"amixer -c {card} cset name='{nm}' {want}")
     time.sleep(0.4)
+    for nm in names:
+        got = sh(f"amixer -c {card} cget name='{nm}'").stdout
+        vals = [ln.split('=', 1)[1] for ln in got.splitlines() if ln.strip().startswith(': values=')]
+        if not vals or want not in vals[0]:
+            sys.exit(f"error: could not set '{nm}' to {want} (read back {vals or 'nothing'}).\n"
+                     f"       Refusing to continue: an un-muted 'off' pass silently\n"
+                     f"       invalidates the loopback cancellation.")
 
 
 def capture(wav, sink, mic, dur, out):
@@ -154,6 +172,7 @@ def main():
     ap.add_argument('--seconds', type=float, default=6.0)
     ap.add_argument('--sink', default=None, help='substring of the sink node.name')
     ap.add_argument('--mic', default=None, help='substring of the source node.name')
+    ap.add_argument('--card', default='0', help='ALSA card index or name for amixer')
     ap.add_argument('--tmp', default='/tmp/speaker-measure')
     a = ap.parse_args()
 
@@ -164,7 +183,8 @@ def main():
     os.makedirs(a.tmp, exist_ok=True)
     sink_id, sink = default_node('Audio/Sink', a.sink)
     _mic_id, mic = default_node('Audio/Source', a.mic)
-    switches = speaker_switches()
+    card = a.card
+    switches = speaker_switches(card)
     print(f'sink : {sink}\nmic  : {mic}')
     print(f'mute : {", ".join(switches) if switches else "NONE FOUND"}')
     if not switches:
@@ -182,18 +202,18 @@ def main():
     try:
         for i in range(a.reps):
             if switches:
-                set_speakers(switches, False)
+                set_speakers(card, switches, False)
                 off = spectrum(capture(f'{a.tmp}/sweep.wav', sink, mic,
                                        int(T + 4), f'{a.tmp}/off{i}.wav'), ref, L, T)
             else:
                 off = 0.0
-            set_speakers(switches, True)
+            set_speakers(card, switches, True)
             on = spectrum(capture(f'{a.tmp}/sweep.wav', sink, mic,
                                   int(T + 4), f'{a.tmp}/on{i}.wav'), ref, L, T)
             acc.append(on - off)
             print(f'  rep {i + 1}/{a.reps}', flush=True)
     finally:
-        set_speakers(switches, True)
+        set_speakers(card, switches, True)
 
     f = np.fft.rfftfreq(N, 1 / SR)
     M = np.array([20 * np.log10(np.abs(x) + 1e-30) for x in acc])
