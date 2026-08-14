@@ -178,3 +178,79 @@ which several candidates here did.
 - **Only `X1Yoga7-Bass-Presence` and `X1Yoga7-Bass` have been heard.** The
   +3 dB change was propagated to the other presets on modelling alone
   before most of them were deleted.
+
+---
+
+## Follow-up: the crackle (same session, later)
+
+After living with `X1Yoga7-Bass-Presence` for a while the report came
+back: *occasional crackling and clipping; turning off the second
+equalizer makes it go away.* That turned out to be **two unrelated
+faults** stacked on top of each other, and separating them took most of
+the follow-up.
+
+### Fault 1 — a click on the first sound after silence
+
+Reproducible with every preset, with all presets disabled, and with
+EasyEffects bypassed entirely: the first transient after roughly ten
+seconds of quiet is preceded by a click. This is the HD-audio codec
+powering down and waking back up — nixpkgs builds the kernel with
+`CONFIG_SND_HDA_POWER_SAVE_DEFAULT=10`. Confirmed by
+
+```sh
+echo 0 | sudo tee /sys/module/snd_hda_intel/parameters/power_save
+```
+
+which removed it outright. **Deliberately not fixed declaratively.** It
+is a known, understood, runtime-toggleable kernel default and not worth
+trading the codec's idle power for; recorded here so the next person to
+hear it does not spend an evening bisecting DSP presets like this one
+did.
+
+This fault is why the early rounds of the investigation went nowhere: it
+fires on the first beat of every test clip, so every variant "crackled"
+and no A/B could separate anything.
+
+### Fault 2 — driver excursion at full volume
+
+The real one, and the one the presets were guilty of. A critical wrong
+assumption early on was that playback happened around 60% volume; it
+does not, it is often at 100%. `multiband_compressor#1` — the vendor's
+excursion limiter — works on the digital signal with fixed thresholds,
+so it cannot see the analog volume and was far too permissive up there.
+The digital output was verified clean at the time of the audible
+crackle, which places the fault after the DAC: mechanical.
+
+Fixed by lowering `band0/1/2` `attack-threshold` by 15 dB on both
+`X1Yoga7-Bass` and `X1Yoga7-Bass-Presence`. Rationale and the reason
+this beat simply reducing the bass shelf are written up in
+`hosts/pb-x1/audio-presets/README.md`. A ladder of five candidates was
+auditioned; the chosen one (15 dB) was the first that was fully clean —
+the 12 dB step still crackled, and the user's verdict on the pair was
+"P3 crackles, P4 is good balance without crackling".
+
+### Process notes worth keeping
+
+- **`amixer sset` does not work on these controls** ("Unable to find
+  simple control") — `amixer cset name='...'` does. This silently
+  no-op'd the speaker mute in `scripts/speaker-measure.py` for several
+  rounds, meaning supposedly-silent measurement runs were audible and
+  the measurements themselves were contaminated. Fixed in this commit,
+  with a read-back verification that is fatal on mismatch. **Always read
+  back after setting an ALSA control.**
+- `Master Playback Switch` does not mute these speakers; only
+  `Speaker Playback Switch` together with `Bass Speaker Playback Switch`
+  do.
+- PipeWire node IDs are reassigned when wireplumber restarts, e.g. after
+  a suspend. A stale id makes `wpctl set-volume` fail with "does not
+  support volume", which is invisible if the call's output is captured.
+  Resolve nodes by `node.name` at call time.
+- An early conclusion that "the presets were never broken" was wrong and
+  was retracted. Fault 1 being real did not make fault 2 imaginary.
+
+### Still open
+
+`X1Yoga7-Bass*` bands 0-2 are now clamped hard. This was signed off on
+synthetic test signals and a drum loop; it is worth confirming over time
+that it does not flatten dynamics on real music. If it does, the
+thresholds are the single knob to back off.

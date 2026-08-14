@@ -52,6 +52,28 @@ Supporting evidence that the padding is not load-bearing: the
 `X1Yoga7-Voice-*` presets already ship from the vendor with
 `equalizer#0.output-gain: -0.0` and no `autogain#0` in `plugins_order`.
 
+### Second deviation: the excursion limiter is set 15 dB lower
+
+On the two `X1Yoga7-Bass*` presets only:
+
+- `multiband_compressor#1.band{0,1,2}.attack-threshold`:
+  `-10.0 / -9.0 / -8.0` → `-25.0 / -24.0 / -23.0`
+
+`multiband_compressor#1` is the vendor's excursion limiter — ratio
+100:1 with a 1 ms attack, so it is a hard per-band ceiling rather than a
+compressor. It operates on the *digital* signal at fixed thresholds, so
+it has no way to know the analog volume was raised: at 100% the drivers
+break up well before the limiter engages, and you get intermittent
+crackling on bass transients. Lowering the thresholds caps those peaks
+while leaving quiet passages untouched, which is why it was preferred by
+ear over simply reducing the shelf — the latter costs bass everywhere,
+this only costs it where the driver could not have delivered it anyway.
+`band3` is deliberately left at `-5.0`; the fault is low-frequency.
+
+`preset-headroom` will report `TIGHT` on these two presets with a worst
+`multiband_compressor#1` band margin around -9 dB. That is the limiter
+doing its job at the level it was retuned to, not a gain-staging fault.
+
 The remaining three (`X1Yoga7-Voice-*`) already shipped at `-0.0`, but
 all 27 carried an `autogain#0` settings block: 24 wired into
 `plugins_order` (bypassed), and 3 as **orphans** — present in the file
@@ -91,7 +113,11 @@ room noise):
   distorted. Both shipped presets sit at +10.5 dB. **Treat that as a hard
   ceiling** — it is mechanical, and a compression test showed the chain
   itself is barely limiting (0.32 dB), so the distortion is acoustic and
-  cannot be fixed downstream.
+  cannot be fixed downstream. **Caveat:** that ceiling was established at
+  ~60% analog volume, before the +3 dB recovery above. At 100% volume the
+  drivers break up at a lower shelf gain than this figure suggests, which
+  is what the retuned excursion limiter is there to contain. Treat
+  +12.5 dB as an upper bound, not a safe operating point.
 - **`floor-active` matters.** The exciter works by saturating the low
   band, so it boosts the *fundamental* as well as the harmonics. Without
   a floor it put ~+11 dB into 0-81 Hz, which these drivers cannot
