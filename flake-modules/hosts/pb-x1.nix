@@ -50,6 +50,11 @@ in
   # NOT here. Those options are declared per-(NixOS|HM)-config so
   # multi-host setups don't collide on a flake-parts singleton.
 
+  # Internal DMIC capture gain — see flake-modules/mic-gain.nix for the
+  # measurements behind the value. 55 = +5 dB (the control is 0-70 with
+  # 50 = unity); the stock +20 dB clips on room noise.
+  micGain.controls."Dmic0 Capture Volume" = 55;
+
   # ── Per-host configuration entries ───────────────────────────────
   configurations.nixos.${hostName} = {
     module = {
@@ -114,6 +119,11 @@ in
         # and `thunderbolt.trustLocalUsers` is left at its `false`
         # default. See flake-modules/thunderbolt.nix.
         config.flake.modules.nixos.thunderbolt
+        # Internal DMIC capture gain. The UCM profile brings
+        # `Dmic0 Capture Volume` up at max (+20 dB), where ordinary room
+        # noise clips the capture — a ceiling fan alone pinned 0.96 % of
+        # samples at full scale. See flake-modules/mic-gain.nix.
+        config.flake.modules.nixos.mic-gain
       ]
       # Auto-deploy from origin/main. pb-x1 is the dev box, and the
       # original objection to auto-deploy here was real: a 04:40
