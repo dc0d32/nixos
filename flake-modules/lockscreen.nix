@@ -7,7 +7,8 @@
 #     lockscreen that broke password unlock — see the body comment and
 #     the 2026-06-18 session log). The screen must always unlock with a
 #     password; biometrics deliberately do NOT apply here.
-#   - HM side: install swaylock-effects + drop a config file.
+#   - HM side: install swaylock-effects + drop a cinematic config that
+#     reuses wallpaper.nix's stable current.jpg symlink.
 #
 # Pattern A: hosts opt in by importing. Importing IS enabling.
 #
@@ -59,23 +60,34 @@
       ignore-empty-password
       show-failed-attempts
       daemonize
+
+      image=~/.wallpaper/current.jpg
+      scaling=fill
+      effect-blur=18x5
+      effect-vignette=0.35:0.65
+      fade-in=0.35
+
       indicator
-      indicator-radius=120
-      indicator-thickness=10
-      effect-blur=12x4
-      ring-color=2e3440
+      clock
+      timestr=%H:%M
+      datestr=%A, %d %B
+      font-size=24
+      indicator-radius=135
+      indicator-thickness=8
+
+      ring-color=eceff455
       key-hl-color=88c0d0
       bs-hl-color=bf616a
-      separator-color=2e3440
+      separator-color=00000000
       text-color=eceff4
       text-clear-color=eceff4
       text-ver-color=eceff4
       text-wrong-color=eceff4
-      inside-color=2e344088
-      inside-clear-color=2e344088
-      inside-ver-color=88c0d088
-      inside-wrong-color=bf616a88
-      line-color=2e3440
+      inside-color=2e3440aa
+      inside-clear-color=2e3440bb
+      inside-ver-color=5e81acbb
+      inside-wrong-color=bf616abb
+      line-color=00000000
       line-clear-color=88c0d0
       line-ver-color=88c0d0
       line-wrong-color=bf616a

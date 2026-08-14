@@ -1,5 +1,5 @@
-# ly — a tiny TUI login manager. Lightweight, no Qt/GTK, looks great
-# on a fresh terminal, works fine for launching niri (Wayland session).
+# ly — a tiny true-colour TUI login manager. Lightweight, no Qt/GTK,
+# with a built-in animated aurora-style backdrop and large clock.
 #
 # Pattern A: hosts opt in by importing this module. Headless / WSL
 # hosts simply don't import it.
@@ -41,12 +41,28 @@
         # itself is hardcoded into ly and cannot be removed without
         # patching upstream.
         xinitrc = "null";
-        animation = "matrix";
+        # A slow Nordic colour wash gives the TTY some atmosphere without
+        # replacing ly with a graphical display manager.
+        animation = "colormix";
+        animation_frame_delay = 24;
+        colormix_col1 = "0x005E81AC";
+        colormix_col2 = "0x0088C0D0";
+        colormix_col3 = "0x00D08770";
+
+        bg = "0x002E3440";
+        fg = "0x00ECEFF4";
+        border_fg = "0x0188C0D0";
+        error_fg = "0x01BF616A";
+
         clock = "%F  %T";
         clear_password = true;
         hide_borders = false;
-        blank_box = true;
-        bigclock = true;
+        hide_version_string = true;
+        blank_box = false;
+        box_title = "Welcome home";
+        bigclock = "en";
+        bigclock_seconds = false;
+        text_in_center = true;
       };
     };
   };
