@@ -13,14 +13,13 @@
             "convolver#0",
             "equalizer#0",
             "equalizer#1",
-            "autogain#0",
             "multiband_compressor#1",
             "limiter#0"
         ],
         "equalizer#0": {
             "bypass": false,
             "input-gain": 0.0,
-            "output-gain": -3.0,
+            "output-gain": 0.0,
             "mode": "IIR",
             "num-bands": 4,
             "split-channels": true,
@@ -150,15 +149,6 @@
                     "width": 4.0
                 }
             }
-        },
-        "autogain#0": {
-            "bypass": true,
-            "input-gain": 0.0,
-            "output-gain": 0.0,
-            "maximum-history": 30,
-            "reference": "Geometric Mean (MSI)",
-            "silence-threshold": -70.0,
-            "target": -20.0
         },
         "multiband_compressor#1": {
             "bypass": false,
