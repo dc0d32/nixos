@@ -2,10 +2,13 @@
 #
 # Why this exists: the home fleet shares most of its Linux closures, so each
 # host should try the signed Attic cache on the trusted LAN before downloading
-# the same paths from the internet. The endpoint and public key are mandatory
-# host should use one stable service alias and signing key. The endpoint is a
-# generic DNS service name rather than a physical host name, so moving the cache
-# later does not require touching every client.
+# the same paths from the internet. A pull-through proxy for cache.nixos.org is
+# second: its first request fills Andromeda's disk cache and later clients reuse
+# it without duplicating those upstream-signed paths into Attic. The normal
+# public caches remain later substituters, so roaming hosts fail through safely.
+#
+# Both LAN endpoints use one stable DNS service alias rather than a physical
+# host name, so moving the cache later does not require touching every client.
 #
 # The public key is safe to publish: only the private half can sign paths, and
 # that private key remains in the cache host's out-of-store secret storage.
@@ -25,6 +28,12 @@
           default = "http://nix-cache.lan:8080/nix";
           example = "http://cache.example.test:8080/nix";
           description = "Signed Attic binary-cache endpoint.";
+        };
+        upstreamProxyEndpoint = lib.mkOption {
+          type = lib.types.str;
+          default = "http://nix-cache.lan:8081";
+          example = "http://cache.example.test:8081";
+          description = "Pull-through proxy for cache.nixos.org.";
         };
         publicKey = lib.mkOption {
           type = lib.types.str;
@@ -49,13 +58,22 @@
             message = "lanNixCache.endpoint must be an HTTP(S) URL.";
           }
           {
+            assertion =
+              lib.hasPrefix "http://" cfg.upstreamProxyEndpoint
+              || lib.hasPrefix "https://" cfg.upstreamProxyEndpoint;
+            message = "lanNixCache.upstreamProxyEndpoint must be an HTTP(S) URL.";
+          }
+          {
             assertion = lib.hasInfix ":" cfg.publicKey;
             message = "lanNixCache.publicKey must be a canonical Nix public key.";
           }
         ];
 
         nix.settings = {
-          substituters = lib.mkBefore [ cfg.endpoint ];
+          substituters = lib.mkBefore [
+            cfg.endpoint
+            cfg.upstreamProxyEndpoint
+          ];
           trusted-public-keys = [ cfg.publicKey ];
           connect-timeout = lib.mkDefault cfg.connectTimeoutSeconds;
           fallback = lib.mkDefault true;
