@@ -9,6 +9,12 @@
 #   the libvirtd group. Actual guest domains (HAOS, edge) are declared
 #   per-host later.
 #
+# Host shutdown uses guest ACPI shutdown, not libvirt managed-save, and guests
+# that were running are cold-started after the host returns. Restoring a RAM
+# image recreates QEMU's host USB backend but also restores the guest's stale
+# USB-controller state; HAOS then keeps the coordinator disconnected even
+# though QEMU still owns it. A cold guest boot enumerates hostdevs afresh.
+#
 # libvirt now (in nixpkgs, no extra flake input); microvm.nix can be added
 # as an input when the edge microvm is built.
 #
@@ -29,6 +35,8 @@
       config = lib.mkIf cfg.enable {
         virtualisation.libvirtd = {
           enable = true;
+          onBoot = lib.mkDefault "start";
+          onShutdown = lib.mkDefault "shutdown";
           qemu = {
             package = pkgs.qemu_kvm;
             # OVMF/UEFI firmware for guests ships by default now; the
