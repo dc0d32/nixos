@@ -10,6 +10,10 @@
 #   - flake-modules/mk-pkgs.nix (the shared HM-side `pkgs` factory each
 #     host bridge calls via `config.flake.lib.mkPkgs`).
 [
+  # EVDI 1.15.0: Linux 7.2 DRM API compatibility, pending the nixpkgs bump.
+  # Retire when nixpkgs packages EVDI >= 1.15.0. See the file header.
+  (import ./evdi.nix)
+
   # DisplayLink userspace driver: swap nixpkgs' `requireFile` source for a
   # `fetchurl`, so DisplayLink docks work on unattended installs/upgrades.
   # Retire when nixpkgs drops requireFile, or no host imports
