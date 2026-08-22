@@ -4,11 +4,11 @@
 # the USB/serial/flashing CLIs no longer overlap exactly: the kid
 # accounts on pb-t480 do robotics (RP2040 + ESP) so they want the
 # flashing tools, but they don't currently do PCB design and so
-# don't need the ~1 GB KiCad closure (kicad-base + footprints +
+# don't need the ~2.9 GiB KiCad closure (kicad-base + footprints +
 # packages3d + symbols + templates).
 #
-# Pattern A: bundles opt in by importing this module. The adult
-# `desktop` bundle imports it; the `kid` bundle does not.
+# Pattern A: hosts opt in by importing this module; no shared bundle carries
+# it, so unused hosts do not pay for the closure.
 #
 # Linux-only: no Darwin package. Guarded by lib.optionals so an
 # accidental import on a non-Linux HM config is a no-op rather than

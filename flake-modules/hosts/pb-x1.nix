@@ -100,10 +100,6 @@ in
         config.flake.modules.nixos.hardware-hacking
         # Fingerprint (Synaptics) + PAM stack reordering.
         config.flake.modules.nixos.biometrics
-        # Face unlock — howdy + IR emitter + camera autodetect. Opt-in
-        # companion to biometrics (~1.2 GiB howdy closure); pb-x1 has IR
-        # hardware so it's wired here.
-        config.flake.modules.nixos.face-unlock
         # DisplayLink dock support (evdi + DisplayLinkManager). The
         # Lenovo ThinkPad Hybrid USB-C with USB-A Dock (17e9:6015) sends
         # video over USB rather than DP alt-mode or a Thunderbolt PCIe
@@ -215,13 +211,8 @@ in
         # moved out of the desktop bundle so m-pc (no NixOS udev rules,
         # no USB-device access for p) doesn't get them.
         config.flake.modules.homeManager.hardware-hacking
-        # These three are opt-in per-host since 2026-05-16: the
-        # desktop bundle no longer carries them (so vm-desktop / new
-        # hosts don't pay the closures unless asked). pb-x1 does PCB
-        # work + CAD + uses firefox as the daily driver, so restore
-        # all three here.
-        config.flake.modules.homeManager.kicad
-        config.flake.modules.homeManager.freecad
+        # Firefox is opt-in per-host because it is a fat download that
+        # not every desktop host wants. pb-x1 uses it as the daily driver.
         config.flake.modules.homeManager.firefox
       ];
 

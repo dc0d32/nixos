@@ -6,8 +6,8 @@
 # which invited drift between the two hosts the kids actually use
 # interchangeably. This publishes both once on `flake.lib`.
 #
-# - flake.lib.mkKidHmModule { username; audio; stateVersion ? … }
-#     The per-kid HM module (kid bundle + freecad, restricted GUI).
+# - flake.lib.mkKidHmModule { username; audio; extraImports ? [ ]; stateVersion ? … }
+#     The per-kid HM module (kid bundle + host-specific extras, restricted GUI).
 # - flake.lib.kidTimekprPolicy
 #     The shared screen-time policy (same kids, same school schedule).
 #
@@ -100,23 +100,21 @@
   # account on a shared host sees identical monitor behaviour — a kid
   # docking the family laptop should get the same arrangement p does.
   # Defaults to `{ }` (niri auto-detects) for hosts that don't care.
-  flake.lib.mkKidHmModule = { username, audio, displays ? { }, stateVersion ? "25.11" }: {
-    imports = config.flake.lib.bundles.homeManager.kid ++ [
-      # FreeCAD is opt-in per-host since 2026-05-16; the kid bundle no
-      # longer carries it, but the kids have always had it.
-      config.flake.modules.homeManager.freecad
-    ];
+  flake.lib.mkKidHmModule =
+    { username, audio, displays ? { }, extraImports ? [ ], stateVersion ? "25.11" }:
+    {
+      imports = config.flake.lib.bundles.homeManager.kid ++ extraImports;
 
-    programs.home-manager.enable = true;
+      programs.home-manager.enable = true;
 
-    # EasyEffects per-host data (shared with the primary user on the
-    # same host).
-    inherit audio;
+      # EasyEffects per-host data (shared with the primary user on the
+      # same host).
+      inherit audio;
 
-    displays.outputs = displays;
+      displays.outputs = displays;
 
-    home.username = username;
-    home.homeDirectory = "/home/${username}";
-    home.stateVersion = stateVersion;
-  };
+      home.username = username;
+      home.homeDirectory = "/home/${username}";
+      home.stateVersion = stateVersion;
+    };
 }

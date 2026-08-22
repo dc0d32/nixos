@@ -83,10 +83,8 @@
 # NOT in this bundle (per-host opt-in, to keep the kid-bundle
 # closure lean):
 #
-#   - freecad   ~1.3 GiB DL — hosts that want CAD for kids append
-#                `config.flake.modules.homeManager.freecad` to the
-#                kid HM module (see flake-modules/hosts/m-pc.nix,
-#                pb-t480.nix).
+#   - freecad   ~7.1 GiB closure — hosts that want CAD for kids can append
+#                `config.flake.modules.homeManager.freecad` explicitly.
 #
 # Retire when: the kids age out and their accounts get merged with
 #   the adult desktop bundle, OR the pb-t480 host is

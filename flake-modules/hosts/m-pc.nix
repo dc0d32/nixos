@@ -288,11 +288,8 @@ in
         pkgs = hmPkgs;
         module = {
           imports = config.flake.lib.bundles.homeManager.desktop ++ [
-            # KiCad + FreeCAD + Firefox are opt-in per-host since
-            # 2026-05-16; preserve the previous behaviour for
-            # m-pc's primary user.
-            config.flake.modules.homeManager.kicad
-            config.flake.modules.homeManager.freecad
+            # Firefox is opt-in per-host because it is a fat download that
+            # not every desktop host wants.
             config.flake.modules.homeManager.firefox
           ];
 

@@ -182,11 +182,8 @@ in
         # uucp membership for users.primary AND hardware-hacking.extraUsers
         # (set below to grant the kids device access for robotics work).
         config.flake.modules.nixos.hardware-hacking
-        # Fingerprint (Synaptics) + face auth (howdy via IR camera) + PAM
-        # reorder. face-unlock is the opt-in howdy/IR companion; the T480
-        # has IR hardware and used face unlock historically.
+        # Fingerprint (Synaptics) + PAM stack reordering.
         config.flake.modules.nixos.biometrics
-        config.flake.modules.nixos.face-unlock
         # Screen-time enforcement + Family-Link-locking Chrome policy.
         config.flake.modules.nixos.timekpr
         # Cross-host shared-budget agent — reports usage to the central
@@ -363,10 +360,8 @@ in
             # rules + USB-device groups (hardware-hacking NixOS module
             # imported above), so the tools are actually usable here.
             config.flake.modules.homeManager.hardware-hacking
-            # KiCad + FreeCAD + Firefox are opt-in per-host since
-            # 2026-05-16; preserve the previous behaviour for
-            # pb-t480's primary user.
-            config.flake.modules.homeManager.kicad
+            # FreeCAD and Firefox are opt-in per-host because they are fat
+            # downloads that not every desktop host wants.
             config.flake.modules.homeManager.freecad
             config.flake.modules.homeManager.firefox
           ];
@@ -397,6 +392,7 @@ in
             username = kid;
             audio = audioCfg;
             displays = displaysCfg;
+            extraImports = [ config.flake.modules.homeManager.freecad ];
           };
         };
       })

@@ -4,8 +4,8 @@
 # Pattern A: hosts opt in by importing this module. Importing IS
 # enabling fingerprint. Face unlock is a SEPARATE per-host opt-in
 # via `flake-modules/face-unlock.nix` (it just sets
-# `biometrics.face = true`), because howdy pulls a ~1.2 GiB
-# closure (TensorFlow + dlib + face models) that not every
+# `biometrics.face = true`), because howdy pulls a multi-GiB
+# closure (OpenCV + dlib + face models) that not every
 # biometric host wants.
 #
 # A `biometrics.enable` signal option is published so other dendritic
@@ -80,7 +80,7 @@ in
           default = false;
           description = ''
             When true, install howdy + IR emitter calibration + camera
-            autodetect + howdy PAM rule. Pulls ~1.2 GiB. Default false;
+            autodetect + howdy PAM rule. Pulls a multi-GiB closure. Default false;
             set to true by importing flake-modules/face-unlock.nix
             alongside flake-modules/biometrics.nix.
           '';
