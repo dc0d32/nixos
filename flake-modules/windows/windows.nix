@@ -73,6 +73,28 @@ let
     sha256 = "B98ECA4077D6E7796FF7E710E4D220CA13439F1118160D1E7B3DB9E91FDEC2BE";
   };
 
+  # ── Mesa3D software OpenGL (for alacritty over RDP) ─────────────────
+  # A Windows Remote Desktop session exposes no usable hardware OpenGL,
+  # so alacritty (which needs a GL context) creates its window then exits
+  # the event loop immediately — the classic RDP failure (alacritty#3865,
+  # unfixable in alacritty). The fix is app-local software GL: drop Mesa's
+  # llvmpipe opengl32.dll (+ libgallium_wgl.dll) next to alacritty.exe;
+  # Windows loads the exe-dir opengl32.dll ahead of the system one, so
+  # alacritty renders on the CPU and works over RDP. Mesa still
+  # auto-selects the d3d12 hardware driver when a real GPU is present, so
+  # it's not a downgrade on a local console. setup.ps1 only installs this
+  # when it detects it is running inside an RDP session (Step 6), so
+  # bare-metal/local boxes keep native GL untouched.
+  #
+  # Pinned to a mesa-dist-win release tag + the SHA-256 of the MSVC
+  # release .7z (same "pinned, verifiable source" bar as the cursor and
+  # winget/Scoop). `version` bumps + `sha256` refresh together; get the
+  # hash from `Get-FileHash` / `sha256sum` of the .7z (uppercase hex).
+  mesaGL = {
+    version = "26.2.0";
+    sha256 = "DCB2719EF346DAB5B609FCB193A5F13CFC4B0502E3F4DE1AD43D349477402F47";
+  };
+
   # ── Package sources ─────────────────────────────────────────────────
   # Scoop is the DEFAULT for the CLI toolkit — most of these are single
   # self-contained binaries that corporate app-control doesn't flag.
@@ -90,9 +112,6 @@ let
     { name = "PowerShell 7"; id = "Microsoft.PowerShell"; }
     { name = "Windows Terminal"; id = "Microsoft.WindowsTerminal"; }
     { name = "Azure CLI"; id = "Microsoft.AzureCLI"; }
-    # GPU terminal, matching the Linux alacritty (config generated below
-    # from the shared flake.lib.alacrittySettings).
-    { name = "Alacritty"; id = "Alacritty.Alacritty"; }
   ];
 
   # CLI packages installed via winget. Most are here because their Scoop
@@ -140,6 +159,13 @@ let
     "ruff"
     "numbat"
     "sd"
+    # GPU terminal, matching the Linux alacritty (config generated below
+    # from the shared flake.lib.alacrittySettings). On Scoop (not winget)
+    # deliberately: the RDP OpenGL fallback (Step 6 of setup.ps1) drops a
+    # Mesa opengl32.dll next to alacritty.exe, and Scoop's per-user
+    # apps\alacritty\current\ is writable without admin, unlike winget's
+    # Program Files install. `extras` bucket (added by setup.ps1).
+    "alacritty"
     # GNU coreutils, natively. uutils is a Rust reimplementation compiled
     # with MSVC — real Win32 binaries, no Cygwin/MSYS emulation layer and
     # no path translation. Gives head/tail/wc/cut/tr/uniq/seq/realpath/
@@ -201,6 +227,10 @@ let
     "Atuinsh.Atuin"
     "astral-sh.ruff"
     "chmln.sd"
+    # Moved winget -> Scoop so the RDP Mesa GL step can drop an app-local
+    # opengl32.dll into a user-writable dir (Program Files would need
+    # admin). setup.ps1 uninstalls the old winget copy.
+    "Alacritty.Alacritty"
   ];
 
   # ── The generated bundle (built on demand by `hm_win`) ──────────────
@@ -212,14 +242,20 @@ let
 
       # alacritty.toml — generated from the SAME definition the Linux
       # alacritty module uses (flake.lib.alacrittySettings), so the
-      # terminal is identical on both sides. Two Windows-only overrides:
-      #   - `window.decorations` forced back to "Full" (Linux runs
-      #     borderless under niri; on Windows there is no WM to move or
-      #     close a title-bar-less window).
-      #   - `terminal.shell` set to pwsh (PowerShell 7, `Microsoft.
-      #     PowerShell` in wingetSystem), NOT the built-in Windows
-      #     PowerShell 5.1 (`powershell.exe`) that alacritty would launch
-      #     by default — profile.ps1 targets pwsh 7. `.exe` is implied.
+      # terminal is identical on both sides. One Windows-only override
+      # baked in here: `window.decorations` forced back to "Full" (Linux
+      # runs borderless under niri; on Windows there is no WM to move or
+      # close a title-bar-less window).
+      #
+      # `terminal.shell` is deliberately NOT set here. We want alacritty
+      # to start pwsh (PowerShell 7, matching profile.ps1) — but only
+      # where it's installed. Baking `program = "pwsh"` statically breaks
+      # every box without PowerShell 7: alacritty can't spawn the shell
+      # and the window closes instantly (even with --hold, because a
+      # failed spawn is not an exit). So hm_win appends the
+      # [terminal.shell] table at DEPLOY time from its own pwsh/powershell
+      # probe ($psexe), falling back to the always-present Windows
+      # PowerShell 5.1 when pwsh is absent.
       # Deployed to %APPDATA%\alacritty\ by hm_win, which is where
       # alacritty looks on Windows.
       alacrittyToml = (pkgs.formats.toml { }).generate "alacritty.toml"
@@ -227,7 +263,6 @@ let
           window = config.flake.lib.alacrittySettings.window // {
             decorations = "Full";
           };
-          terminal.shell.program = "pwsh";
         });
 
       # psmux config — the tasteful subset of flake-modules/tmux.nix that
@@ -310,6 +345,10 @@ let
         #   - cleanup: drop duplicates so each tool has a single source.
         #   - cursor: Bibata-Modern-Classic (matches Linux), pinned+hashed
         #     GitHub release zip, applied user-scoped (no admin).
+        #   - RDP GL: if running inside a Remote Desktop session, drop a
+        #     Mesa software opengl32.dll next to alacritty.exe so alacritty
+        #     runs over RDP (no hardware GL there). Skipped on a local
+        #     console. Pinned+hashed, user-scoped (no admin).
         $ErrorActionPreference = 'Continue'  # keep going if one step fails
 
         # ---- Snapshot installed winget packages (one export call) --------
@@ -330,7 +369,7 @@ let
           }
         }
 
-        Write-Host '== Step 1/5: winget (system apps + git/git-lfs/uv) =='
+        Write-Host '== Step 1/6: winget (system apps + git/git-lfs/uv) =='
         foreach ($id in @(${lib.concatMapStringsSep ", " (p: "'${p.id}'") (wingetSystem ++ wingetCli)})) {
           if ($wingetIds.ContainsKey($id)) {
             Write-Host "  ok (installed): $id"
@@ -345,7 +384,7 @@ let
         $Env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
                     [Environment]::GetEnvironmentVariable('Path', 'User')
 
-        Write-Host '== Step 2/5: uv (pure-Python tools) =='
+        Write-Host '== Step 2/6: uv (pure-Python tools) =='
         if (Get-Command uv -ErrorAction SilentlyContinue) {
           # Snapshot uv-installed tools once (top-level lines = tool names).
           $uvInstalled = @{}
@@ -371,7 +410,7 @@ let
           if ($Env:Path -notlike "*$sevenZipDir*") { $Env:Path += ";$sevenZipDir" }
         }
 
-        Write-Host '== Step 3/5: Scoop (tools with no winget package) =='
+        Write-Host '== Step 3/6: Scoop (tools with no winget package) =='
         if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
           Write-Host 'Installing Scoop...'
           Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
@@ -396,7 +435,7 @@ let
           }
         }
 
-        Write-Host '== Step 4/5: reconcile sources (one tool, one source) =='
+        Write-Host '== Step 4/6: reconcile sources (one tool, one source) =='
         # Remove Scoop copies of the tools we moved to winget.
         foreach ($app in @(${lib.concatMapStringsSep ", " (p: "'${p.name}'") wingetCli})) {
           if (Test-ScoopApp $app) {
@@ -431,7 +470,7 @@ let
             }
         }
 
-        Write-Host '== Step 5/5: cursor theme (Bibata-Modern-Classic) =='
+        Write-Host '== Step 5/6: cursor theme (Bibata-Modern-Classic) =='
         # Matches the Linux Bibata-Modern-Classic set. Pinned+hashed
         # official release zip; applied user-scoped (HKCU + %LOCALAPPDATA%),
         # so no admin. The nixpkgs package is X11-only, hence the download.
@@ -493,6 +532,73 @@ let
             Remove-Item $curZip -ErrorAction SilentlyContinue
           } catch {
             Write-Warning "  cursor install failed: $($_.Exception.Message)"
+          }
+        }
+
+        Write-Host '== Step 6/6: OpenGL software fallback for RDP (Mesa) =='
+        # Only over Remote Desktop: RDP exposes no hardware OpenGL, so
+        # alacritty can't create its GL context and exits the event loop
+        # immediately (alacritty#3865). An app-local Mesa opengl32.dll
+        # (llvmpipe) next to alacritty.exe fixes it — Windows loads the
+        # exe-dir DLL ahead of the system one. Mesa still auto-selects the
+        # d3d12 hardware driver when a real GPU is present, so it's safe to
+        # leave in place. Skipped on a local console so native GL is
+        # untouched. User-scoped (Scoop's apps dir), no admin.
+        if (-not ('Win32.RdpCheck' -as [type])) {
+          Add-Type -Namespace Win32 -Name RdpCheck -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetSystemMetrics(int n);'
+        }
+        # SM_REMOTESESSION = 0x1000: non-zero when the session is remote.
+        $isRdp = $false
+        try { $isRdp = ([Win32.RdpCheck]::GetSystemMetrics(0x1000) -ne 0) } catch { }
+        if ((-not $isRdp) -and $Env:SESSIONNAME) { $isRdp = ($Env:SESSIONNAME -like 'RDP-*') }
+
+        if (-not $isRdp) {
+          Write-Host '  local console (not RDP); leaving native OpenGL in place'
+        } else {
+          $alacrittyDir = Join-Path $scoopRoot 'apps\alacritty\current'
+          $sevenZipExe = Join-Path $sevenZipDir '7z.exe'
+          if (-not (Test-Path (Join-Path $alacrittyDir 'alacritty.exe'))) {
+            Write-Host '  alacritty (scoop) not installed yet; skipping Mesa GL. Re-run setup.ps1 after it installs.'
+          } elseif (-not (Test-Path $sevenZipExe)) {
+            Write-Warning '  7-Zip not found; cannot extract Mesa. Skipping.'
+          } else {
+            $mesaVersion = '${mesaGL.version}'
+            $mesaSha256 = '${mesaGL.sha256}'
+            $mesaMarker = Join-Path $alacrittyDir '.mesa-gl-version'
+            if ((Test-Path $mesaMarker) -and ((Get-Content -Raw $mesaMarker).Trim() -eq $mesaVersion) -and
+                (Test-Path (Join-Path $alacrittyDir 'opengl32.dll'))) {
+              Write-Host "  ok (installed): Mesa $mesaVersion software GL"
+            } else {
+              try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                $mesaUrl = "https://github.com/pal1000/mesa-dist-win/releases/download/$mesaVersion/mesa3d-$mesaVersion-release-msvc.7z"
+                $mesa7z = Join-Path $Env:TEMP "mesa-$mesaVersion.7z"
+                Write-Host "  downloading $mesaUrl"
+                Invoke-WebRequest -Uri $mesaUrl -OutFile $mesa7z -UseBasicParsing
+                $mesaGot = (Get-FileHash -Algorithm SHA256 -Path $mesa7z).Hash
+                if ($mesaGot -ne $mesaSha256) {
+                  Write-Warning "  Mesa .7z SHA256 mismatch (got $mesaGot) - skipping"
+                } else {
+                  $mesaTmp = Join-Path $Env:TEMP "mesa-$mesaVersion"
+                  if (Test-Path $mesaTmp) { Remove-Item -Recurse -Force $mesaTmp }
+                  # llvmpipe needs opengl32.dll + libgallium_wgl.dll; dxil.dll
+                  # lets Mesa also drive the d3d12 hardware path on a real GPU.
+                  & $sevenZipExe x $mesa7z 'x64/opengl32.dll' 'x64/libgallium_wgl.dll' 'x64/dxil.dll' "-o$mesaTmp" -y | Out-Null
+                  foreach ($dll in 'opengl32.dll', 'libgallium_wgl.dll', 'dxil.dll') {
+                    $from = Join-Path $mesaTmp "x64\$dll"
+                    if (Test-Path $from) {
+                      Copy-Item -Path $from -Destination (Join-Path $alacrittyDir $dll) -Force
+                    }
+                  }
+                  Set-Content -Path $mesaMarker -Value $mesaVersion
+                  Remove-Item -Recurse -Force $mesaTmp -ErrorAction SilentlyContinue
+                  Write-Host "  installed: Mesa $mesaVersion software GL next to alacritty.exe"
+                }
+                Remove-Item $mesa7z -ErrorAction SilentlyContinue
+              } catch {
+                Write-Warning "  Mesa GL install failed: $($_.Exception.Message)"
+              }
+            }
           }
         }
 
@@ -629,7 +735,23 @@ let
       deploy "$src/atuin-config.toml" "$cfg/atuin/config.toml"
       # alacritty reads %APPDATA%\alacritty\alacritty.toml on Windows
       # (NOT ~/.config), so deploy there directly.
-      deploy "$src/alacritty.toml" "$userprofile/AppData/Roaming/alacritty/alacritty.toml"
+      alacritty_toml="$userprofile/AppData/Roaming/alacritty/alacritty.toml"
+      deploy "$src/alacritty.toml" "$alacritty_toml"
+      # Pick alacritty's shell at deploy time, NOT in the Nix-generated
+      # file: start pwsh (PowerShell 7, matching profile.ps1) where it's
+      # installed, else fall back to the always-present Windows PowerShell
+      # 5.1. A statically-baked `program = "pwsh"` makes alacritty fail to
+      # launch on any box without pwsh — the spawn fails and the window
+      # closes instantly (even with --hold). $psexe is the same probe used
+      # for the rest of hm_win; strip the .exe for alacritty's program.
+      alacritty_shell="powershell"
+      if [ -n "$psexe" ]; then alacritty_shell="''${psexe%.exe}"; fi
+      {
+        echo ""
+        echo "[terminal.shell]"
+        echo "program = \"$alacritty_shell\""
+      } >> "$alacritty_toml"
+      echo "  alacritty shell: $alacritty_shell"
       # psmux (native-Windows tmux) reads ~/.psmux.conf from the Windows
       # home directory.
       deploy "$src/psmux.conf" "$userprofile/.psmux.conf"
