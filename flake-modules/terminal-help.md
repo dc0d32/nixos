@@ -81,7 +81,10 @@ folder, git branch, and more.
 | `tmux` | Start a session that survives disconnects |
 | `tmux a` | Re-attach to your last session |
 
-Inside tmux press **Ctrl-B** then `c` for a new window, or `d` to detach.
+Inside tmux press **Ctrl-B** then `c` for a new window, `d` to detach,
+or `|` / `-` to split the pane. On Windows the `tmux` command is
+[psmux](https://github.com/psmux/psmux) — the same keys, natively, no WSL
+needed.
 
 ## 🌿  Git & GitHub
 
