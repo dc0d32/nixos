@@ -326,14 +326,15 @@ let
       #     compile-time feature of the separate btop4win-LHM package, which
       #     also demands admin), so "gpu" draws an empty graph. "kernel"
       #     (privileged CPU time) is the meaningful lower-graph stat here.
-      #   - proc_services: show Windows services in the process box — a
-      #     btop4win-only key with no Linux-btop equivalent.
       #   - graph_symbol: braille graphs on the Windows monitor only.
+      # NOTE: btop4win's proc_services swaps the process box to show services
+      # *instead of* processes (there is no combined view), so we leave it at
+      # its default (processes); services stay reachable via btop4win's own
+      # runtime toggle.
       btopConf =
         let
           winSettings = (removeAttrs config.flake.lib.btopSettings [ "cpu_graph_lower" ]) // {
             cpu_graph_lower = "kernel";
-            proc_services = true;
             graph_symbol = "braille";
           };
           render = k: v:
