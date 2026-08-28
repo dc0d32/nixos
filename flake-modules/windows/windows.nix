@@ -814,26 +814,42 @@ let
       # psmux (native-Windows tmux) reads ~/.psmux.conf from the Windows
       # home directory.
       deploy "$src/psmux.conf" "$userprofile/.psmux.conf"
-      # btop4win reads btop.conf ONLY from the folder holding btop4win.exe
-      # (not %APPDATA%/~), and winget installs it portable under
-      # %LOCALAPPDATA%\Microsoft\WinGet\Packages\… — resolve that folder at
-      # runtime and drop the config beside the exe. Wrapped in a function
-      # because on `--setup` this first pass runs BEFORE setup.ps1 installs
-      # btop4win (so it skips), and we call it again after setup.ps1 to land
-      # the config on the freshly-installed exe.
+      # btop4win reads btop.conf ONLY from the folder its exe is launched
+      # from (GetModuleFileNameW; not %APPDATA%/~). winget installs it
+      # portable under %LOCALAPPDATA%\Microsoft\WinGet\Packages\… AND drops
+      # a `btop.exe` SYMLINK in …\WinGet\Links (the on-PATH shim). Launching
+      # the shim makes GetModuleFileNameW return the *Links* path, so btop
+      # then uses Links\ for its config — while a full-path launch of the
+      # real exe uses the Packages folder. So we must seed btop.conf in BOTH
+      # folders. Wrapped in a function because on `--setup` this first pass
+      # runs BEFORE setup.ps1 installs btop4win (so it finds nothing and
+      # skips), and we call it again after setup.ps1 to land the config on
+      # the freshly-installed exe.
       deploy_btop_conf() {
         [ -n "$psexe" ] || return 0
-        local btop_dir_win
-        btop_dir_win="$("$psexe" -NoProfile -NonInteractive -Command '
-          $p = (Get-ChildItem "$Env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter btop4win.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          if (-not $p) { $c = Get-Command btop4win.exe -ErrorAction SilentlyContinue; if ($c) { $p = $c.Source } }
-          if ($p) { Split-Path -Parent $p }
-        ' 2>/dev/null | tr -d '\r\n')"
-        if [ -n "$btop_dir_win" ]; then
-          deploy "$src/btop.conf" "$(wslpath -u "$btop_dir_win")/btop.conf"
-        else
+        local btop_dirs
+        # Emit every folder btop4win might resolve its config dir to, one
+        # per line: the real exe's folder (Packages) and the Links shim's
+        # folder. Both are Windows paths; wslpath converts them below.
+        btop_dirs="$("$psexe" -NoProfile -NonInteractive -Command '
+          $out = @()
+          $exe = (Get-ChildItem "$Env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter btop4win.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $exe) { $c = Get-Command btop4win.exe -ErrorAction SilentlyContinue; if ($c) { $exe = $c.Source } }
+          if ($exe) { $out += (Split-Path -Parent $exe) }
+          $shim = (Get-Command btop.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+          if (-not $shim) { $p = "$Env:LOCALAPPDATA\Microsoft\WinGet\Links\btop.exe"; if (Test-Path $p) { $shim = $p } }
+          if ($shim) { $out += (Split-Path -Parent $shim) }
+          $out | Select-Object -Unique
+        ' 2>/dev/null | tr -d '\r')"
+        if [ -z "$btop_dirs" ]; then
           echo "  btop4win: not found — run 'hm_win --setup' to install it, then re-run hm_win"
+          return 0
         fi
+        local d
+        while IFS= read -r d; do
+          [ -n "$d" ] || continue
+          deploy "$src/btop.conf" "$(wslpath -u "$d")/btop.conf"
+        done <<< "$btop_dirs"
       }
       deploy_btop_conf
       deploy "$src/terminal-help.md" "$cfg/terminal-help.md"
