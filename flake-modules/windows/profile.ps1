@@ -149,6 +149,23 @@ function gl { git log --oneline --graph --decorate @args }
 function lg { lazygit @args }
 function gdft { git -c diff.external=difft diff @args }   # structural diff
 
+# btop4win is the native-Windows port of btop; expose it as `btop` to match
+# Linux/mac muscle memory and terminal-help.md. winget installs it portable
+# and creates an on-PATH shim named `btop.exe` (which this function shadows)
+# that points at the real btop4win.exe. Resolve the real exe directly - via
+# the shim if PATH already has winget's Links dir, else by searching the
+# portable Packages tree - so `btop` works even in the same session that just
+# installed it (before a new shell picks up the updated PATH). Config is
+# deployed next to the exe by hm_win.
+function btop {
+    $exe = (Get-Command btop.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (-not $exe) {
+        $exe = (Get-ChildItem "$Env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter btop4win.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    }
+    if ($exe) { & $exe @args }
+    else { Write-Warning "btop4win not installed - run 'hm_win --setup' from WSL" }
+}
+
 # --- md-view / tools: Markdown rendering ------------------------------
 # Mirrors the Linux `md-view` (flake-modules/markdown-viewer.nix). Read
 # that file's header before changing any of this; the short version:
