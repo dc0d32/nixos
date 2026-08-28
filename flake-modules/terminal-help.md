@@ -81,10 +81,23 @@ folder, git branch, and more.
 | `tmux` | Start a session that survives disconnects |
 | `tmux a` | Re-attach to your last session |
 
-Inside tmux press **Ctrl-B** then `c` for a new window, `d` to detach,
-or `|` / `-` to split the pane. On Windows the `tmux` command is
-[psmux](https://github.com/psmux/psmux) — the same keys, natively, no WSL
-needed.
+Inside tmux press **Ctrl-B** then:
+
+| Key | What it does |
+| --- | --- |
+| `c` | New window (opens in the current pane's directory) |
+| `\|` / `-` | Split pane left-right / top-bottom (same directory) |
+| `h` `j` `k` `l` | Move between panes (vim style) |
+| `H` `J` `K` `L` | Resize the pane (hold and repeat) |
+| `d` | Detach (leave it running, re-attach later with `tmux a`) |
+| `r` | Reload the config after editing it |
+
+The status bar shows, left to right: the **session**, your **windows**
+(the current one is the bright rounded pill), then the working
+**directory**, the **machine** name, and the **date + time** — handy for
+telling apart several boxes you remote into. On Windows the `tmux` command
+is [psmux](https://github.com/psmux/psmux) — the same keys and the same
+bar, natively, no WSL needed.
 
 ## 🌿  Git & GitHub
 
