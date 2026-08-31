@@ -129,6 +129,49 @@ in
             </match>
           </fontconfig>
         '';
+
+        # Fantasque omits some Unicode glyphs. An unconstrained fallback can
+        # pick proportional faces such as Inter or DejaVu Sans, whose glyphs
+        # may be wider than a terminal cell and overlap adjacent text. Keep
+        # every missing glyph on the terminal grid by preferring Noto Sans
+        # Mono, while retaining Fantasque for everything it provides.
+        xdg.configFile."fontconfig/conf.d/15-fantasque-fallback.conf".text = ''
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+          <fontconfig>
+            <match target="pattern">
+              <test name="family" compare="eq">
+                <string>FantasqueSansM Nerd Font Mono</string>
+              </test>
+              <edit name="family" mode="append">
+                <string>Noto Sans Mono</string>
+              </edit>
+            </match>
+          </fontconfig>
+        '';
+
+        # Fantasque Sans Mono's next real face after Regular is Bold, which
+        # is a much larger jump than wanted here. Synthetic emboldening adds
+        # a restrained amount of stroke weight to Alacritty's Regular face
+        # without changing Waybar, editors, or any other fontconfig client.
+        xdg.configFile."fontconfig/conf.d/20-alacritty-embolden.conf".text = ''
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+          <fontconfig>
+            <match target="font">
+              <test name="prgname" compare="eq">
+                <string>alacritty</string>
+              </test>
+              <test name="family" compare="eq">
+                <string>FantasqueSansM Nerd Font Mono</string>
+              </test>
+              <test name="style" compare="eq">
+                <string>Regular</string>
+              </test>
+              <edit name="embolden" mode="assign"><bool>true</bool></edit>
+            </match>
+          </fontconfig>
+        '';
       })
 
       # ── Darwin: install faces into the HM profile ────────────────

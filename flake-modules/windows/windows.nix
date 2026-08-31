@@ -271,6 +271,55 @@ let
           };
         });
 
+      # Windows Terminal still requires an internal profile, but it can
+      # present like a conventional single-shell terminal: one pwsh window
+      # per launch, a normal title bar, and no tab/profile strip while only
+      # one session is open. Existing profiles and keybindings remain intact
+      # underneath. Windows Terminal caps history at 32767.
+      windowsTerminalSettings =
+        let
+          alacritty = config.flake.lib.alacrittySettings;
+        in
+        (pkgs.formats.json { }).generate "windows-terminal.json" {
+          defaultProfile = "{574e775e-4f2a-5b96-ac1e-a2962a402336}";
+          windowSettings = {
+            alwaysShowTabs = false;
+            "compatibility.enableUnfocusedAcrylic" = true;
+            newTabMenu = [ ];
+            showTabsInTitlebar = false;
+            showTerminalTitleInTitlebar = true;
+            windowingBehavior = "useNew";
+          };
+          profileDefaults = {
+            adjustIndistinguishableColors = "indexed";
+            antialiasingMode = "grayscale";
+            colorScheme = "Campbell";
+            cursorShape = "bar";
+            font = {
+              # Keep every glyph on the terminal grid when Fantasque lacks it.
+              # Windows Terminal supports a comma-separated fallback list, so
+              # Cascadia Mono prevents proportional-font spillover.
+              face = "${alacritty.font.normal.family}, Cascadia Mono";
+              # Retain the established Windows size; DirectWrite's metrics
+              # make this the closest visual match to Alacritty at 12pt.
+              size = 13;
+              weight = "normal";
+            };
+            historySize = 32767;
+            intenseTextStyle = "bold";
+            # Match niri's Alacritty rule: 85% opacity with blur in both
+            # focus states for the same macOS-style frosted-glass effect.
+            opacity = 85;
+            padding = toString alacritty.window.padding.x;
+            scrollbarState = "hidden";
+            unfocusedAppearance = {
+              opacity = 85;
+              useAcrylic = true;
+            };
+            useAcrylic = true;
+          };
+        };
+
       # psmux config — native-Windows, tmux-compatible multiplexer. The QOL
       # binds and the status bar are shared *verbatim* with Linux tmux via
       # flake.lib.tmuxPortableConfig (flake-modules/tmux.nix), so the two
@@ -671,6 +720,7 @@ let
       cp ${starshipToml}         "$out/starship.toml"
       cp ${atuinToml}            "$out/atuin-config.toml"
       cp ${alacrittyToml}        "$out/alacritty.toml"
+      cp ${windowsTerminalSettings} "$out/windows-terminal.json"
       cp ${psmuxConf}            "$out/psmux.conf"
       cp ${btopConf}            "$out/btop.conf"
       cp ${../terminal-help.md}  "$out/terminal-help.md"
@@ -866,22 +916,24 @@ let
       chmod 0755 "$nixwin/bin/mermaid-ascii.exe"
       deploy "$src/setup.ps1" "$nixwin/setup.ps1"
 
-      # Windows Terminal: set only the default font face/size, merged
-      # into the existing settings.json with jq (non-destructive re: other
-      # keys). Face and size are force-set (not `// default`) so a size
-      # bump here actually lands on machines that already ran hm_win.
-      # Keybindings are intentionally left at their defaults.
+      # Windows Terminal: merge the single-shell presentation and readable
+      # profile defaults into settings.json. Existing profiles, keybindings
+      # and unrelated preferences remain untouched.
       shopt -s nullglob
       wt_found=0
       for s in "$userprofile"/AppData/Local/Packages/Microsoft.WindowsTerminal_*/LocalState/settings.json; do
         wt_found=1
         backup "$s"
         tmp="$(mktemp)"
-        if jq '.profiles.defaults.font.face = "FantasqueSansM Nerd Font Mono"
-               | .profiles.defaults.font.size = 13' \
+        if jq --slurpfile managed "$src/windows-terminal.json" '
+               . = (. + $managed[0].windowSettings)
+               | .profiles = (.profiles // {})
+               | .profiles.defaults = ((.profiles.defaults // {}) + $managed[0].profileDefaults)
+               | .defaultProfile = $managed[0].defaultProfile
+             ' \
              "$s" > "$tmp" 2>/dev/null; then
           mv "$tmp" "$s"
-          echo "  Windows Terminal font set: $s"
+          echo "  Windows Terminal profile styled: $s"
         else
           rm -f "$tmp"
           echo "  WARN: could not update $s (left unchanged)"
