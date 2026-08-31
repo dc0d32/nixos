@@ -44,6 +44,11 @@
             runAsRoot = false;
           };
         };
+        # Upstream declares this Type=exec, so systemd considers it started as
+        # soon as the helper is executed rather than after its cold-start pass
+        # finishes. Declarative domain units ordered after libvirt-guests can
+        # otherwise race the helper and both try to start the same guest.
+        systemd.services.libvirt-guests.serviceConfig.Type = "oneshot";
         # Shared-folder support for microvm/virtiofs guests.
         virtualisation.spiceUSBRedirection.enable = lib.mkDefault false;
         # Operator manages guests without sudo.
