@@ -4,7 +4,7 @@
 # needs (currently: my account on every host, plus wsl). Kid accounts
 # do NOT consume this.
 #
-# = base ++ [ ai-cli, build-deps ]
+# = base ++ [ ai-cli, build-deps, operator-access ]
 #
 # Adding a new dev tool that should be on every dev account: add it
 # here, not in the per-host bridges.
@@ -19,5 +19,6 @@
     ++ (with config.flake.modules.homeManager; [
       ai-cli
       build-deps
+      operator-access
     ]);
 }

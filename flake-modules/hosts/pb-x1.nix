@@ -81,6 +81,8 @@ in
         # boot.kernelPackages only if < 5.19 (conditional mkDefault, no
         # conflict with our explicit linuxPackages_latest below).
         inputs.nixos-hardware.nixosModules.lenovo-thinkpad-x1-yoga-7th-gen
+        # PC/SC access for the YubiKey-backed SOPS recovery identity.
+        config.flake.modules.nixos.operator-access
       ]
       # Bare-metal graphical core: impermanence, backup, gpu, power,
       # networking, nix-settings, system-utils, users, fonts, locale,

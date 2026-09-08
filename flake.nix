@@ -87,6 +87,14 @@
     # module exposes the same per-user functionality natively.
     impermanence.url = "github:nix-community/impermanence";
 
+    # sops-nix — encrypted secret deployment for the private homelab flake.
+    # The public flake carries only the version pin and reusable module input;
+    # encrypted payloads and recipient topology remain in the private repo.
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # nix-index-database — weekly-updated prebuilt nix-index database, so
     # `comma` (`, cowsay hi`) and command-not-found work out of the box
     # without each host running the slow `nix-index` to build the DB
