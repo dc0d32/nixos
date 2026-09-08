@@ -265,6 +265,7 @@
         homelabLock
         homelabShell
         homelabSudo
+        homelabUnlock
         qrencode
         sops
         ssh-to-age
