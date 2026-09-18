@@ -48,11 +48,11 @@ let
     noto-fonts-color-emoji # renamed from noto-fonts-emoji
     noto-fonts-cjk-sans
     inter
-    # FantasqueSansM — Fantasque Sans Mono, Nerd-Font-patched. The single
-    # coding + icon font used everywhere (terminals, waybar, editors).
-    # fontconfig (Linux) / Core Text (macOS) picks the variant by family
-    # name.
-    nerd-fonts.fantasque-sans-mono
+    # FantasqueSansM — the Nerd-Font-patched face with missing terminal
+    # symbols filled by the flake overlay. It preserves Fantasque's family
+    # and PostScript names, so existing terminal selections pick up the fix
+    # without changing typeface or profile settings.
+    fantasque-terminal
   ];
 in
 {

@@ -25,4 +25,9 @@
   # alacritty can't display. Used by md-view to render ```mermaid blocks.
   # Retire when nixpkgs packages it. See the file header.
   (import ./mermaid-ascii.nix)
+
+  # Fantasque with terminal-safe Braille, triangle, and clock glyphs.
+  # Retire when upstream carries equivalent glyph coverage and metrics.
+  # See the file header.
+  (import ./fantasque-terminal.nix)
 ]
