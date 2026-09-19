@@ -150,28 +150,6 @@ in
           </fontconfig>
         '';
 
-        # Fantasque Sans Mono's next real face after Regular is Bold, which
-        # is a much larger jump than wanted here. Synthetic emboldening adds
-        # a restrained amount of stroke weight to Alacritty's Regular face
-        # without changing Waybar, editors, or any other fontconfig client.
-        xdg.configFile."fontconfig/conf.d/20-alacritty-embolden.conf".text = ''
-          <?xml version="1.0"?>
-          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-          <fontconfig>
-            <match target="font">
-              <test name="prgname" compare="eq">
-                <string>alacritty</string>
-              </test>
-              <test name="family" compare="eq">
-                <string>FantasqueSansM Nerd Font Mono</string>
-              </test>
-              <test name="style" compare="eq">
-                <string>Regular</string>
-              </test>
-              <edit name="embolden" mode="assign"><bool>true</bool></edit>
-            </match>
-          </fontconfig>
-        '';
       })
 
       # ── Darwin: install faces into the HM profile ────────────────

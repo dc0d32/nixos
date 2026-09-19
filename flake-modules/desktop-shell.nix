@@ -56,7 +56,7 @@
         # wrapper re-execs itself inside alacritty when it notices.
         # Degrades to a no-op button if discovery isn't imported.
         "custom/help" = {
-          format = "<span size='x-large'>󰋗</span>";
+          format = "<span size='xx-large' rise='-2pt'>󰋗</span>";
           tooltip = true;
           tooltip-format = "Help & Tips — what this machine can do";
           on-click = "guide";
@@ -75,20 +75,17 @@
             warning = 30;
             critical = 15;
           };
-          # MD battery glyphs (same icon family + size as wifi/brightness
-          # below) enlarged via a pango span so the icon is clearly a
-          # battery at a glance; number stays normal size.
-          format = "{capacity}% <span size='x-large'>{icon}</span>";
-          format-charging = "{capacity}% <span size='x-large'>󰂄</span>";
+          format = "<span size='xx-large' rise='-2pt'>{icon}</span> {capacity}%";
+          format-charging = "<span size='xx-large' rise='-2pt'>󰂄</span> {capacity}%";
           format-icons = [ "󰁺" "󰁼" "󰁾" "󰂀" "󰁹" ];
         };
         network = {
           # Signal shown as wifi bars (format-icons is selected by
           # signalStrength 0-100), not a bare "%", so it reads as wifi
           # at a glance. Click opens nmtui to pick/manage networks.
-          format-wifi = "{essid} <span size='x-large'>{icon}</span>";
-          format-ethernet = "<span size='x-large'>󰈁</span> {ifname}";
-          format-disconnected = "<span size='x-large'>󰤮</span>";
+          format-wifi = "<span size='xx-large' rise='-2pt'>{icon}</span> {essid}";
+          format-ethernet = "<span size='xx-large' rise='-2pt'>󰈁</span> {ifname}";
+          format-disconnected = "<span size='xx-large' rise='-2pt'>󰤮</span>";
           format-icons = [ "󰤯" "󰤟" "󰤢" "󰤥" "󰤨" ];
           tooltip-format = "{ifname}: {ipaddr}";
           tooltip-format-wifi = "{essid} ({signalStrength}%)\n{ifname}: {ipaddr}";
@@ -104,16 +101,15 @@
           on-click = "${pkgs.blueman}/bin/blueman-manager";
         };
         pulseaudio = {
-          format = "{volume}% {icon}";
-          format-muted = "🔇";
-          format-icons.default = [ "🔈" "🔉" "🔊" ];
+          format = "<span size='xx-large' rise='-2pt'>{icon}</span> {volume}%";
+          format-muted = "<span size='xx-large' rise='-2pt'>󰖁</span>";
+          format-icons.default = [ "󰕿" "󰖀" "󰕾" ];
           on-click = "${pkgs.pwvucontrol}/bin/pwvucontrol";
         };
         backlight = {
           # Brightness icon (sun) so the number reads as brightness at a
-          # glance; the glyph fills as the level rises and is enlarged via
-          # a pango span. Scroll to adjust.
-          format = "{percent}% <span size='x-large'>{icon}</span>";
+          # glance; the glyph fills as the level rises. Scroll to adjust.
+          format = "<span size='xx-large' rise='-2pt'>{icon}</span> {percent}%";
           format-icons = [ "󰃞" "󰃟" "󰃠" ];
           on-scroll-up = "${pkgs.brightnessctl}/bin/brightnessctl set +5%";
           on-scroll-down = "${pkgs.brightnessctl}/bin/brightnessctl set 5%-";
@@ -122,8 +118,8 @@
       };
       style = ''
         * {
-          font-family: "FantasqueSansM Nerd Font", monospace;
-          font-size: 13px;
+          font-family: "FantasqueSansM Nerd Font Mono", monospace;
+          font-size: 14px;
           min-height: 0;
         }
         window#waybar {
