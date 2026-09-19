@@ -8,16 +8,17 @@ matching `<name>.irs` in `../audio-irs/`; the convolver stage references
 its impulse response by `kernel-name`, so the two must be renamed
 together.
 
-Three presets ship:
+Four presets ship:
 
 | preset | what it is |
 | --- | --- |
+| `Preset1` | the current hand-tuned daily driver: `X1Yoga7-Bass-Presence` with bass-enhancer amount 12, +6 dB limiter output gain, and the captured live plugin order — **the autoloaded default** |
 | `X1Yoga7-Dynamic-Detailed` | the unmodified vendor baseline |
 | `X1Yoga7-Bass` | baseline + bass enhancement |
-| `X1Yoga7-Bass-Presence` | as `-Bass`, plus a +2 dB / 3.2 kHz voice lift — **the autoloaded default** |
+| `X1Yoga7-Bass-Presence` | as `-Bass`, plus a +2 dB / 3.2 kHz voice lift |
 
-`X1Yoga7-Bass-Presence` is bound to the built-in speaker by `audio.autoloads` in
-`flake-modules/hosts/pb-x1.nix`; the other two are selectable by hand
+`Preset1` is bound to the built-in speaker by `audio.autoloads` in
+`flake-modules/hosts/pb-x1.nix`; the other three are selectable by hand
 (`easyeffects -l <name>`).
 
 The other 24 vendor presets (Movie/Music/Game/Personalize/Voice, each in

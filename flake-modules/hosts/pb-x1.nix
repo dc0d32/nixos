@@ -251,12 +251,13 @@ in
             device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
             profile = "Speaker";
             description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
-            # X1Yoga7-Bass-Presence (bass enhancement + a 3.2 kHz voice
-            # lift) is the daily driver. The other two shipped presets are
-            # selectable by hand:
+            # Preset1 captures the current hand-tuned EasyEffects pipeline
+            # (based on X1Yoga7-Bass-Presence) and is the daily driver. The
+            # vendor-derived presets remain selectable by hand:
             #   X1Yoga7-Bass              same, without the presence lift
+            #   X1Yoga7-Bass-Presence     stronger bass + presence lift
             #   X1Yoga7-Dynamic-Detailed  unmodified vendor baseline
-            preset = "X1Yoga7-Bass-Presence";
+            preset = "Preset1";
           }
         ];
         # No mic preset authored yet, so inputAutoloads stays empty and
