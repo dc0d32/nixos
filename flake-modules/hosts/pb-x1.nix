@@ -150,6 +150,15 @@ in
       # this enables.
       gpu.driver = "intel";
 
+      # The internal eDP panel flickers whenever the display becomes static
+      # and stops as soon as any window produces damage. i915 reports
+      # "Selective fetch area calculation failed in pipe A" at session
+      # startup, matching the PSR2 selective-fetch failure mode. Disable only
+      # selective fetch, retaining ordinary PSR and its idle-power savings.
+      # Retire when a newer kernel no longer logs the failure and the panel
+      # remains stable with the parameter removed.
+      boot.kernelParams = [ "i915.enable_psr2_sel_fetch=0" ];
+
       # Battery / hibernate config (declared as a NixOS module option
       # by flake-modules/battery.nix). Lenovo X1 Yoga supports kernel
       # charge thresholds via /sys/class/power_supply/BAT0/
