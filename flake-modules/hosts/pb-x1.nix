@@ -251,13 +251,14 @@ in
             device = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink";
             profile = "Speaker";
             description = "Alder Lake PCH-P High Definition Audio Controller Speaker";
-            # Preset1 captures the current hand-tuned EasyEffects pipeline
-            # (based on X1Yoga7-Bass-Presence) and is the daily driver. The
+            # Preset2 captures the current convolver + limiter-only pipeline
+            # and is the daily driver. The fuller hand-tuned pipeline and
             # vendor-derived presets remain selectable by hand:
+            #   Preset1                     full hand-tuned pipeline
             #   X1Yoga7-Bass              same, without the presence lift
             #   X1Yoga7-Bass-Presence     stronger bass + presence lift
             #   X1Yoga7-Dynamic-Detailed  unmodified vendor baseline
-            preset = "Preset1";
+            preset = "Preset2";
           }
         ];
         # No mic preset authored yet, so inputAutoloads stays empty and
