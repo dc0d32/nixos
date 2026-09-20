@@ -1,9 +1,9 @@
 {
   "output": {
     "bass_enhancer#0": {
-      "amount": 12.0,
+      "amount": 18.0,
       "blend": 0.0,
-      "bypass": true,
+      "bypass": false,
       "floor": 100.0,
       "floor-active": true,
       "harmonics": 8.5,
@@ -699,7 +699,7 @@
         "split-frequency": 16000.0,
         "stereo-split-source": "Left/Right"
       },
-      "bypass": true,
+      "bypass": false,
       "compressor-mode": "Modern",
       "dry": -80.01,
       "envelope-boost": "None",
@@ -727,7 +727,7 @@
     "stereo_tools#0": {
       "balance-in": 0.0,
       "balance-out": 0.0,
-      "bypass": true,
+      "bypass": false,
       "delay": 0.0,
       "dry": -100.0,
       "input-gain": 0.0,

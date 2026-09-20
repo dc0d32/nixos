@@ -230,8 +230,10 @@ in
     };
 
     # ── Background blur (niri 26.04+, Window Effects) ───────────
-    # Catch-all `background-effect { blur true; xray false; }` on
-    # every window-rule and layer-rule. Opaque surfaces visually
+    # Catch-all `background-effect { blur true; xray false; }` on every
+    # window, layer surface, and their xdg-popup menus. Pop-ups need their
+    # own nested rule: they do not inherit the parent surface's effect.
+    # Opaque surfaces visually
     # swallow the effect (their own pixels cover the blurred
     # composite), so this only actually shows up where we've
     # intentionally made things translucent — the waybar bar (CSS
@@ -282,6 +284,7 @@ in
           (kdl.node "blur" [ true ] [ ])
           (kdl.node "xray" [ false ] [ ])
         ];
+        popupChild = kdl.node "popups" [ ] [ blurChild ];
 
         # Mutable layout layer, written by `display-save` when the user
         # rearranges monitors in wdisplays. See flake-modules/
@@ -307,8 +310,14 @@ in
       localLayoutInclude
       ++ options.programs.niri.config.default
       ++ [
-        (kdl.node "window-rule" [ ] [ blurChild ])
-        (kdl.node "layer-rule" [ ] [ blurChild ])
+        (kdl.node "window-rule" [ ] [
+          blurChild
+          popupChild
+        ])
+        (kdl.node "layer-rule" [ ] [
+          blurChild
+          popupChild
+        ])
       ];
   };
 }

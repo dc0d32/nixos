@@ -12,7 +12,7 @@ Five presets ship:
 
 | preset | what it is |
 | --- | --- |
-| `Preset2` | `Preset1` with bass enhancer, stereo tools, both equalizers, and both multiband compressors bypassed; convolver and limiter remain active — **the autoloaded default** |
+| `Preset2` | Current live tuning: bass enhancer enabled at amount 18, stereo tools enabled, both equalizers and the tone compressor bypassed, with the excursion limiter, convolver, and output limiter active — **the autoloaded default** |
 | `Preset1` | the full hand-tuned pipeline: `X1Yoga7-Bass-Presence` with bass-enhancer amount 12, +6 dB limiter output gain, and the captured live plugin order |
 | `X1Yoga7-Dynamic-Detailed` | the unmodified vendor baseline |
 | `X1Yoga7-Bass` | baseline + bass enhancement |
