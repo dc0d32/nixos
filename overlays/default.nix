@@ -30,4 +30,8 @@
   # Retire when upstream carries equivalent glyph coverage and metrics.
   # See the file header.
   (import ./fantasque-terminal.nix)
+
+  # OpenCode: sign Bun's compiled binary so recent macOS releases accept it.
+  # Retire when nixpkgs includes NixOS/nixpkgs#550458. See the file header.
+  (import ./opencode-darwin.nix)
 ]
