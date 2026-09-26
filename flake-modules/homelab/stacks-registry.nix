@@ -92,7 +92,6 @@
             type = lib.types.enum [ "none" "authentik" "basic" ];
             default = "none";
           };
-          gpu = lib.mkOption { type = lib.types.bool; default = false; };
           tlsUpstream = lib.mkOption {
             type = lib.types.bool;
             default = false;
