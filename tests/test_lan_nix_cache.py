@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Credential-free tests of the actual, natively built cache client scripts."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -174,6 +175,47 @@ class CacheClientTests(unittest.TestCase):
     def test_build_reports_upload_failure(self):
         result = self.run_script("nix-cache-build", ".#example", fail="upload")
         self.assertEqual(result.returncode, 22)
+
+
+class CacheTrustTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        result = subprocess.run(
+            [
+                "nix", "eval", "--json",
+                ".#homeConfigurations.p@pb-mb.config",
+                "--apply",
+                'c: { settings = c.nix.settings; '
+                'daemon = c.xdg.configFile."nix/lan-cache-daemon.conf".text; }',
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        cls.configuration = json.loads(result.stdout)
+
+    def test_user_config_does_not_override_restricted_daemon_settings(self):
+        settings = self.configuration["settings"]
+        for name in (
+            "require-sigs", "trusted-public-keys", "extra-trusted-public-keys",
+            "trusted-substituters", "extra-trusted-substituters", "trusted-users",
+        ):
+            with self.subTest(name=name):
+                self.assertNotIn(name, settings)
+        self.assertEqual(settings["extra-substituters"], [
+            "http://nix-cache.lan:8080/nix", "http://nix-cache.lan:8081",
+        ])
+
+    def test_daemon_fragment_retains_cache_trust_and_signature_requirement(self):
+        fragment = self.configuration["daemon"]
+        self.assertIn(
+            "extra-trusted-substituters = http://nix-cache.lan:8080/nix "
+            "http://nix-cache.lan:8081\n", fragment,
+        )
+        self.assertIn(
+            "extra-trusted-public-keys = "
+            "home-nix-cache-1:5s+6+8LuJKjQ505gMSrxVi8XBpDNWhXTrM0ipdSZLNQ=\n",
+            fragment,
+        )
+        self.assertIn("require-sigs = true\n", fragment)
 
 
 if __name__ == "__main__":

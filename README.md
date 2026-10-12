@@ -311,14 +311,20 @@ Linux hosts.
 The Mac uses the same signed Attic cache (`http://nix-cache.lan:8080/nix`)
 and upstream pull-through proxy (`http://nix-cache.lan:8081`) as Linux.
 This applies to **all Nix commands**, not a particular terminal package.
-HM writes `~/.config/nix/nix.conf` using additive settings, preserving public
-caches and keys, requiring signatures, and enabling fallback with a
-three-second connection timeout when roaming.
+HM writes `~/.config/nix/nix.conf` using additive cache URLs and enables fallback
+with a three-second connection timeout when roaming. The daemon owns signing
+keys and signature enforcement; these restricted settings are not repeated in
+the unprivileged user config. Existing public caches and keys remain intact.
 
 **One-time owner actions:** HM does not manage the Nix daemon or `/etc`.
 An untrusted daemon client cannot authorize a new substituter or signing key
 just by putting it in user config. Do not solve that by granting the user
 `trusted-users` privileges or disabling signature checks.
+
+From this checkout, run `bash scripts/setup-mac-cache.sh` for a single-command
+setup. It requests sudo, backs up the daemon configuration, installs the public
+trust fragment, restarts the daemon, and activates HM with collision backups.
+Review any existing user Nix settings before activation; the manual steps follow.
 
 1. If `~/.config/nix/nix.conf` already exists outside HM, migrate any settings
    into your HM configuration and move the old file aside before switching.

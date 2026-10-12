@@ -73,13 +73,13 @@ let
   cacheSettings = cfg: lib: {
     connect-timeout = lib.mkDefault cfg.connectTimeoutSeconds;
     fallback = lib.mkDefault true;
-    require-sigs = lib.mkDefault true;
   };
 in
 {
   flake.modules.nixos.lan-nix-cache = { config, lib, ... }: {
     imports = [ cacheOptions ];
     nix.settings = cacheSettings config.lanNixCache lib // {
+      require-sigs = lib.mkDefault true;
       substituters = lib.mkBefore [
         config.lanNixCache.endpoint
         config.lanNixCache.upstreamProxyEndpoint
@@ -183,7 +183,6 @@ in
         nix.package = lib.mkDefault pkgs.nix;
         nix.settings = cacheSettings cfg lib // {
           extra-substituters = lib.mkBefore [ cfg.endpoint cfg.upstreamProxyEndpoint ];
-          extra-trusted-public-keys = [ cfg.publicKey ];
           experimental-features = lib.mkDefault [ "nix-command" "flakes" ];
         };
         xdg.configFile."nix/lan-cache-daemon.conf".text = ''
