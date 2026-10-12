@@ -12,6 +12,11 @@
     # Pinned to the stable release channel (nixos-26.05), NOT unstable.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
+    wezterm-src = {
+      url = "git+https://github.com/wezterm/wezterm?rev=e2a98e1b8af156988ad0ac778658ac27b60a55fb&submodules=1";
+      flake = false;
+    };
+
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";

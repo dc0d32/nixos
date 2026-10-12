@@ -20,6 +20,9 @@
 # Workflow:
 #   1. edit these files / the shared toolkit
 #   2. hm_win        (builds windows-dotfiles from ~/nixos, pushes it)
+#   3. hm_win --terminals (explicitly install/update WezTerm Trial only;
+#      no Windows Terminal defaults or toolkit packages are changed)
+#      Run normal hm_win once first to register the patched Fantasque font.
 #
 # Contributes:
 #   - flake.lib.starshipSettings — the prompt config, shared so the zsh
@@ -33,6 +36,7 @@
 #   the native-Windows environment is no longer wanted.
 { lib, config, ... }:
 let
+  weztermPin = import ../../overlays/wezterm-pin.nix;
   # ── Shared prompt (also consumed by flake-modules/zsh.nix) ──────────
   starshipSettings = {
     add_newline = false;
@@ -276,6 +280,16 @@ let
     let
       starshipToml = (pkgs.formats.toml { }).generate "starship.toml" starshipSettings;
       atuinToml = (pkgs.formats.toml { }).generate "atuin-config.toml" atuinSettings;
+      weztermLua = pkgs.writeText "wezterm.lua" config.flake.lib.weztermConfig;
+      # Metadata only: ordinary hm_win must survive upstream asset deletion.
+      # The explicit Windows installer downloads and verifies the archive.
+      weztermManifest = (pkgs.formats.json { }).generate "wezterm-pin.json" {
+        inherit (weztermPin) revision version;
+        inherit (weztermPin.assets.windows) url sha256 archiveRoot architectures;
+        headers = weztermPin.assets.windows.headers or { };
+        # A promoted, retained URL/hash can replace the bootstrap asset later.
+        assetStatus = weztermPin.assets.windows.status or "bootstrap-unpromoted";
+      };
 
       # alacritty.toml — generated from the SAME definition the Linux
       # alacritty module uses (flake.lib.alacrittySettings), so the
@@ -790,6 +804,10 @@ let
       cp ${mermaidAsciiExe}/bin/windows_amd64/mermaid-ascii.exe "$out/mermaid-ascii.exe"
       cp -r ${pkgs.fantasque-terminal}/share/windows-fonts "$out/fonts"
       cp ${setupScript}          "$out/setup.ps1"
+      mkdir -p "$out/wezterm-trial"
+      cp ${weztermLua}           "$out/wezterm-trial/wezterm.lua"
+      cp ${weztermManifest}      "$out/wezterm-trial/wezterm-pin.json"
+      cp ${./wezterm-install.ps1} "$out/wezterm-trial/wezterm-install.ps1"
     '';
 
   # ── `hm_win`: thin wrapper — builds the bundle, then deploys it ─────
@@ -813,13 +831,17 @@ let
       # fast and frequent; the installs are slow and idempotent, so you
       # only want them when the package list actually changed.
       run_setup=0
+      terminals_only=0
       for arg in "$@"; do
         case "$arg" in
           -s | --setup) run_setup=1 ;;
+          --terminals) terminals_only=1 ;;
           -h | --help)
-            echo "usage: hm_win [--setup]"
+            echo "usage: hm_win [--setup | --terminals]"
             echo "  (no args)   deploy the Nix-generated dotfiles to the Windows profile"
             echo "  --setup,-s  also run setup.ps1 (winget + Scoop installs) afterwards"
+            echo "  --terminals install/update WezTerm Trial only (Windows x64)"
+            echo "              requires normal hm_win once first for the patched font"
             exit 0
             ;;
           *)
@@ -828,6 +850,10 @@ let
             ;;
         esac
       done
+      if [ "$run_setup" -eq 1 ] && [ "$terminals_only" -eq 1 ]; then
+        echo "hm_win: --terminals cannot be combined with --setup." >&2
+        exit 2
+      fi
 
       # Build the generated bundle on demand from the local checkout
       # (override with HM_WIN_FLAKE). Nothing here is pre-built by
@@ -898,6 +924,29 @@ let
       }
 
       echo "hm_win: deploying to $userprofile"
+      # Content-addressed deploy directories preserve scripts/manifests from
+      # previous explicit installs, without touching a running executable.
+      trial_dir="$nixwin/wezterm-trial/$(basename "$src")"
+      if [ ! -d "$trial_dir" ]; then
+        mkdir -p "$trial_dir"
+      fi
+      for artifact in wezterm.lua wezterm-pin.json wezterm-install.ps1; do
+        if [ ! -f "$trial_dir/$artifact" ] || ! cmp -s "$src/wezterm-trial/$artifact" "$trial_dir/$artifact"; then
+          deploy "$src/wezterm-trial/$artifact" "$trial_dir/$artifact"
+        fi
+      done
+      trial_script_win="$(wslpath -w "$trial_dir/wezterm-install.ps1")"
+      if [ "$terminals_only" -eq 1 ]; then
+        if [ -z "$psexe" ]; then
+          echo "hm_win: --terminals needs Windows PowerShell interop." >&2
+          echo "Run in PowerShell: & '$trial_script_win'" >&2
+          exit 1
+        fi
+        "$psexe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$trial_script_win"
+        exit 0
+      fi
+      echo "  WezTerm Trial installer deployed (not run): $trial_script_win"
+      echo "  Install explicitly with: hm_win --terminals"
       deploy "$src/profile.ps1" "$profile_path"
       deploy "$src/starship.toml" "$cfg/starship.toml"
       # atuin reads %APPDATA%\atuin by default on Windows, NOT ~/.config;
@@ -972,7 +1021,7 @@ let
       # profile.ps1 — the same glamour style the Linux md-view uses.
       deploy "$src/md-view-style.json" "$nixwin/md-view-style.json"
       deploy "$src/md-view-glow.yml" "$nixwin/md-view-glow.yml"
-      # The only binary hm_win ships. 0755 because deploy() installs
+      # The toolkit binary hm_win ships. 0755 because deploy() installs
       # 0644, which would leave it non-executable under WSL — Windows
       # itself ignores the mode, but running it from WSL for testing
       # would fail confusingly.

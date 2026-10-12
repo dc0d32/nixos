@@ -379,7 +379,8 @@
         "nixos-hardware": "nixos-hardware",
         "nixos-wsl": "nixos-wsl",
         "nixpkgs": "nixpkgs_4",
-        "sops-nix": "sops-nix"
+        "sops-nix": "sops-nix",
+        "wezterm-src": "wezterm-src"
       }
     },
     "sops-nix": {
@@ -416,6 +417,25 @@
       "original": {
         "type": "git",
         "url": "https://spectrum-os.org/git/spectrum"
+      }
+    },
+    "wezterm-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791617951,
+        "narHash": "sha256-8jRfyP39boYVxDYJush0Rc9EFwDvRL75gTMLliihTU8=",
+        "ref": "refs/heads/main",
+        "rev": "e2a98e1b8af156988ad0ac778658ac27b60a55fb",
+        "revCount": 8718,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/wezterm/wezterm"
+      },
+      "original": {
+        "rev": "e2a98e1b8af156988ad0ac778658ac27b60a55fb",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/wezterm/wezterm"
       }
     },
     "xwayland-satellite-stable": {

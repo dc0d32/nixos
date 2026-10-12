@@ -9,6 +9,7 @@
 #   - flake-modules/nix-settings.nix (sets `nixpkgs.overlays` system-wide).
 #   - flake-modules/mk-pkgs.nix (the shared HM-side `pkgs` factory each
 #     host bridge calls via `config.flake.lib.mkPkgs`).
+{ inputs }:
 [
   # EVDI 1.15.0: Linux 7.2 DRM API compatibility, pending the nixpkgs bump.
   # Retire when nixpkgs packages EVDI >= 1.15.0. See the file header.
@@ -30,6 +31,10 @@
   # Retire when upstream carries equivalent glyph coverage and metrics.
   # See the file header.
   (import ./fantasque-terminal.nix)
+
+  # Shared recent WezTerm revision, built from locked source on Linux and macOS.
+  # Retire when upstream packaging supplies an equally recent shared pin.
+  (import ./wezterm.nix { src = inputs.wezterm-src; })
 
   # OpenCode: sign Bun's compiled binary so recent macOS releases accept it.
   # Retire when nixpkgs includes NixOS/nixpkgs#550458. See the file header.

@@ -33,7 +33,7 @@
 # ~/Library/Fonts/HomeManager/ for Core Text). Wayland desktop, audio,
 # bluetooth, power/battery, biometrics, disko/impermanence/backup are
 # Linux-only and deliberately absent. No alacritty here — macOS ships
-# Terminal.app and the terminal of choice is the user's, not the flake's.
+# Terminal.app remains the default; Ghostty and WezTerm are side-by-side trials.
 #
 # Bootstrap on the Mac (after installing Nix + enabling flakes):
 #   nix run home-manager/master -- switch --flake .#'p@pb-mb'
@@ -74,8 +74,9 @@ in
         # Thin GUI slice. vscode is a cross-platform HM module; the rest
         # of the desktop bundle (niri/waybar/mako/lockscreen/etc.) is
         # Wayland-only and excluded. alacritty is intentionally NOT here —
-        # macOS uses its native terminal.
+        # Terminal.app remains available and unchanged.
         config.flake.modules.homeManager.vscode
+        config.flake.modules.homeManager.terminal-trials
         # Fonts: on darwin this installs the face set + mirrors it into
         # ~/Library/Fonts/HomeManager/. See flake-modules/fonts.nix.
         config.flake.modules.homeManager.fonts

@@ -1,0 +1,319 @@
+name: promote verified WezTerm
+
+on:
+  schedule:
+    - cron: "43 * * * *"
+  workflow_dispatch:
+
+# Serialize both coordinators; publication also rechecks live identities via CAS.
+concurrency:
+  group: wezterm-update-flake-lock
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    outputs:
+      eligible: ${{ steps.inspect.outputs.eligible }}
+      head: ${{ steps.inspect.outputs.head }}
+      default_sha: ${{ steps.inspect.outputs.default_sha }}
+      request: ${{ steps.inspect.outputs.request }}
+      plan: ${{ steps.inspect.outputs.plan }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Inspect request and verified immutable release
+        id: inspect
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/promote-wezterm.py inspect --output "$GITHUB_OUTPUT"
+
+  prepare:
+    needs: inspect
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.inspect.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    outputs:
+      proposal: ${{ steps.prepare.outputs.proposal }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          github-token: ""
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            accept-flake-config = false
+      # No candidate Nix evaluation here: hashes use a fixed trusted expression
+      # and default-locked nixpkgs. Candidate builds cannot rewrite this output.
+      - name: Discover hashes and prepare validated data
+        id: prepare
+        env:
+          PLAN_B64: ${{ needs.inspect.outputs.plan }}
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          python3 -B scripts/promote-wezterm.py prepare --candidate candidate --plan-b64 "$PLAN_B64" --output "$GITHUB_OUTPUT"
+
+  pending:
+    needs: inspect
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.inspect.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - name: Mark exact current PR head pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.inspect.outputs.head }}
+          RUN_URL: https://github.com/dc0d32/nixos/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: python3 -B scripts/promote-wezterm.py status --head "$HEAD" --state pending --description "Native Linux pure flake check pending" --url "$RUN_URL"
+
+  precheck:
+    needs: [inspect, pending]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.inspect.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - name: Free disk space
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup
+          df -h /
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          github-token: ""
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            accept-flake-config = false
+      - name: Check exact current PR head before any materialization
+        working-directory: candidate
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          nix flake check --print-build-logs
+      - name: Reject lock or pin changes during the exact-head check
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          git -c core.hooksPath=/dev/null -C candidate diff HEAD --exit-code -- flake.nix flake.lock overlays/wezterm-pin.nix
+
+  report-precheck:
+    needs: [inspect, precheck]
+    if: >-
+      always() &&
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.inspect.outputs.head != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - name: Report current-head result, never the modified proposal result
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.inspect.outputs.head }}
+          CHECK_RESULT: ${{ needs.precheck.result }}
+          RUN_URL: https://github.com/dc0d32/nixos/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: |
+          state=failure
+          if [ "$CHECK_RESULT" = success ]; then state=success; fi
+          python3 -B scripts/promote-wezterm.py status --head "$HEAD" --state "$state" --description "Native Linux pure flake check: $CHECK_RESULT" --url "$RUN_URL"
+
+  proposal-check:
+    needs: [inspect, prepare, precheck, report-precheck]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.inspect.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - name: Free disk space
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup
+          df -h /
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          github-token: ""
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            accept-flake-config = false
+      - name: Materialize isolated prepared data with trusted code
+        env:
+          PROPOSAL_B64: ${{ needs.prepare.outputs.proposal }}
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          python3 -B scripts/promote-wezterm.py materialize --candidate candidate --proposal-b64 "$PROPOSAL_B64"
+          git -c core.hooksPath=/dev/null -C candidate add overlays/wezterm-pin.nix flake.nix flake.lock
+      - name: Check proposed tree, not a status for the old head
+        working-directory: candidate
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          nix flake check --print-build-logs
+      - name: Reject changes to the staged proposal during the check
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          git -c core.hooksPath=/dev/null -C candidate diff --exit-code -- flake.nix flake.lock overlays/wezterm-pin.nix
+
+  publish:
+    needs: [inspect, prepare, precheck, proposal-check, report-precheck]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.inspect.outputs.eligible == 'true' &&
+      needs.precheck.result == 'success' &&
+      needs.proposal-check.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      head: ${{ steps.publish.outputs.head }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - name: Recheck eligibility and identity, then publish with expectedHeadOid CAS
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PLAN_B64: ${{ needs.inspect.outputs.plan }}
+          PROPOSAL_B64: ${{ needs.prepare.outputs.proposal }}
+        run: python3 -B scripts/promote-wezterm.py publish --plan-b64 "$PLAN_B64" --proposal-b64 "$PROPOSAL_B64" --output "$GITHUB_OUTPUT"
+
+  pending-final:
+    needs: [inspect, publish]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.publish.outputs.head != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - name: Mark newly published head pending, without copying old success
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.publish.outputs.head }}
+          RUN_URL: https://github.com/dc0d32/nixos/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: python3 -B scripts/promote-wezterm.py status --head "$HEAD" --state pending --description "Native Linux pure flake check pending" --url "$RUN_URL"
+
+  final-check:
+    needs: [publish, pending-final]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.publish.outputs.head != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.publish.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - name: Free disk space
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup
+          df -h /
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          github-token: ""
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            accept-flake-config = false
+      - name: Check exact newly published head
+        working-directory: candidate
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          nix flake check --print-build-logs
+      - name: Reject lock or pin changes during the exact-head check
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          git -c core.hooksPath=/dev/null -C candidate diff HEAD --exit-code -- flake.nix flake.lock overlays/wezterm-pin.nix
+
+  report-final:
+    needs: [inspect, publish, final-check]
+    if: >-
+      always() &&
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.publish.outputs.head != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.inspect.outputs.default_sha }}
+          persist-credentials: false
+      - name: Report only the newly published exact-head check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.publish.outputs.head }}
+          CHECK_RESULT: ${{ needs.final-check.result }}
+          RUN_URL: https://github.com/dc0d32/nixos/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: |
+          state=failure
+          if [ "$CHECK_RESULT" = success ]; then state=success; fi
+          python3 -B scripts/promote-wezterm.py status --head "$HEAD" --state "$state" --description "Native Linux pure flake check: $CHECK_RESULT" --url "$RUN_URL"

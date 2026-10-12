@@ -1,0 +1,275 @@
+WezTerm coordinator bootstrap and operations
+============================================
+
+Owner setup (manual; these instructions do not activate anything)
+----------------------------------------------------------------
+1. Review and deploy the coordinator workflows/scripts in dc0d32/nixos
+   together with the source agent's overlays/flake changes. Protect the
+   default branch and require review of automation changes. The old weekly
+   workflow's moving action tags and PAT/App suggestion are not this design:
+   replace that workflow before enabling the new coordinator.
+2. Settings > Actions > General: enable Actions; keep default workflow
+   permissions read-only; enable "Allow GitHub Actions to create and approve
+   pull requests". This setting permits PR creation, not a reason to approve
+   the automation's own PR. Grant contents: write, pull-requests: write or
+   statuses: write only to the trusted jobs that need each permission.
+   No PAT, GitHub App, deploy key, repository-dispatch token or new secret.
+   Settings > General > Pull Requests: enable "Automatically delete head
+   branches" so a merged weekly PR releases the fixed automation branch for
+   the next cycle. After closing without merging, delete its branch manually.
+3. Use GitHub-hosted, fresh job runners, not shared/self-hosted runners.
+   Allow only the reviewed actions required by the supplied workflows.
+   Exact reviewed pins (not moving version tags):
+     actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 (v5)
+     DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a
+    Reviewed public commit/action metadata:
+     https://api.github.com/repos/actions/checkout/commits/fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+     https://api.github.com/repos/DeterminateSystems/nix-installer-action/commits/c5a866b6ab867e88becbed4467b93592bce69f8a
+    Both commits have verified signatures; checkout is v5, installer is v21.
+   The coordinator uses only those two actions. Installer github-token is
+   empty, every checkout disables persisted credentials, and candidate
+   jobs receive no token in their command environment.
+   The external build service additionally uses:
+     actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+4. Bootstrap PUBLIC dc0d32/wezterm-builds separately from its reviewed payload.
+   Default branch main; enable Actions and the two pinned actions above;
+   keep default permissions read-only. Its publish job alone requests
+   contents: write and actions: read. It needs no PR-creation setting.
+   Settings > General > Releases: enable "Release immutability" BEFORE the
+   first publication. Protect main and retain successful releases and their
+   workflow-run records permanently. Seven-day build artifacts are transient.
+5. Run only reviewed default-branch coordinator workflows. Configure required
+   branch-protection statuses to match the exact contexts the workflows emit;
+   inspect an actual run rather than guessing a context name. Do not merge
+   based on a green older head, a PR merge ref, or Windows success alone.
+
+Stable CLI handoff (run trusted scripts, never candidate copies)
+--------------------------------------------------------------
+Every CLI accepts --output; Actions examples use "$GITHUB_OUTPUT".
+Base64 outputs encode JSON data, not shell commands. Pass values through
+environment variables/quoted arguments; never eval them or interpolate
+candidate values directly into a workflow run script.
+
+  python3 -B scripts/promote-wezterm.py seed --output "$GITHUB_OUTPUT"
+    Outputs: head, default_sha (fixed update branch, or default if absent).
+
+  python3 -B scripts/wezterm-request.py weekly \
+    --workdir candidate --output "$GITHUB_OUTPUT"
+    Outputs: proposal, head, default_sha.
+
+  python3 -B scripts/promote-wezterm.py inspect --output "$GITHUB_OUTPUT"
+    Outputs: eligible (literal true/false), head, request (base64 JSON),
+    default_sha, plan (base64 JSON). false means no preparation/publication.
+
+  python3 -B scripts/promote-wezterm.py prepare \
+    --candidate candidate --plan-b64 "$PLAN_B64" --output "$GITHUB_OUTPUT"
+    Outputs: proposal.
+
+  python3 -B scripts/promote-wezterm.py materialize \
+    --candidate candidate --proposal-b64 "$PROPOSAL_B64"
+    Writes only validated proposed data in the separate read-only check job.
+    Emits no outputs; never pass candidate-job data back to a writer.
+
+  python3 -B scripts/promote-wezterm.py publish-weekly \
+    --proposal-b64 "$PROPOSAL_B64" --output "$GITHUB_OUTPUT"
+
+  python3 -B scripts/promote-wezterm.py publish \
+    --plan-b64 "$PLAN_B64" --proposal-b64 "$PROPOSAL_B64" \
+    --output "$GITHUB_OUTPUT"
+
+  python3 -B scripts/promote-wezterm.py status \
+    --head "$HEAD" --state pending --description "$DESCRIPTION" \
+    --url "$RUN_URL" --output "$GITHUB_OUTPUT"
+    HEAD must be a full 40-character SHA; state is pending, success or failure.
+
+weekly, prepare and materialize require a clean token-free environment:
+UNSET GITHUB_TOKEN and GH_TOKEN. Their candidate work belongs in unprivileged jobs. Publication
+and status jobs get their own narrowly scoped token only for trusted steps.
+Do not substitute the old update-flake-lock action for these interfaces.
+Unset NIX_CONFIG/NIX_USER_CONF_FILES too; trusted installed Nix configuration
+is used instead of executable fetcher/credential/configuration overrides.
+Writer commands require GITHUB_REPOSITORY=dc0d32/nixos, schedule or
+workflow_dispatch, and GITHUB_REF pointing at the current default branch.
+All three runtime Python scripts must be unchanged from current default Git
+objects, regular nonsymlink files, and not group/world writable.
+
+Trust and validation boundaries
+-------------------------------
+The coordinator's trusted code comes from a captured, reviewed default-branch
+SHA, checked out with persist-credentials: false. Capture default_sha and
+candidate head explicitly; recheck them before writes. Candidate flake/lock,
+Nix expressions, upstream source, scripts, metadata and artifacts are untrusted.
+Never run candidate code or evaluate/build a candidate flake in a write-token
+job, including "just" evaluating a version/hash. Do not source candidate files.
+
+Separate discovery/inspection, token-free preparation/checking, publication,
+and status reporting into fresh jobs. Writer jobs consume strictly validated
+data, not executable artifacts or a candidate checkout. No shared writable
+workspace/build cache, persisted Git credentials, cache-save privilege or
+external secret may bridge untrusted execution into writers. Restrict token
+exposure to the trusted publication/status command, not a job-wide environment.
+Keep preparation/proposal outputs separate from arbitrary candidate execution:
+run preparation in its own read-only job, then check on another fresh runner.
+Candidate flake evaluation can overwrite any file/output in its own job.
+Do not let it rewrite a proposal that a writer will later consume.
+
+Cargo discovery uses a fixed trusted expression and default-locked nixpkgs,
+not candidate package definitions. fetchCargoVendor.vendorStaging is its FOD;
+the outer vendor derivation is not fixed-output. Accept a mismatch only for
+that exact known derivation and fake hash, then build the complete vendor
+derivation again with the actual hash. Legacy and Nix version-4 derivation
+metadata are explicitly checked; unknown schemas fail closed.
+
+Check the exact candidate head on native Linux with:
+  nix flake check --print-build-logs
+PURE evaluation is mandatory: no --impure, NIXOS_ALLOW_PLACEHOLDER, privileged
+candidate evaluation or Darwin-only substitute. The native Linux system is
+built; other configured systems may be evaluated without being built.
+Set pending before checking, then success only after that exact head passes;
+failure/cancellation must not leave a success claim. Report failure when
+possible; interrupted runs can leave pending and require a rerun. A newer head
+must receive its own validation/status; old success must never be copied to it.
+GITHUB_TOKEN branch pushes/PR creation generally do not trigger another CI
+workflow. The coordinator must explicitly arrange its own exact-head check
+and trusted status reporting, rather than relying on pull_request firing.
+
+Windows service is a separate trust domain:
+  poll: anonymous reads of the open same-repository coordinator request.
+  build: fresh windows-2025 VM, read-only permissions, exact upstream commit
+         and submodules; upstream code gets no GITHUB_TOKEN/GH_TOKEN/secrets.
+  publish: fresh Ubuntu VM, trusted build-service checkout, own-repo write
+           token; validates data without executing upstream/candidate/ZIP code.
+No pull_request, push, workflow_run or repository_dispatch trigger is needed
+there. Only schedule/workflow_dispatch on its protected default branch.
+
+Admission and release proof
+--------------------------
+Keep the same-repository dc0d32/nixos PR OPEN from
+automation/update-flake-lock to the current default branch. Its immutable head
+must contain .github/wezterm-request.json. Preserve the external service's
+strict eight-key request contract: schema, repository, branch,
+source_repository, source_sha, request_id, requested_at, nonce. nonce is the
+positive numeric string coordinator github.run_id; request_id hashes UTF-8:
+  dc0d32/nixos\nautomation/update-flake-lock\n<SOURCE_SHA>\n<NONCE>
+No trailing newline. Identity hashing is not authentication. Forks, ambiguous
+PRs, stale heads/bases and superseded requests must fail closed.
+
+Adopt only a normal immutable successful release from dc0d32/wezterm-builds:
+verify exact source SHA, provenance/types, archive naming/root, size/digest,
+SHA256SUMS, exactly the expected assets, tag/workflow-head binding, and the
+same run_id/run_attempt proof from .github/workflows/windows-build.yml.
+The build and publish jobs and the overall schedule/workflow_dispatch run attempt must
+have completed successfully on that repository's default branch. A release
+visible while publish is running is not yet eligible. Reuse a verified release
+for the same source_sha even if request_id differs; do not demand duplicates.
+Recheck the coordinator's live head/request/base before adopting the pin.
+Validate the requested exact upstream commit's timestamp/version, not the
+latest branch tip. Subsequent upstream commits do not supersede a weekly
+request; changed request identity, PR head or captured default SHA still do.
+Already-matching Unix/Windows pins are skipped only if the latest
+wezterm/native-linux status on that exact PR head is successful. A pending,
+missing or failed status remains eligible for fresh checks; an older head's
+success is never reused.
+
+Atomic branch publication and remaining GitHub limitations
+---------------------------------------------------------
+Each pin/lock/source edit is one GraphQL createCommitOnBranch mutation with
+expectedHeadOid equal to the inspected PR SHA. This is a real compare-and-swap,
+not a REST force:false ancestry check: an intervening branch reset to an ancestor
+also fails. The branch is never force-updated. For a first weekly PR, atomic ref
+creation seeds the fixed branch at the inspected default SHA, followed by the
+same guarded commit. Pin revision/version/Cargo hash and Windows identity change
+together, with the nonflake source lock and flake URL when present. Legacy
+sourceHash is retained and updated if declared by the trusted pin schema.
+The isolated discovery job also carries validated source-prefetch lock metadata;
+revision counts, resolved ref and last-modified data are refreshed rather than
+copied from the previous revision.
+
+GitHub offers no cross-repository transaction for "publish only while this PR
+is open". A request can change after the publisher's final read. Nor are branch
+update, PR mutation, default-branch freshness and status publication one atomic
+transaction. Recheck immediately before the guarded mutation; a PR-close or
+default-branch change in the remaining read/write interval cannot be eliminated.
+Partial completion requires inspection/retry, never forced overwrite or stale
+adoption. A status certifies only its recorded exact head.
+
+Release immutability is a repository setting, not a writable REST release flag.
+The service drafts, uploads validated assets, publishes, then requires returned
+immutable=true. Admin-read setting preflight is unavailable to its narrow
+token; do not add a PAT or broaden permissions to work around this.
+If the owner forgot the setting, an editable public release can already exist
+when verification fails. It is not adoptable and must not be overwritten.
+Tags use source SHA/run ID/attempt identities and atomic creation, never
+force-tagging, clobber, mutable latest/nightly or successful-release deletion.
+
+Operations and verification
+---------------------------
+The coordinators share non-cancelling concurrency wezterm-update-flake-lock.
+Both specify queue: max so hourly polls do not replace a pending weekly run.
+GitHub permits up to 100 pending runs; additional arrivals are cancelled when
+full. Runs are FIFO by when they start waiting, not necessarily dispatch time.
+Reference:
+  https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+The weekly timer is Saturday 06:00 UTC; promotion polls hourly at :43.
+Both run exclusively on the trusted default branch of dc0d32/nixos.
+The required branch-protection context is wezterm/native-linux. Each newly
+published exact SHA gets pending, then the actual success/failure from a fresh
+read-only native Linux nix flake check --print-build-logs job. Promotion also
+requires a successful exact old-head check and a separate proposed-tree check.
+Neither candidate job supplies hashes or executable artifacts to the writer.
+
+Weekly latest-source resolution anonymously reads metadata from the fixed
+wezterm/wezterm repository, validates default_branch (currently main), then
+resolves commits/<URL-quoted branch> to a full SHA. Slash-containing branch
+names are quoted as one ref. Invalid/missing metadata or a missing branch has
+no hardcoded branch or authenticated fallback. Ordinary weekly input updates
+still proceed if source resolution fails; no placeholder request is created.
+Weekly publication and hourly promotion validate commits/<requested full SHA>
+without another latest/default-branch lookup. A later upstream advance cannot
+strand an otherwise valid fixed request or its matching Windows release.
+The bootstrap Windows asset remains unchanged until a real matching immutable
+external release passes every proof.
+
+Run the new weekly coordinator manually on the default branch first; inspect
+the PR, request, proposal and exact-head Linux status. In the external repo,
+run "Windows build" manually on main or wait for hourly :23 polling. Leave
+the PR open until publication proof is complete, then run/wait for promotion.
+Check the final pin/lock diff and exact promoted-head Linux success before
+merging. A merge/base/head change during any stage requires fresh inspection.
+
+Schedules are best-effort; public-repo inactivity can disable them after
+60 days. The shared queue is bounded at 100 pending runs. Anonymous API
+rate limits/CDN delays can postpone work; retry later without token fallback.
+Never delete a successful release. For failed build/publication rerun ALL
+external jobs: a new run_attempt gets a new identity. Publish-only reruns
+cannot borrow an earlier attempt's artifact/proof. Conflicting drafts/tags
+are not resumed or overwritten; inspect leftovers and use a fresh attempt.
+
+Run the coordinator's existing tests from its reviewed implementation and
+the external service's suite in its own checkout:
+  python3 -B -m unittest discover -s tests -v
+Final local suites: 638 coordinator tests (including the locked formatter
+oracle) and 64 builder tests passed. YAML, Python syntax and LF checks passed.
+Anonymous latest-source discovery and actual Nix source-prefetch metadata were
+verified. The actual locked Linux fetchCargoVendor.vendorStaging derivation
+metadata passed the fixed-output proof validator without building on Darwin.
+The initial local pure evaluation baseline failed on unrelated invalid
+dwz7h2ppsfhgljdk7jvyfgx59ah65zbn-source.drv. The final
+nix flake check --print-build-logs passed without an impure workaround; on
+Darwin it omitted incompatible Linux systems, so this does not substitute for
+the hosted native x86_64-linux system/HM/hooks builds.
+Run the optional formatter oracle using the locked native nixpkgs-fmt:
+  NIXPKGS_FMT=/path/to/locked/nixpkgs-fmt \
+    python3 -B -m unittest discover -s tests -q
+If a closed/merged PR leaves a stale automation branch, delete that branch
+manually before starting a new weekly cycle. The coordinator rejects a retained
+branch without an open PR unless it points exactly at current default; it never
+force-resets the branch or resurrects rejected candidate changes.
+Then exercise hosted runs: no eligible PR, valid request, reused source
+release, changed/closed PR, changed base/head, failed Linux check, failed or
+incomplete Windows run, bad checksum/provenance, non-immutable release,
+publication interruption and full rerun. Verify no stale pin/status or
+privileged candidate execution occurs. Local mocks do not prove hosted
+permissions, Windows compilation, GitHub immutability or end-to-end delivery.
+Hosted Windows tools/Rust/dependencies are not a bit-reproducibility or code
+signing guarantee. Owner setup and live hosted verification remain required.

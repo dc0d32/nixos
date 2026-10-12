@@ -1,53 +1,173 @@
 name: update flake.lock
 
-# Reinstates the lapsed "weekly bump" cadence. Opens a PR running
-# `nix flake update` every Saturday; on the stable channel this mostly
-# carries nixos-26.05 security/bugfix backports plus the non-follows
-# inputs (niri-flake, nixos-hardware, …). The in-repo lock is the single
-# source every host auto-upgrades against, so bumping it here + letting
-# the `flake check` workflow validate the PR keeps the fleet patched
-# without hand-running `nix flake update` on the dev box.
-
 on:
   schedule:
-    - cron: "0 6 * * 6" # Saturdays 06:00 UTC
+    - cron: "0 6 * * 6"
   workflow_dispatch:
 
-# The default GITHUB_TOKEN is read-only in this repo (Settings → Actions →
-# General → Workflow permissions), so update-flake-lock's `git push` of its
-# PR branch 403'd on every scheduled run. Grant the two scopes it needs to
-# push the branch and open the PR. A workflow-level `permissions:` block
-# overrides the repo's read-only default for this workflow only.
-#
-# SECOND GATE (repo setting, not fixable here): opening the PR also requires
-# Settings → Actions → General → "Allow GitHub Actions to create and approve
-# pull requests" to be ENABLED. While it's off, the branch pushes but the PR
-# step still fails. Toggle it in the UI, or:
-#   gh api -X PUT repos/dc0d32/nixos/actions/permissions/workflow \
-#     -F default_workflow_permissions=read -F can_approve_pull_request_reviews=true
+concurrency:
+  group: wezterm-update-flake-lock
+  queue: max
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  update:
+  seed:
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    outputs:
+      head: ${{ steps.seed.outputs.head }}
+      default_sha: ${{ steps.seed.outputs.default_sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/update-flake-lock@main
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          pr-title: "flake.lock: weekly input bump"
-          pr-labels: dependencies
-          pr-body: |
-            Automated `nix flake update`.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Capture trusted default and candidate identities
+        id: seed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/promote-wezterm.py seed --output "$GITHUB_OUTPUT"
 
-            Review the input diff and wait for the **flake check** run to
-            pass before merging.
+  prepare:
+    needs: seed
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    outputs:
+      proposal: ${{ steps.prepare.outputs.proposal }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.seed.outputs.default_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.seed.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          github-token: ""
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            accept-flake-config = false
+      - name: Update named inputs without moving wezterm-src
+        id: prepare
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          python3 -B scripts/wezterm-request.py weekly --workdir candidate --output "$GITHUB_OUTPUT"
 
-            NOTE: PRs opened with the default `GITHUB_TOKEN` do not
-            trigger other workflows, so `flake check` may not start
-            automatically on this PR. To auto-run CI on the bump PR, set
-            `token:` above to a PAT / GitHub App token with `repo` +
-            `workflow` scope; otherwise close-and-reopen the PR (or push
-            an empty commit) to kick the check.
+  publish-weekly:
+    needs: [seed, prepare]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      head: ${{ steps.publish.outputs.head }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.seed.outputs.default_sha }}
+          persist-credentials: false
+      - name: Validate proposal and publish with expectedHeadOid CAS
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PROPOSAL_B64: ${{ needs.prepare.outputs.proposal }}
+        run: python3 -B scripts/promote-wezterm.py publish-weekly --proposal-b64 "$PROPOSAL_B64" --output "$GITHUB_OUTPUT"
+
+  status-pending:
+    needs: [seed, publish-weekly]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.publish-weekly.outputs.head != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.seed.outputs.default_sha }}
+          persist-credentials: false
+      - name: Mark the exact published head pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.publish-weekly.outputs.head }}
+          RUN_URL: https://github.com/dc0d32/nixos/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: python3 -B scripts/promote-wezterm.py status --head "$HEAD" --state pending --description "Native Linux pure flake check pending" --url "$RUN_URL"
+
+  check:
+    needs: [publish-weekly, status-pending]
+    if: >-
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.publish-weekly.outputs.head != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.publish-weekly.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - name: Free disk space
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup
+          df -h /
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          github-token: ""
+          extra-conf: |
+            extra-substituters = https://niri.cachix.org https://nix-community.cachix.org
+            extra-trusted-public-keys = niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            accept-flake-config = false
+      - name: Check exact published head
+        working-directory: candidate
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          nix flake check --print-build-logs
+      - name: Reject lock or pin changes during the exact-head check
+        run: |
+          unset GITHUB_TOKEN GH_TOKEN NIX_CONFIG NIX_USER_CONF_FILES
+          git -c core.hooksPath=/dev/null -C candidate diff HEAD --exit-code -- flake.nix flake.lock overlays/wezterm-pin.nix
+
+  report:
+    needs: [seed, publish-weekly, check]
+    if: >-
+      always() &&
+      github.repository == 'dc0d32/nixos' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.publish-weekly.outputs.head != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.seed.outputs.default_sha }}
+          persist-credentials: false
+      - name: Report only the exact-head check result
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.publish-weekly.outputs.head }}
+          CHECK_RESULT: ${{ needs.check.result }}
+          RUN_URL: https://github.com/dc0d32/nixos/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: |
+          state=failure
+          if [ "$CHECK_RESULT" = success ]; then state=success; fi
+          python3 -B scripts/promote-wezterm.py status --head "$HEAD" --state "$state" --description "Native Linux pure flake check: $CHECK_RESULT" --url "$RUN_URL"

@@ -22,7 +22,7 @@
 {
   flake.lib.mkPkgs = system: import inputs.nixpkgs {
     inherit system;
-    overlays = import ../overlays;
+    overlays = import ../overlays { inherit inputs; };
     config = {
       allowUnfree = true;
       allowAliases = false;

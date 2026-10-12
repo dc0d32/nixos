@@ -56,7 +56,8 @@ Design choices:
 - **Everything declarative**: no separate dotfiles repo. User configs
   live under `flake-modules/<feature>.nix`.
 - **Compositor**: niri. **Shell**: zsh. **Editor**: vim.
-  **Terminal**: alacritty (native Terminal.app on macOS).
+  **Terminal**: alacritty (native Terminal.app on macOS). Ghostty/WezTerm
+  are side-by-side trials, not replacement defaults.
 - **No secrets module yet** — added later if needed (sops-nix or agenix).
 
 ## Day-to-day
@@ -83,6 +84,10 @@ home-manager switch --flake .#'p@pb-mb'
 # on demand, independent of home-manager switch). See "Native Windows".
 hm_win
 
+# Explicitly install/update the isolated Windows x64 WezTerm trial
+# (normal hm_win registers its fonts first; does not change WT defaults)
+hm_win --terminals
+
 # Update all inputs
 nix flake update
 
@@ -93,6 +98,14 @@ nix flake check
 # no path blocks reading stdin, because the formatter is a bare package)
 nix fmt .
 ```
+
+Terminal trial preferences come from the shared Alacritty settings. Unix
+WezTerm builds from locked source, including the native signed macOS app.
+Windows is currently **bootstrap-unpromoted**; ordinary `hm_win` does not
+download its deletable interim archive. The token-free asynchronous release
+pipeline requires owner bootstrap before durable Windows promotion:
+[setup and operations](scripts/wezterm-bootstrap.txt),
+[trial details and validation](docs/sessions/2026-10-11-terminal-trials.md).
 
 Two commands exist for the humans rather than the maintainer — except
 one of them is very much for the maintainer. Both are in the **base**

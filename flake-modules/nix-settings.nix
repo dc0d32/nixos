@@ -42,7 +42,7 @@
 #   wrapper stops adding value, OR the repo-wide overlays move to a
 #   different injection point, OR nix.gc.options grows native support
 #   for "+N" (count floor) so the custom timer becomes redundant.
-{ ... }:
+{ inputs, ... }:
 {
   flake.modules.nixos.nix-settings = { lib, pkgs, ... }: {
     nix.settings = {
@@ -94,6 +94,6 @@
     nixpkgs.config.allowUnfree = lib.mkDefault true;
     nixpkgs.config.allowAliases = lib.mkDefault false;
     # Apply the flake-wide overlays. See overlays/default.nix.
-    nixpkgs.overlays = import ../overlays;
+    nixpkgs.overlays = import ../overlays { inherit inputs; };
   };
 }
