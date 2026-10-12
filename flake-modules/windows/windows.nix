@@ -281,13 +281,17 @@ let
       atuinToml = (pkgs.formats.toml { }).generate "atuin-config.toml" atuinSettings;
       weztermLua = pkgs.writeText "wezterm.lua" config.flake.lib.weztermConfig;
       # Metadata only: ordinary hm_win must survive upstream asset deletion.
-      # The explicit Windows installer downloads and verifies the archive.
+      # The explicit Windows installer selects and verifies the native archive.
       weztermManifest = (pkgs.formats.json { }).generate "wezterm-pin.json" {
         inherit (weztermPin) revision version;
-        inherit (weztermPin.assets.windows) url sha256 archiveRoot architectures;
-        headers = weztermPin.assets.windows.headers or { };
-        # A promoted, retained URL/hash can replace the bootstrap asset later.
-        assetStatus = weztermPin.assets.windows.status or "bootstrap-unpromoted";
+        assets = builtins.mapAttrs
+          (_architecture: asset:
+            if asset == null then null else {
+              inherit (asset) url sha256 archiveRoot architecture;
+              headers = asset.headers or { };
+              assetStatus = asset.status or "bootstrap-unpromoted";
+            })
+          weztermPin.assets.windows;
       };
 
       # alacritty.toml — generated from the SAME definition the Linux

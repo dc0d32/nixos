@@ -1,7 +1,7 @@
 # Install the pinned WezTerm trial beside other terminals, without defaults.
 # Retire when the trial is over or native Windows Nix can manage this package.
 # Run by hm_win --setup (WSL), or explicitly as & '<deployed>/wezterm-install.ps1'.
-# Windows x64 only: the upstream archive does not provide an ARM64 binary.
+# Selects only the native x86-64 or ARM64 artifact; never uses x64 emulation.
 # hm_win registers patched Fantasque before invoking this installer.
 # No PATH changes, package-manager installs, default-terminal registration,
 # renderer overrides, or automatic upgrades. All scratch stays in build dirs.
@@ -16,22 +16,39 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 }
 $nativeArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $nativeArchitecture) { $nativeArchitecture = $env:PROCESSOR_ARCHITECTURE }
-if ($nativeArchitecture -ne 'AMD64') {
-    throw "WezTerm Trial supports verified Windows x64 binaries only (detected $nativeArchitecture)."
+$architecture = switch ($nativeArchitecture) {
+    'AMD64' { 'x86_64' }
+    'ARM64' { 'aarch64' }
+    default { throw "WezTerm Trial does not support native Windows architecture $nativeArchitecture." }
 }
 
 $pin = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'wezterm-pin.json') -Raw | ConvertFrom-Json
+$asset = $pin.assets.$architecture
+if ($null -eq $asset) {
+    throw "No native $architecture WezTerm pin is available. This bootstrap must not install x64 under emulation."
+}
 if ($pin.version -notmatch '^[0-9]{8}-[0-9]{6}-[0-9a-f]+$' -or
-    $pin.archiveRoot -ne "WezTerm-windows-$($pin.version)" -or
-    $pin.sha256 -notmatch '^[0-9a-f]{64}$' -or
+    $asset.architecture -cne $architecture -or
+    $asset.archiveRoot -cnotmatch "^WezTerm-windows-(?:$architecture-)?$([regex]::Escape($pin.version))$" -or
+    $asset.sha256 -notmatch '^[0-9a-f]{64}$' -or
     $pin.revision -notmatch '^[0-9a-f]{40}$' -or
-    $pin.url -notmatch '^https://[^/\s]+/\S+$' -or
-    $pin.assetStatus -cnotin @('bootstrap-unpromoted', 'promoted') -or
-    @($pin.architectures).Count -ne 1 -or $pin.architectures[0] -ne 'x86_64') {
+    $asset.url -notmatch '^https://[^/\s]+/\S+$' -or
+    $asset.assetStatus -cnotin @('bootstrap-unpromoted', 'promoted')) {
     throw 'Invalid WezTerm provenance manifest.'
 }
-if ($pin.assetStatus -eq 'bootstrap-unpromoted') {
+$expectedRoot = if ($architecture -eq 'x86_64') {
+    "WezTerm-windows-$($pin.version)"
+} else {
+    "WezTerm-windows-$architecture-$($pin.version)"
+}
+if ($asset.assetStatus -eq 'bootstrap-unpromoted') {
+    if ($architecture -ne 'x86_64' -or
+        $asset.archiveRoot -ne $expectedRoot) {
+        throw 'Only the legacy x86_64 bootstrap asset may be unpromoted.'
+    }
     Write-Warning 'BOOTSTRAP/unpromoted WezTerm asset: upstream may delete it. This explicit install can fail; ordinary hm_win never downloads it. Promote a retained URL/hash in the shared pin for durable installation.'
+} elseif ($asset.archiveRoot -ne $expectedRoot) {
+    throw 'Promoted WezTerm archive root does not match its native architecture.'
 }
 $configSource = Join-Path $PSScriptRoot 'wezterm.lua'
 if (-not (Test-Path -LiteralPath $configSource -PathType Leaf)) {
@@ -52,14 +69,15 @@ foreach ($folder in @($localAppData, $userProfile, $programs)) {
         throw 'Windows user folders could not be resolved; nothing installed.'
     }
 }
-$buildId = "$($pin.version)-$($pin.sha256)"
-$installDir = Join-Path $localAppData "nixwin\wezterm-trial\$buildId"
-$exeDir = Join-Path $installDir $pin.archiveRoot
+$buildId = "$architecture-$($pin.version)-$($asset.sha256)"
+$installDir = Join-Path $localAppData "nixwin\wezterm-trial\$architecture\$($pin.version)-$($asset.sha256)"
+$exeDir = Join-Path $installDir $asset.archiveRoot
 $exe = Join-Path $exeDir 'wezterm-gui.exe'
-$marker = Join-Path $installDir 'installed-sha256.txt'
+$marker = Join-Path $installDir 'installed-provenance.txt'
+$markerValue = "$architecture $($asset.sha256)"
 if (Test-Path -LiteralPath $installDir) {
     if (-not (Test-Path -LiteralPath $marker -PathType Leaf) -or
-        (Get-Content -LiteralPath $marker -Raw).Trim() -ne $pin.sha256 -or
+        (Get-Content -LiteralPath $marker -Raw).Trim() -ne $markerValue -or
         -not (Test-Path -LiteralPath $exe -PathType Leaf)) {
         throw "Incomplete or conflicting install at $installDir. Preserve/remove it manually before retrying; it will not be overwritten."
     }
@@ -71,29 +89,29 @@ if (Test-Path -LiteralPath $installDir) {
     try {
         $archive = Join-Path $attemptDir 'wezterm.zip'
         $headers = @{}
-        if ($pin.headers) {
-            foreach ($header in $pin.headers.PSObject.Properties) {
+        if ($asset.headers) {
+            foreach ($header in $asset.headers.PSObject.Properties) {
                 $headers[$header.Name] = [string]$header.Value
             }
         }
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         try {
-            Invoke-WebRequest -Uri $pin.url -Headers $headers -UserAgent 'nixwin-wezterm-trial' -OutFile $archive -UseBasicParsing
+            Invoke-WebRequest -Uri $asset.url -Headers $headers -UserAgent 'nixwin-wezterm-trial' -OutFile $archive -UseBasicParsing
         } catch {
-            throw "Pinned $($pin.assetStatus) archive unavailable: $($pin.url). No floating nightly fallback is allowed. If upstream deleted this bootstrap asset, promote a retained URL/hash in overlays/wezterm-pin.nix and redeploy. $($_.Exception.Message)"
+            throw "Pinned $($asset.assetStatus) $architecture archive unavailable: $($asset.url). No floating nightly or emulated-architecture fallback is allowed. If upstream deleted this bootstrap asset, promote a retained URL/hash in overlays/wezterm-pin.nix and redeploy. $($_.Exception.Message)"
         }
-        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $pin.sha256) {
+        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $asset.sha256) {
             throw 'WezTerm archive SHA-256 mismatch; nothing installed.'
         }
         # .NET extracts directly here: no Expand-Archive/module scratch in TEMP.
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         [IO.Compression.ZipFile]::ExtractToDirectory($archive, $attemptDir)
-        $attemptExe = Join-Path (Join-Path $attemptDir $pin.archiveRoot) 'wezterm-gui.exe'
+        $attemptExe = Join-Path (Join-Path $attemptDir $asset.archiveRoot) 'wezterm-gui.exe'
         if (-not (Test-Path -LiteralPath $attemptExe -PathType Leaf)) {
             throw "Expected executable absent: $attemptExe"
         }
         Remove-Item -LiteralPath $archive
-        Set-Content -LiteralPath (Join-Path $attemptDir 'installed-sha256.txt') -Value $pin.sha256 -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $attemptDir 'installed-provenance.txt') -Value $markerValue -Encoding ASCII
         if (Test-Path -LiteralPath $installDir) {
             throw "Another install created $installDir; it will not be overwritten."
         }
@@ -119,7 +137,7 @@ $shortcut = $null
 try {
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $arguments = "--config-file `"$configTarget`""
-    $description = "WezTerm Trial $buildId ($($pin.assetStatus), explicit install)"
+    $description = "WezTerm Trial $buildId ($($asset.assetStatus), explicit install)"
     if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf) -or
         $shortcut.TargetPath -ne $exe -or $shortcut.Arguments -ne $arguments -or
         $shortcut.WorkingDirectory -ne $userProfile -or

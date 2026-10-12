@@ -102,7 +102,9 @@ nix fmt .
 Terminal trial preferences come from the shared Alacritty settings. Unix
 WezTerm builds from locked source, including the native signed macOS app.
 Windows is currently **bootstrap-unpromoted**; ordinary `hm_win` does not
-download its deletable interim archive, while `hm_win --setup` installs it.
+download its deletable interim x86-64 archive, while `hm_win --setup` installs
+the exact native pin. ARM64 fails closed until the first verified dual-architecture
+release is promoted; it never installs x64 under emulation.
 The token-free asynchronous release pipeline requires owner bootstrap before
 durable Windows promotion:
 [setup and operations](scripts/wezterm-bootstrap.txt),

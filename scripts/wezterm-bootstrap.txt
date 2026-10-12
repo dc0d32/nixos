@@ -155,9 +155,14 @@ No trailing newline. Identity hashing is not authentication. Forks, ambiguous
 PRs, stale heads/bases and superseded requests must fail closed.
 
 Adopt only a normal immutable successful release from dc0d32/wezterm-builds:
-verify exact source SHA, provenance/types, archive naming/root, size/digest,
-SHA256SUMS, exactly the expected assets, tag/workflow-head binding, and the
-same run_id/run_attempt proof from .github/workflows/windows-build.yml.
+verify exact source SHA, schema-2 provenance/types, architecture-qualified
+x86_64 and aarch64 archive names/roots, both sizes/digests, exact two-line
+SHA256SUMS, exactly the two ZIPs plus provenance.json and SHA256SUMS,
+architecture-specific ZIP contents and PE machine types, tag/workflow-head
+binding, and the same run_id/run_attempt proof from
+.github/workflows/windows-build.yml. The provenance top-level identity is
+shared by both records; assets is keyed exactly x86_64 and aarch64 and each
+record has exactly architecture, asset_name, archive_root, sha256 and size.
 The build and publish jobs and the overall schedule/workflow_dispatch run attempt must
 have completed successfully on that repository's default branch. A release
 visible while publish is running is not yet eligible. Reuse a verified release
@@ -227,8 +232,10 @@ still proceed if source resolution fails; no placeholder request is created.
 Weekly publication and hourly promotion validate commits/<requested full SHA>
 without another latest/default-branch lookup. A later upstream advance cannot
 strand an otherwise valid fixed request or its matching Windows release.
-The bootstrap Windows asset remains unchanged until a real matching immutable
-external release passes every proof.
+The bootstrap x86_64 Windows asset and absent ARM64 pin remain unchanged until
+a real matching immutable dual-architecture external release passes every
+proof. Promotion writes both pins atomically; promoted output may never omit
+ARM64.
 
 Run the new weekly coordinator manually on the default branch first; inspect
 the PR, request, proposal and exact-head Linux status. In the external repo,

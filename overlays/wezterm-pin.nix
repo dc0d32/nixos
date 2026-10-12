@@ -14,15 +14,19 @@
   # The immutable API asset ID fails closed on deletion and requires this header.
   assets = {
     windows = {
-      status = "bootstrap-unpromoted";
-      assetId = 629718573;
-      url = "https://api.github.com/repos/wezterm/wezterm/releases/assets/629718573";
-      headers = { Accept = "application/octet-stream"; };
-      hash = "sha256-p64K53qOcvRZFXyD+xVDU6txhZCNuulHVZtXtiQ4FRY=";
-      sha256 = "a7ae0ae77a8e72f459157c83fb154353ab7185908dbae947559b57b624381516";
-      size = 70865818;
-      archiveRoot = "WezTerm-windows-20261010-083911-e2a98e1b";
-      architectures = [ "x86_64" ];
+      x86_64 = {
+        status = "bootstrap-unpromoted";
+        assetId = 629718573;
+        url = "https://api.github.com/repos/wezterm/wezterm/releases/assets/629718573";
+        headers = { Accept = "application/octet-stream"; };
+        hash = "sha256-p64K53qOcvRZFXyD+xVDU6txhZCNuulHVZtXtiQ4FRY=";
+        sha256 = "a7ae0ae77a8e72f459157c83fb154353ab7185908dbae947559b57b624381516";
+        size = 70865818;
+        archiveRoot = "WezTerm-windows-20261010-083911-e2a98e1b";
+        architecture = "x86_64";
+      };
+      # The first verified schema-2 promotion replaces this with a native pin.
+      aarch64 = null;
     };
   };
 }

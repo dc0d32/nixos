@@ -26,6 +26,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import struct
 import subprocess
 import sys
 import urllib.error
@@ -55,9 +56,21 @@ REQUEST_KEYS = {
 }
 MANIFEST_KEYS = {
     "schema", "source_repository", "source_sha", "build_repository", "run_id",
-    "run_attempt", "build_id", "version", "archive_root", "asset_name",
-    "sha256", "size", "success", "request_id", "nonce", "requested_at",
+    "run_attempt", "build_id", "version", "assets", "success", "request_id",
+    "nonce", "requested_at",
 }
+MANIFEST_ASSET_KEYS = {"name", "architecture", "archive_root", "sha256", "size"}
+WINDOWS_ARCHITECTURES = ("x86_64", "aarch64")
+WINDOWS_EXECUTABLES = {
+    "wezterm.exe", "wezterm-gui.exe", "wezterm-mux-server.exe",
+    "strip-ansi-escapes.exe",
+}
+WINDOWS_PDBS = {name.removesuffix(".exe") + ".pdb" for name in WINDOWS_EXECUTABLES}
+X86_SIDECARS = {
+    "conpty.dll", "OpenConsole.exe", "libEGL.dll", "libGLESv2.dll",
+    "mesa/opengl32.dll",
+}
+PE_MACHINES = {"x86_64": 0x8664, "aarch64": 0xAA64}
 
 
 def require(ok, message):
@@ -387,21 +400,35 @@ def source_info(api, sha=None):
 
 def validate_manifest(obj):
     require(type(obj) is dict and set(obj) == MANIFEST_KEYS, "manifest keys")
-    require(type(obj["schema"]) is int and obj["schema"] == 1 and obj["success"] is True
+    require(type(obj["schema"]) is int and obj["schema"] == 2 and obj["success"] is True
             and obj["source_repository"] == SOURCE and obj["build_repository"] == BUILDS,
             "manifest repository/schema/success")
-    req = {key: obj[key] for key in REQUEST_KEYS if key in obj}
-    req.update(repository=REPO, branch=BRANCH)
+    req = {key: obj[key] for key in REQUEST_KEYS if key in obj and key != "schema"}
+    req.update(schema=1, repository=REPO, branch=BRANCH)
     validate_request(req)
     require(positive(obj["run_id"]) and positive(obj["run_attempt"]), "manifest run identity")
     identity = f"{obj['source_sha']}-{obj['run_id']}-{obj['run_attempt']}"
-    require(obj["build_id"] == identity
-            and obj["asset_name"] == "WezTerm-windows-" + identity + ".zip", "asset identity")
+    require(obj["build_id"] == identity, "build identity")
     require(isinstance(obj["version"], str) and re.fullmatch(
         r"\d{8}-\d{6}-" + obj["source_sha"][:8], obj["version"]), "manifest version")
-    require(obj["archive_root"] == "WezTerm-windows-" + obj["version"], "archive root")
-    require(hexstr(obj["sha256"], 64) and positive(obj["size"])
-            and obj["size"] <= MAX_ZIP, "manifest digest/size")
+    require(type(obj["assets"]) is dict and set(obj["assets"]) == {"windows"},
+            "manifest platform assets")
+    windows = obj["assets"]["windows"]
+    require(type(windows) is dict and set(windows) == set(WINDOWS_ARCHITECTURES),
+            "manifest architectures")
+    for architecture in WINDOWS_ARCHITECTURES:
+        asset = windows[architecture]
+        prefix = f"WezTerm-windows-{architecture}-"
+        require(type(asset) is dict and set(asset) == MANIFEST_ASSET_KEYS,
+                architecture + " manifest asset keys")
+        require(asset["architecture"] == architecture
+                and asset["name"] == prefix + identity + ".zip",
+                architecture + " asset identity")
+        root_prefix = "WezTerm-windows-" if architecture == "x86_64" else prefix
+        require(asset["archive_root"] == root_prefix + obj["version"],
+                architecture + " archive root")
+        require(hexstr(asset["sha256"], 64) and positive(asset["size"])
+                and asset["size"] <= MAX_ZIP, architecture + " manifest digest/size")
     return obj
 
 
@@ -419,7 +446,7 @@ def prove_run(api, manifest):
             and run.get("status") == "completed" and run.get("conclusion") == "success",
             "durable successful workflow provenance")
     jobs = list(api.pages(prefix + "/jobs", key="jobs"))
-    for name in ("build", "publish"):
+    for name in ("build-x64", "build-arm64", "validate-arm64", "publish"):
         selected = [job for job in jobs if job.get("name") == name]
         require(len(selected) == 1 and selected[0].get("run_id") == run_id
                 and selected[0].get("run_attempt") == attempt
@@ -428,10 +455,19 @@ def prove_run(api, manifest):
     return run
 
 
-def check_zip(data, root):
-    required = {"wezterm.exe", "wezterm-gui.exe", "wezterm-mux-server.exe",
-                "strip-ansi-escapes.exe", "wezterm.pdb", "conpty.dll", "OpenConsole.exe",
-                "libEGL.dll", "libGLESv2.dll", "mesa/opengl32.dll"}
+def check_pe_machine(data, architecture):
+    require(len(data) >= 64 and data[:2] == b"MZ", "Windows PE header")
+    offset = struct.unpack_from("<I", data, 0x3c)[0]
+    require(offset <= len(data) - 6 and data[offset:offset + 4] == b"PE\0\0"
+            and struct.unpack_from("<H", data, offset + 4)[0] == PE_MACHINES[architecture],
+            architecture + " PE machine")
+
+
+def check_zip(data, root, architecture="x86_64"):
+    require(architecture in WINDOWS_ARCHITECTURES, "ZIP architecture")
+    required = WINDOWS_EXECUTABLES | (
+        X86_SIDECARS | {"wezterm.pdb"} if architecture == "x86_64" else WINDOWS_PDBS)
+    allowed = None if architecture == "x86_64" else required
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         entries = archive.infolist()
         require(0 < len(entries) <= 10000, "ZIP member count")
@@ -465,11 +501,16 @@ def check_zip(data, root):
                     "ZIP expansion limit")
             if not entry.is_dir():
                 require(entry.file_size > 0, "empty ZIP member")
-                files.add(name[len(root) + 1:])
+                relative = name[len(root) + 1:]
+                files.add(relative)
                 with archive.open(entry) as stream:
                     while stream.read(1024 * 1024):
                         pass
+                if relative.lower().endswith((".exe", ".dll")):
+                    with archive.open(entry) as stream:
+                        check_pe_machine(stream.read(1024 * 1024), architecture)
         require(required <= files, "missing Windows runtime")
+        require(allowed is None or files <= allowed, "unexpected aarch64 runtime")
 
 
 def release_asset(api, asset, limit):
@@ -488,29 +529,41 @@ def validate_release(api, release, sha, version):
             and release.get("prerelease") is False and positive(release.get("id")),
             "immutable normal release required")
     assets = release.get("assets")
-    require(type(assets) is list and len(assets) == 3, "exact release asset count")
+    require(type(assets) is list and len(assets) == 4, "exact release asset count")
     by_name = {asset["name"]: asset for asset in assets}
-    require(len(by_name) == 3 and "provenance.json" in by_name
+    require(len(by_name) == 4 and "provenance.json" in by_name
             and "SHA256SUMS" in by_name, "unique release assets")
     manifest = validate_manifest(parse(release_asset(api, by_name["provenance.json"], 16384)))
     require(manifest["source_sha"] == sha and manifest["version"] == version
             and release.get("tag_name") == "wezterm-" + manifest["build_id"]
-            and set(by_name) == {"provenance.json", "SHA256SUMS", manifest["asset_name"]},
+            and set(by_name) == {"provenance.json", "SHA256SUMS"} | {
+                asset["name"] for asset in manifest["assets"]["windows"].values()},
             "release source/tag/version identity")
     run = prove_run(api, manifest)
     tag = api.get(f"/repos/{BUILDS}/git/ref/tags/{release['tag_name']}")
     require(tag.get("ref") == "refs/tags/" + release["tag_name"]
             and tag.get("object", {}).get("type") == "commit"
             and tag["object"].get("sha") == run["head_sha"], "release tag workflow identity")
-    require(release_asset(api, by_name["SHA256SUMS"], 1024) ==
-            f"{manifest['sha256']}  {manifest['asset_name']}\n".encode(), "SHA256SUMS")
-    archive = by_name[manifest["asset_name"]]
-    require(archive["size"] == manifest["size"]
-            and archive.get("digest") == "sha256:" + manifest["sha256"], "archive identity")
-    data = release_asset(api, archive, MAX_ZIP)
-    require(hashlib.sha256(data).hexdigest() == manifest["sha256"], "archive SHA256")
-    check_zip(data, manifest["archive_root"])
-    return dict(release_id=release["id"], asset_id=archive["id"], manifest=manifest)
+    sum_lines = [
+        (f"{manifest['assets']['windows'][architecture]['sha256']}  "
+         f"{manifest['assets']['windows'][architecture]['name']}\n").encode()
+        for architecture in sorted(WINDOWS_ARCHITECTURES)
+    ]
+    sums = release_asset(api, by_name["SHA256SUMS"], 1024)
+    require(sums == b"".join(sum_lines), "SHA256SUMS")
+    asset_ids = {}
+    for architecture in WINDOWS_ARCHITECTURES:
+        proof = manifest["assets"]["windows"][architecture]
+        archive = by_name[proof["name"]]
+        require(archive["size"] == proof["size"]
+                and archive.get("digest") == "sha256:" + proof["sha256"],
+                architecture + " archive identity")
+        data = release_asset(api, archive, MAX_ZIP)
+        require(hashlib.sha256(data).hexdigest() == proof["sha256"],
+                architecture + " archive SHA256")
+        check_zip(data, proof["archive_root"], architecture)
+        asset_ids[architecture] = archive["id"]
+    return dict(release_id=release["id"], asset_ids=asset_ids, manifest=manifest)
 
 
 def find_release(api, sha, version):
@@ -606,6 +659,8 @@ class NixData:
             value = int(token)
         elif token in ("true", "false"):
             value = token == "true"
+        elif token == "null":
+            value = None
         else:
             raise ValueError("executable Nix pin rejected")
         self.spans[path] = (start, end)
@@ -628,6 +683,8 @@ class NixData:
 
 
 def nix_literal(value):
+    if value is None:
+        return "null"
     if isinstance(value, str):
         require("${" not in value, "Nix interpolation")
         return json.dumps(value)
@@ -645,6 +702,8 @@ def nix_literal(value):
 
 def nix_pin_literal(value, indent=""):
     """Render inert pin values, without invoking Nix or changing surrounding bytes."""
+    if value is None:
+        return "null"
     if isinstance(value, str):
         require("${" not in value, "Nix interpolation")
         require(all(ord(char) >= 32 or char in "\n\r\t" for char in value),
@@ -683,22 +742,54 @@ def validate_pin(text):
             r"\d{8}-\d{6}-[0-9a-f]{8}", obj["version"]), "pin version/date")
     require(type(obj["assets"]) is dict and set(obj["assets"]) == {"windows"}, "pin assets schema")
     windows = obj["assets"]["windows"]
+    require(type(windows) is dict and set(windows) == set(WINDOWS_ARCHITECTURES),
+            "Windows architecture pin schema")
     keys = {"status", "assetId", "url", "headers", "hash", "sha256", "size",
-            "archiveRoot", "architectures"}
+            "archiveRoot", "architecture"}
     optional_keys = {"sourceRevision", "buildRepository", "buildId", "releaseTag", "runId", "runAttempt"}
-    require(type(windows) is dict and keys <= set(windows)
-            and set(windows) <= keys | optional_keys, "Windows pin schema")
-    require(windows["status"] in ("bootstrap-unpromoted", "promoted")
-            and positive(windows["assetId"]) and positive(windows["size"])
-            and hexstr(windows["sha256"], 64) and windows["hash"] == sri(windows["sha256"])
-            and windows["headers"] == {"Accept": "application/octet-stream"}
-            and windows["architectures"] == ["x86_64"], "Windows pin data")
-    expected_repo = SOURCE if windows["status"] == "bootstrap-unpromoted" else BUILDS
-    require(windows["url"] == f"{API}/repos/{expected_repo}/releases/assets/{windows['assetId']}",
-            "Windows pinned API URL")
-    require(isinstance(windows["archiveRoot"], str)
-            and re.fullmatch(r"WezTerm-windows-\d{8}-\d{6}-[0-9a-f]{8}", windows["archiveRoot"]),
-            "Windows archive root")
+    statuses = set()
+    for architecture in WINDOWS_ARCHITECTURES:
+        asset = windows[architecture]
+        if asset is None:
+            require(architecture == "aarch64"
+                    and windows["x86_64"]["status"] == "bootstrap-unpromoted",
+                    "only bootstrap aarch64 pin may be absent")
+            continue
+        require(type(asset) is dict and keys <= set(asset)
+                and set(asset) <= keys | optional_keys, architecture + " Windows pin schema")
+        require(asset["status"] in ("bootstrap-unpromoted", "promoted")
+                and positive(asset["assetId"]) and positive(asset["size"])
+                and hexstr(asset["sha256"], 64) and asset["hash"] == sri(asset["sha256"])
+                and asset["headers"] == {"Accept": "application/octet-stream"}
+                and asset["architecture"] == architecture, architecture + " Windows pin data")
+        expected_repo = SOURCE if asset["status"] == "bootstrap-unpromoted" else BUILDS
+        require(asset["url"] == f"{API}/repos/{expected_repo}/releases/assets/{asset['assetId']}",
+                architecture + " Windows pinned API URL")
+        expected_root = (
+            "WezTerm-windows-" if architecture == "x86_64"
+            else "WezTerm-windows-aarch64-"
+        )
+        require(asset["archiveRoot"] == expected_root + obj["version"],
+                architecture + " Windows archive root")
+        if asset["status"] == "bootstrap-unpromoted":
+            require(set(asset) == keys, "bootstrap Windows pin fields")
+        else:
+            require(set(asset) == keys | optional_keys
+                    and asset["sourceRevision"] == obj["revision"]
+                    and asset["buildRepository"] == BUILDS
+                    and positive(asset["runId"]) and positive(asset["runAttempt"])
+                    and asset["buildId"] == (
+                        f"{obj['revision']}-{asset['runId']}-{asset['runAttempt']}")
+                    and asset["releaseTag"] == "wezterm-" + asset["buildId"],
+                    architecture + " promoted provenance")
+        statuses.add(asset["status"])
+    require((statuses == {"bootstrap-unpromoted"} and windows["aarch64"] is None) or (
+        statuses == {"promoted"} and windows["aarch64"] is not None),
+        "Windows pins must be bootstrap x86_64-only or dual promoted")
+    if statuses == {"promoted"}:
+        require(windows["x86_64"]["assetId"] != windows["aarch64"]["assetId"]
+                and windows["x86_64"]["sha256"] != windows["aarch64"]["sha256"],
+                "promoted architecture assets must be distinct")
     return parsed
 
 
@@ -917,18 +1008,22 @@ def promotion_files(api, plan, source_hash, cargo_hash, *, source_locked=None):
                ("version",): plan["version"], ("cargoHash",): cargo_hash}
     if "sourceHash" in pin.data:
         updates[("sourceHash",)] = source_hash
-    asset_id = plan["release"]["asset_id"]
-    require(positive(asset_id), "Windows asset ID")
-    updates[("assets", "windows")] = {
-        "status": "promoted", "assetId": asset_id,
-        "url": f"{API}/repos/{BUILDS}/releases/assets/{asset_id}",
-        "headers": {"Accept": "application/octet-stream"},
-        "hash": sri(manifest["sha256"]), "sha256": manifest["sha256"], "size": manifest["size"],
-        "archiveRoot": manifest["archive_root"], "architectures": ["x86_64"],
-        "sourceRevision": manifest["source_sha"], "buildRepository": BUILDS,
-        "buildId": manifest["build_id"], "releaseTag": "wezterm-" + manifest["build_id"],
-        "runId": manifest["run_id"], "runAttempt": manifest["run_attempt"],
-    }
+    promoted = {}
+    for architecture in WINDOWS_ARCHITECTURES:
+        asset_id = plan["release"]["asset_ids"][architecture]
+        require(positive(asset_id), architecture + " Windows asset ID")
+        asset = manifest["assets"]["windows"][architecture]
+        promoted[architecture] = {
+            "status": "promoted", "assetId": asset_id,
+            "url": f"{API}/repos/{BUILDS}/releases/assets/{asset_id}",
+            "headers": {"Accept": "application/octet-stream"},
+            "hash": sri(asset["sha256"]), "sha256": asset["sha256"], "size": asset["size"],
+            "archiveRoot": asset["archive_root"], "architecture": architecture,
+            "sourceRevision": manifest["source_sha"], "buildRepository": BUILDS,
+            "buildId": manifest["build_id"], "releaseTag": "wezterm-" + manifest["build_id"],
+            "runId": manifest["run_id"], "runAttempt": manifest["run_attempt"],
+        }
+    updates[("assets", "windows")] = promoted
     rewritten = pin.rewrite(updates)
     validate_pin(rewritten)
     files = {PIN: rewritten}

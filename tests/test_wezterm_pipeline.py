@@ -39,12 +39,18 @@ BUILD_HEAD = "e" * 40
 NEW_HEAD = "f" * 40
 DATE = "2026-10-10T07:39:11Z"
 VERSION = "20261010-073911-aaaaaaaa"
+X86_ROOT = "WezTerm-windows-" + VERSION
 SOURCE_HASH = "sha256-" + base64.b64encode(bytes(range(32))).decode()
 CARGO_HASH = "sha256-" + base64.b64encode(bytes(range(32, 64))).decode()
-RUNTIME = (
+X86_RUNTIME = (
     "wezterm.exe", "wezterm-gui.exe", "wezterm-mux-server.exe",
     "strip-ansi-escapes.exe", "wezterm.pdb", "conpty.dll", "OpenConsole.exe",
     "libEGL.dll", "libGLESv2.dll", "mesa/opengl32.dll",
+)
+ARM_RUNTIME = (
+    "wezterm.exe", "wezterm-gui.exe", "wezterm-mux-server.exe",
+    "strip-ansi-escapes.exe", "wezterm.pdb", "wezterm-gui.pdb",
+    "wezterm-mux-server.pdb", "strip-ansi-escapes.pdb",
 )
 
 
@@ -151,12 +157,15 @@ def pin_data(with_hash=True):
         "revision": OLD_SHA, "commitDate": DATE,
         "version": "20261010-073911-bbbbbbbb", "cargoHash": CARGO_HASH,
         "assets": {"windows": {
-            "status": "bootstrap-unpromoted", "assetId": 101,
-            "url": f"{p.API}/repos/{p.SOURCE}/releases/assets/101",
-            "headers": {"Accept": "application/octet-stream"},
-            "hash": p.sri(digest), "sha256": digest, "size": 123,
-            "archiveRoot": "WezTerm-windows-20261010-073911-bbbbbbbb",
-            "architectures": ["x86_64"],
+            "x86_64": {
+                "status": "bootstrap-unpromoted", "assetId": 101,
+                "url": f"{p.API}/repos/{p.SOURCE}/releases/assets/101",
+                "headers": {"Accept": "application/octet-stream"},
+                "hash": p.sri(digest), "sha256": digest, "size": 123,
+                "archiveRoot": "WezTerm-windows-20261010-073911-bbbbbbbb",
+                "architecture": "x86_64",
+            },
+            "aarch64": None,
         }},
     }
     if with_hash:
@@ -164,32 +173,68 @@ def pin_data(with_hash=True):
     return data
 
 
-def zip_bytes(root="WezTerm-windows-" + VERSION, extra=(), omit=(), compression=0):
+def pe_bytes(architecture):
+    data = bytearray(128)
+    data[:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3c, 64)
+    data[64:68] = b"PE\0\0"
+    struct.pack_into("<H", data, 68, p.PE_MACHINES[architecture])
+    return bytes(data)
+
+
+def zip_bytes(root=None, architecture="x86_64", extra=(), omit=(), compression=0):
+    root = root or (
+        "WezTerm-windows-" + VERSION if architecture == "x86_64"
+        else f"WezTerm-windows-{architecture}-{VERSION}"
+    )
+    runtime = X86_RUNTIME if architecture == "x86_64" else ARM_RUNTIME
     stream = io.BytesIO()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         with zipfile.ZipFile(stream, "w", compression=compression) as archive:
-            for name in RUNTIME:
+            for name in runtime:
                 if name not in omit:
-                    archive.writestr(root + "/" + name, b"runtime:" + name.encode())
+                    payload = (pe_bytes(architecture)
+                               if name.lower().endswith((".exe", ".dll"))
+                               else b"runtime:" + name.encode())
+                    archive.writestr(root + "/" + name, payload)
             for name, value in extra:
                 archive.writestr(name, value)
     return stream.getvalue()
 
 
-def manifest(data, req=None):
+def manifest(data, arm_data=None, req=None):
     req = req or request()
+    arm_data = arm_data or zip_bytes(architecture="aarch64")
     build_id = SHA + "-9001-2"
     return {
-        "schema": 1, "source_repository": p.SOURCE, "source_sha": SHA,
+        "schema": 2, "source_repository": p.SOURCE, "source_sha": SHA,
         "build_repository": p.BUILDS, "run_id": 9001, "run_attempt": 2,
         "build_id": build_id, "version": VERSION,
-        "archive_root": "WezTerm-windows-" + VERSION,
-        "asset_name": "WezTerm-windows-" + build_id + ".zip",
-        "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+        "assets": {"windows": {
+            "x86_64": {
+                "architecture": "x86_64",
+                "archive_root": "WezTerm-windows-" + VERSION,
+                "name": "WezTerm-windows-x86_64-" + build_id + ".zip",
+                "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+            },
+            "aarch64": {
+                "architecture": "aarch64",
+                "archive_root": "WezTerm-windows-aarch64-" + VERSION,
+                "name": "WezTerm-windows-aarch64-" + build_id + ".zip",
+                "sha256": hashlib.sha256(arm_data).hexdigest(), "size": len(arm_data),
+            },
+        }},
         "success": True, "request_id": req["request_id"],
         "nonce": req["nonce"], "requested_at": req["requested_at"],
     }
+
+
+def checksum_text(proof):
+    return "".join(
+        f"{proof['assets']['windows'][architecture]['sha256']}  "
+        f"{proof['assets']['windows'][architecture]['name']}\n"
+        for architecture in sorted(p.WINDOWS_ARCHITECTURES))
 
 
 class FakeAPI:
@@ -296,13 +341,15 @@ def install_coordinator(api):
 
 def install_release(api, req=None):
     data = zip_bytes()
-    proof = manifest(data, req)
+    arm_data = zip_bytes(architecture="aarch64")
+    proof = manifest(data, arm_data, req)
     release = {"id": 301, "immutable": True, "draft": False, "prerelease": False,
                "tag_name": "wezterm-" + proof["build_id"], "assets": []}
     contents = [
-        (proof["asset_name"], data),
+        (proof["assets"]["windows"]["x86_64"]["name"], data),
         ("provenance.json", json.dumps(proof).encode()),
-        ("SHA256SUMS", f"{proof['sha256']}  {proof['asset_name']}\n".encode()),
+        ("SHA256SUMS", checksum_text(proof).encode()),
+        (proof["assets"]["windows"]["aarch64"]["name"], arm_data),
     ]
     for number, (name, payload) in enumerate(contents, 201):
         url = f"{p.API}/repos/{p.BUILDS}/releases/assets/{number}"
@@ -329,7 +376,7 @@ def install_release(api, req=None):
     api.page_routes[prefix + "/jobs", "jobs"] = [
         {"name": name, "run_id": 9001, "run_attempt": 2,
          "status": "completed", "conclusion": "success"}
-        for name in ("build", "publish")
+        for name in ("build-x64", "build-arm64", "validate-arm64", "publish")
     ]
     api.page_routes[f"/repos/{p.BUILDS}/releases", None] = [release]
     api.routes[f"/repos/{p.SOURCE}"] = {"default_branch": "main"}
@@ -656,19 +703,21 @@ class InspectTests(PipelineCase):
             (("version",), "20261010-073911-bbbbbbbb"), (("cargoHash",), "invalid"),
             (("cargoHash",), p.FAKE_HASH), (("sourceHash",), CARGO_HASH),
             (("sourceHash",), "invalid"),
-            (("assets", "windows", "status"), "bootstrap-unpromoted"),
-            (("assets", "windows", "assetId"), 999),
-            (("assets", "windows", "url"), f"{p.API}/repos/{p.BUILDS}/releases/assets/999"),
-            (("assets", "windows", "headers"), {"Accept": "application/json"}),
-            (("assets", "windows", "size"), 123),
-            (("assets", "windows", "archiveRoot"), "WezTerm-windows-20261010-073911-bbbbbbbb"),
-            (("assets", "windows", "architectures"), ["aarch64"]),
-            (("assets", "windows", "sourceRevision"), OLD_SHA),
-            (("assets", "windows", "buildRepository"), p.SOURCE),
-            (("assets", "windows", "buildId"), SHA + "-9002-2"),
-            (("assets", "windows", "releaseTag"), "wezterm-" + SHA + "-9002-2"),
-            (("assets", "windows", "runId"), 9002),
-            (("assets", "windows", "runAttempt"), 3),
+            (("assets", "windows", "x86_64", "status"), "bootstrap-unpromoted"),
+            (("assets", "windows", "x86_64", "assetId"), 999),
+            (("assets", "windows", "x86_64", "url"),
+             f"{p.API}/repos/{p.BUILDS}/releases/assets/999"),
+            (("assets", "windows", "x86_64", "headers"), {"Accept": "application/json"}),
+            (("assets", "windows", "x86_64", "size"), 123),
+            (("assets", "windows", "x86_64", "archiveRoot"),
+             "WezTerm-windows-x86_64-20261010-073911-bbbbbbbb"),
+            (("assets", "windows", "x86_64", "architecture"), "aarch64"),
+            (("assets", "windows", "x86_64", "sourceRevision"), OLD_SHA),
+            (("assets", "windows", "x86_64", "buildRepository"), p.SOURCE),
+            (("assets", "windows", "x86_64", "buildId"), SHA + "-9002-2"),
+            (("assets", "windows", "x86_64", "releaseTag"), "wezterm-" + SHA + "-9002-2"),
+            (("assets", "windows", "x86_64", "runId"), 9002),
+            (("assets", "windows", "x86_64", "runAttempt"), 3),
         ]
         for path, value in mutations:
             with self.subTest(path=path, value=value):
@@ -677,12 +726,13 @@ class InspectTests(PipelineCase):
                 self.own.set_content(p.PIN, HEAD, p.nix_literal(pin))
                 self.assertEqual(self.plan(), expected)
         pin = copy.deepcopy(original)
-        pin["assets"]["windows"].update(sha256="1" * 64, hash=p.sri("1" * 64))
+        pin["assets"]["windows"]["x86_64"].update(
+            sha256="1" * 64, hash=p.sri("1" * 64))
         self.own.set_content(p.PIN, HEAD, p.nix_literal(pin))
         self.assertEqual(self.plan(), expected)
         for key in ("sourceRevision", "runAttempt"):
             pin = copy.deepcopy(original)
-            del pin["assets"]["windows"][key]
+            del pin["assets"]["windows"]["x86_64"][key]
             self.own.set_content(p.PIN, HEAD, p.nix_literal(pin))
             self.assertEqual(self.plan(), expected)
         self.assertEqual(self.own.writes + self.public.writes, [])
@@ -772,7 +822,7 @@ class InspectTests(PipelineCase):
     def test_valid_release_plan(self):
         plan = self.plan()
         self.assertEqual(plan["version"], VERSION)
-        self.assertEqual(plan["release"]["asset_id"], 201)
+        self.assertEqual(plan["release"]["asset_ids"], {"x86_64": 201, "aarch64": 204})
         self.assertEqual(plan["release"]["manifest"], self.manifest)
         self.assertEqual(self.own.writes, [])
         self.assertEqual(self.public.writes, [])
@@ -811,7 +861,7 @@ class InspectTests(PipelineCase):
         plan = self.plan()
         self.assertNotEqual(plan["request"]["request_id"],
                             plan["release"]["manifest"]["request_id"])
-        self.assertEqual(plan["release"]["asset_id"], 201)
+        self.assertEqual(plan["release"]["asset_ids"], {"x86_64": 201, "aarch64": 204})
 
     def test_recheck_branch_update_same_request_rejected(self):
         plan = self.plan()
@@ -928,10 +978,39 @@ class ReleaseTests(PipelineCase):
                 del obj[key]
                 self.rejected(p.validate_manifest, obj)
 
+    def test_manifest_architecture_map_and_records_are_exact(self):
+        for architecture in p.WINDOWS_ARCHITECTURES:
+            for key in p.MANIFEST_ASSET_KEYS:
+                with self.subTest(architecture=architecture, missing=key):
+                    obj = copy.deepcopy(self.manifest)
+                    del obj["assets"]["windows"][architecture][key]
+                    self.rejected(p.validate_manifest, obj)
+            obj = copy.deepcopy(self.manifest)
+            obj["assets"]["windows"][architecture]["extra"] = True
+            self.rejected(p.validate_manifest, obj)
+        for mutation in (
+                {"x86_64": self.manifest["assets"]["windows"]["x86_64"]},
+                {**self.manifest["assets"]["windows"],
+                 "other": self.manifest["assets"]["windows"]["aarch64"]}):
+            obj = copy.deepcopy(self.manifest)
+            obj["assets"]["windows"] = mutation
+            self.rejected(p.validate_manifest, obj)
+
+    def test_manifest_wrong_platform_nesting_rejected(self):
+        obj = copy.deepcopy(self.manifest)
+        obj["assets"] = obj["assets"]["windows"]
+        self.rejected(p.validate_manifest, obj)
+
+    def test_manifest_legacy_asset_name_key_rejected(self):
+        obj = copy.deepcopy(self.manifest)
+        asset = obj["assets"]["windows"]["x86_64"]
+        asset["asset_name"] = asset.pop("name")
+        self.rejected(p.validate_manifest, obj)
+
     def test_archive_manifest_hash_mismatch_rejected(self):
-        self.manifest["sha256"] = "0" * 64
+        self.manifest["assets"]["windows"]["x86_64"]["sha256"] = "0" * 64
         self.replace_asset(1, json.dumps(self.manifest).encode())
-        self.replace_asset(2, f"{self.manifest['sha256']}  {self.manifest['asset_name']}\n".encode())
+        self.replace_asset(2, checksum_text(self.manifest).encode())
         self.rejected(p.validate_release, self.public, self.release, SHA, VERSION,
                       message="archive identity")
 
@@ -961,7 +1040,7 @@ class ReleaseTests(PipelineCase):
         bad_manifest = manifest(data)
         payloads = (
             bytes(data), json.dumps(bad_manifest).encode(),
-            f"{bad_manifest['sha256']}  {bad_manifest['asset_name']}\n".encode(),
+            checksum_text(bad_manifest).encode(),
         )
         for asset, payload in zip(broken["assets"], payloads):
             asset["id"] += 1000
@@ -972,13 +1051,16 @@ class ReleaseTests(PipelineCase):
         self.public.page_routes[f"/repos/{p.BUILDS}/releases", None] = [broken, self.release]
         with contextlib.redirect_stderr(io.StringIO()):
             result = p.find_release(self.public, SHA, VERSION)
-        self.assertEqual(result["asset_id"], 201)
+        self.assertEqual(result["asset_ids"], {"x86_64": 201, "aarch64": 204})
 
     def test_full_immutable_release(self):
         proof = p.validate_release(self.public, self.release, SHA, VERSION)
-        self.assertEqual(proof, {"release_id": 301, "asset_id": 201, "manifest": self.manifest})
+        self.assertEqual(proof, {
+            "release_id": 301, "asset_ids": {"x86_64": 201, "aarch64": 204},
+            "manifest": self.manifest,
+        })
         reads = [call for call in self.public.calls if call[0] == "raw"]
-        self.assertEqual(len(reads), 3)
+        self.assertEqual(len(reads), 4)
         self.assertTrue(all(call[3] for call in reads))
 
     def test_dispatch_run_supported(self):
@@ -1001,7 +1083,7 @@ class ReleaseTests(PipelineCase):
                       message="digest/size")
 
     def test_manifest_duplicate_json_keys_rejected(self):
-        self.replace_asset(1, b'{"schema":1,"schema":1}')
+        self.replace_asset(1, b'{"schema":2,"schema":2}')
         self.rejected(p.validate_release, self.public, self.release, SHA, VERSION)
 
     def replace_asset(self, index, data):
@@ -1011,18 +1093,27 @@ class ReleaseTests(PipelineCase):
         asset["digest"] = "sha256:" + hashlib.sha256(data).hexdigest()
 
     def test_checksum_exact_newline_and_archive_name(self):
+        x86 = self.manifest["assets"]["windows"]["x86_64"]
         for payload in (
-            f"{self.manifest['sha256']}  other.zip\n",
-            f"{self.manifest['sha256']}  {self.manifest['asset_name']}",
-            f"{self.manifest['sha256']} {self.manifest['asset_name']}\n",
+            checksum_text(self.manifest).replace(x86["name"], "other.zip"),
+            checksum_text(self.manifest).rstrip("\n"),
+            checksum_text(self.manifest).replace(
+                f"{x86['sha256']}  {x86['name']}",
+                f"{x86['sha256']} {x86['name']}"),
         ):
             with self.subTest(payload=payload):
                 self.replace_asset(2, payload.encode())
                 self.rejected(p.validate_release, self.public, self.release, SHA, VERSION,
                               message="SHA256SUMS")
 
+    def test_checksum_rejects_nonproducer_architecture_line_order(self):
+        self.replace_asset(2, "".join(
+            reversed(checksum_text(self.manifest).splitlines(keepends=True))).encode())
+        self.rejected(p.validate_release, self.public, self.release, SHA, VERSION,
+                      message="SHA256SUMS")
+
     def test_manifest_size_must_match_archive(self):
-        self.manifest["size"] += 1
+        self.manifest["assets"]["windows"]["x86_64"]["size"] += 1
         self.replace_asset(1, json.dumps(self.manifest).encode())
         self.rejected(p.validate_release, self.public, self.release, SHA, VERSION)
 
@@ -1040,9 +1131,17 @@ class ReleaseTests(PipelineCase):
             f"/repos/{p.BUILDS}/actions/runs/9001/attempts/2/jobs", "jobs"].pop()
         self.rejected(p.prove_run, self.public, self.manifest)
 
-    def test_missing_build_job_rejected(self):
+    def test_missing_x64_build_job_rejected(self):
         self.public.page_routes[
             f"/repos/{p.BUILDS}/actions/runs/9001/attempts/2/jobs", "jobs"].pop(0)
+        self.rejected(p.prove_run, self.public, self.manifest)
+
+    def test_legacy_job_names_rejected(self):
+        key = (f"/repos/{p.BUILDS}/actions/runs/9001/attempts/2/jobs", "jobs")
+        self.public.page_routes[key] = [
+            dict(self.public.page_routes[key][0], name="build"),
+            dict(self.public.page_routes[key][-1], name="publish"),
+        ]
         self.rejected(p.prove_run, self.public, self.manifest)
 
     def test_find_release_skips_invalid_and_unrelated(self):
@@ -1065,7 +1164,7 @@ class ZipTests(PipelineCase):
         data = bytearray(zip_bytes())
         offset = data.index(b"PK\x01\x02")
         struct.pack_into("<I", data, offset + 24, 512 * 1024 * 1024 + 1)
-        self.rejected(p.check_zip, data, "WezTerm-windows-" + VERSION, message="expansion")
+        self.rejected(p.check_zip, data, X86_ROOT, message="expansion")
 
     def test_member_count_limit_without_large_archive(self):
         with mock.patch.object(p.zipfile, "ZipFile") as archive:
@@ -1073,7 +1172,7 @@ class ZipTests(PipelineCase):
             self.rejected(p.check_zip, b"", "root", message="member count")
 
     def test_embedded_nul_filename_rejected(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         filename = (root + "/nulXsuffix").encode()
         data = zip_bytes(extra=((filename.decode(), b"x"),))
         self.rejected(p.check_zip, data.replace(filename, filename.replace(b"X", b"\0")), root)
@@ -1083,44 +1182,76 @@ class ZipTests(PipelineCase):
         filename_size, extra_size = struct.unpack_from("<HH", data, 26)
         data[30 + filename_size + extra_size] = 0x07
         with self.assertRaises((ValueError, zipfile.BadZipFile, zlib.error)):
-            p.check_zip(data, "WezTerm-windows-" + VERSION)
+            p.check_zip(data, X86_ROOT)
 
     def test_explicit_directory_members_supported(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         p.check_zip(zip_bytes(extra=((root + "/", b""), (root + "/mesa/", b""))), root)
 
     def test_realistic_runtime_stored_and_deflated(self):
         for compression in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
             with self.subTest(compression=compression):
-                p.check_zip(zip_bytes(compression=compression), "WezTerm-windows-" + VERSION)
+                p.check_zip(zip_bytes(compression=compression), X86_ROOT)
 
     def test_each_required_runtime_member(self):
-        for name in RUNTIME:
+        for name in X86_RUNTIME:
             with self.subTest(name=name):
                 self.rejected(p.check_zip, zip_bytes(omit=(name,)),
-                              "WezTerm-windows-" + VERSION, message="runtime")
+                              X86_ROOT, message="runtime")
+
+    def test_aarch64_exact_native_runtime(self):
+        root = "WezTerm-windows-aarch64-" + VERSION
+        p.check_zip(zip_bytes(architecture="aarch64"), root, "aarch64")
+        for name in ARM_RUNTIME:
+            with self.subTest(name=name):
+                self.rejected(
+                    p.check_zip,
+                    zip_bytes(architecture="aarch64", omit=(name,)),
+                    root, "aarch64", message="runtime")
+
+    def test_aarch64_rejects_x64_sidecars_and_other_files(self):
+        root = "WezTerm-windows-aarch64-" + VERSION
+        for name in (*p.X86_SIDECARS, "other.txt"):
+            with self.subTest(name=name):
+                self.rejected(
+                    p.check_zip,
+                    zip_bytes(architecture="aarch64", extra=((root + "/" + name, b"x"),)),
+                    root, "aarch64")
+
+    def test_pe_machine_must_match_declared_architecture(self):
+        for architecture, wrong in (("x86_64", "aarch64"), ("aarch64", "x86_64")):
+            root = (
+                "WezTerm-windows-" + VERSION if architecture == "x86_64"
+                else "WezTerm-windows-aarch64-" + VERSION
+            )
+            data = zip_bytes(
+                architecture=architecture,
+                omit=("wezterm.exe",),
+                extra=((root + "/wezterm.exe", pe_bytes(wrong)),))
+            with self.subTest(architecture=architecture):
+                self.rejected(p.check_zip, data, root, architecture, message="PE machine")
 
     def test_wrong_root(self):
-        self.rejected(p.check_zip, zip_bytes(root="wrong"), "WezTerm-windows-" + VERSION)
+        self.rejected(p.check_zip, zip_bytes(root="wrong"), X86_ROOT)
 
     def test_duplicate_entry(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         self.rejected(p.check_zip, zip_bytes(extra=((root + "/wezterm.exe", b"x"),)), root)
 
     def test_case_colliding_entry(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         self.rejected(p.check_zip, zip_bytes(extra=((root + "/WEZTERM.EXE", b"x"),)), root)
 
     def test_parent_directory_case_collision(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         self.rejected(p.check_zip, zip_bytes(extra=((root + "/Mesa/other.dll", b"x"),)), root)
 
     def test_file_directory_collision(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         self.rejected(p.check_zip, zip_bytes(extra=((root + "/mesa", b"x"),)), root)
 
     def test_symlink_and_special_entries(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         for mode in (stat.S_IFLNK, stat.S_IFIFO, stat.S_IFSOCK):
             entry = zipfile.ZipInfo(root + "/special")
             entry.create_system = 3
@@ -1129,18 +1260,18 @@ class ZipTests(PipelineCase):
                 self.rejected(p.check_zip, zip_bytes(extra=((entry, b"target"),)), root)
 
     def test_unsupported_compression(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         self.rejected(p.check_zip, zip_bytes(compression=zipfile.ZIP_BZIP2), root)
 
     def test_crc_corruption_is_scanned(self):
         data = bytearray(zip_bytes())
-        position = data.index(b"runtime:wezterm.exe")
+        position = data.index(b"runtime:wezterm.pdb")
         data[position] ^= 1
         with self.assertRaises(zipfile.BadZipFile):
-            p.check_zip(data, "WezTerm-windows-" + VERSION)
+            p.check_zip(data, X86_ROOT)
 
     def test_empty_member(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         self.rejected(p.check_zip, zip_bytes(extra=((root + "/empty", b""),)), root)
 
     def test_encrypted_flag_rejected(self):
@@ -1149,10 +1280,10 @@ class ZipTests(PipelineCase):
             offset = data.index(signature) + flag_offset
             flags = struct.unpack_from("<H", data, offset)[0]
             struct.pack_into("<H", data, offset, flags | 1)
-        self.rejected(p.check_zip, data, "WezTerm-windows-" + VERSION)
+        self.rejected(p.check_zip, data, X86_ROOT)
 
     def test_expansion_limit_without_allocating_bomb(self):
-        root = "WezTerm-windows-" + VERSION
+        root = X86_ROOT
         with mock.patch.object(p, "MAX_ZIP", 10):
             self.rejected(p.check_zip, zip_bytes(), root, message="expansion")
 
@@ -1160,13 +1291,25 @@ class ZipTests(PipelineCase):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, "w"):
             pass
-        self.rejected(p.check_zip, stream.getvalue(), "WezTerm-windows-" + VERSION)
+        self.rejected(p.check_zip, stream.getvalue(), X86_ROOT)
 
 
 class NixDataTests(PipelineCase):
     def test_pin_fixture_validates(self):
         obj = pin_data()
         self.assertEqual(p.validate_pin(p.nix_literal(obj)).data, obj)
+
+    def test_only_bootstrap_may_omit_aarch64(self):
+        obj = pin_data()
+        obj["assets"]["windows"]["x86_64"]["status"] = "promoted"
+        self.rejected(p.validate_pin, p.nix_literal(obj))
+
+    def test_bootstrap_may_not_supply_unpromoted_aarch64(self):
+        obj = pin_data()
+        arm = copy.deepcopy(obj["assets"]["windows"]["x86_64"])
+        arm["architecture"] = "aarch64"
+        obj["assets"]["windows"]["aarch64"] = arm
+        self.rejected(p.validate_pin, p.nix_literal(obj))
 
     def test_rewrite_preserves_comment_and_untouched_bytes(self):
         text = "# header\n{\n  revision = \"" + OLD_SHA + "\"; # keep\n  nested = [ 1 true ];\n}\n"
@@ -1209,9 +1352,11 @@ class NixDataTests(PipelineCase):
         self.assertIn("empty = { };", rendered)
         self.assertIn("none = [ ];", rendered)
         for bad in ("${builtins.readFile /etc/passwd}", "\x00", "\b", "\f",
-                    {"bad-key!": 1}, {1: "value"}, None, 1.5):
+                    {"bad-key!": 1}, {1: "value"}, 1.5):
             with self.subTest(bad=bad):
                 self.rejected(p.nix_pin_literal, bad)
+        self.assertEqual(p.NixData("null").data, None)
+        self.assertEqual(p.nix_pin_literal(None), "null")
 
     def test_repository_pin_promotion_preserves_surrounding_bytes_and_order(self):
         original = (ROOT / p.PIN).read_text()
@@ -1227,18 +1372,23 @@ class NixDataTests(PipelineCase):
         windows = after.data["assets"]["windows"]
         expected["assets"]["windows"] = windows
         self.assertEqual(after.data, expected)
-        self.assertEqual(list(windows), [
-            "status", "assetId", "url", "headers", "hash", "sha256", "size",
-            "archiveRoot", "architectures", "sourceRevision", "buildRepository",
-            "buildId", "releaseTag", "runId", "runAttempt"])
-        for key, value in (("status", "promoted"), ("assetId", 201),
-                           ("sourceRevision", SHA), ("runId", 9001), ("runAttempt", 2)):
-            self.assertEqual(windows[key], value)
-        self.assertEqual(windows["hash"], p.sri(self.manifest["sha256"]))
-        self.assertEqual(windows["headers"], {"Accept": "application/octet-stream"})
-        self.assertEqual(windows["architectures"], ["x86_64"])
-        self.assertIn('      headers = { Accept = "application/octet-stream"; };\n', rendered)
-        self.assertIn('      architectures = [ "x86_64" ];\n', rendered)
+        self.assertEqual(list(windows), ["x86_64", "aarch64"])
+        for architecture, asset_id in (("x86_64", 201), ("aarch64", 204)):
+            asset = windows[architecture]
+            self.assertEqual(list(asset), [
+                "status", "assetId", "url", "headers", "hash", "sha256", "size",
+                "archiveRoot", "architecture", "sourceRevision", "buildRepository",
+                "buildId", "releaseTag", "runId", "runAttempt"])
+            for key, value in (("status", "promoted"), ("assetId", asset_id),
+                               ("architecture", architecture), ("sourceRevision", SHA),
+                               ("runId", 9001), ("runAttempt", 2)):
+                self.assertEqual(asset[key], value)
+            proof = self.manifest["assets"]["windows"][architecture]
+            self.assertEqual(asset["hash"], p.sri(proof["sha256"]))
+            self.assertEqual(asset["headers"], {"Accept": "application/octet-stream"})
+        self.assertEqual(rendered.count(
+            '        headers = { Accept = "application/octet-stream"; };\n'), 2)
+        self.assertIn('        architecture = "aarch64";\n', rendered)
         # Erase only the replaced value spans: all comments/field scaffolding must match.
         paths = [("revision",), ("commitDate",), ("version",), ("sourceHash",),
                  ("cargoHash",), ("assets", "windows")]
@@ -1270,7 +1420,7 @@ class NixDataTests(PipelineCase):
         self.rejected(p.nix_literal, "${builtins.readFile /etc/passwd}")
 
     def test_literal_invalid_keys_and_types_rejected(self):
-        for obj in ({"x.y": 1}, {"bad-key!": 1}, None, 1.5):
+        for obj in ({"x.y": 1}, {"bad-key!": 1}, 1.5):
             with self.subTest(obj=obj):
                 self.rejected(p.nix_literal, obj)
 
@@ -1569,8 +1719,10 @@ class PrepareTests(PipelineCase):
         self.assertEqual(pin["revision"], SHA)
         self.assertEqual(pin["sourceHash"], SOURCE_HASH)
         self.assertEqual(pin["cargoHash"], CARGO_HASH)
-        self.assertEqual(pin["assets"]["windows"]["assetId"], 201)
-        self.assertEqual(pin["assets"]["windows"]["runAttempt"], 2)
+        self.assertEqual(pin["assets"]["windows"]["x86_64"]["assetId"], 201)
+        self.assertEqual(pin["assets"]["windows"]["aarch64"]["assetId"], 204)
+        self.assertEqual(pin["assets"]["windows"]["x86_64"]["runAttempt"], 2)
+        self.assertEqual(pin["assets"]["windows"]["aarch64"]["runAttempt"], 2)
         self.assertTrue(files[p.PIN].startswith("# Keep this comment and formatting.\n"))
 
     def test_promotion_replaces_entire_locked_and_original_source_metadata(self):
@@ -3068,6 +3220,40 @@ class RuntimeTests(PipelineCase):
             self.rejected(p.verify_runtime, DEFAULT, message="permissions")
 
 
+class WindowsInstallerContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.installer = (ROOT / "flake-modules/windows/wezterm-install.ps1").read_text()
+        cls.module = (ROOT / "flake-modules/windows/windows.nix").read_text()
+
+    def test_native_architecture_selection_has_no_emulation_fallback(self):
+        self.assertIn("'AMD64' { 'x86_64' }", self.installer)
+        self.assertIn("'ARM64' { 'aarch64' }", self.installer)
+        self.assertIn("$asset = $pin.assets.$architecture", self.installer)
+        self.assertIn("must not install x64 under emulation", self.installer)
+        self.assertNotIn("$pin.assets.x86_64", self.installer)
+
+    def test_selected_pin_marker_and_content_address_are_architecture_bound(self):
+        self.assertIn("$asset.architecture -cne $architecture", self.installer)
+        self.assertIn('wezterm-trial\\$architecture\\$($pin.version)-$($asset.sha256)',
+                      self.installer)
+        self.assertIn('$markerValue = "$architecture $($asset.sha256)"', self.installer)
+        self.assertIn("Promoted WezTerm archive root does not match", self.installer)
+
+    def test_promoted_archive_roots_match_producer_contract(self):
+        self.assertIn("$expectedRoot = if ($architecture -eq 'x86_64')", self.installer)
+        self.assertIn('"WezTerm-windows-$($pin.version)"', self.installer)
+        self.assertIn('"WezTerm-windows-$architecture-$($pin.version)"', self.installer)
+        self.assertIn("$asset.archiveRoot -ne $expectedRoot", self.installer)
+
+    def test_generated_manifest_is_metadata_only_and_architecture_keyed(self):
+        self.assertIn("assets = builtins.mapAttrs", self.module)
+        self.assertIn("if asset == null then null", self.module)
+        self.assertIn("inherit (asset) url sha256 archiveRoot architecture", self.module)
+        self.assertNotIn("fetchurl", self.module[self.module.index("weztermManifest"):
+                                                self.module.index("weztermManifest") + 700])
+
+
 def add_cases(cls, label, cases, run):
     """Expose each contract mutation as its own discoverable unittest."""
     for name, value in cases.items():
@@ -3123,23 +3309,29 @@ add_cases(SnapshotTests, "reject_pr", {
 }, reject_pr)
 
 
-def reject_manifest(self, field_value):
-    field, value = field_value
+def reject_manifest(self, path_value):
+    path, value = path_value
     obj = copy.deepcopy(self.manifest)
-    obj[field] = value
+    change(obj, path, value)
     self.rejected(p.validate_manifest, obj)
 
 
 add_cases(ReleaseTests, "reject_manifest", {
-    "schema_bool": ("schema", True), "success_int": ("success", 1),
-    "run_bool": ("run_id", True), "run_string": ("run_id", "9001"),
-    "attempt_zero": ("run_attempt", 0), "build_id": ("build_id", SHA + "-9001-1"),
-    "archive_name": ("asset_name", "../evil.zip"), "root": ("archive_root", "wrong"),
-    "sha_uppercase": ("sha256", "A" * 64), "size_bool": ("size", True),
-    "size_zero": ("size", 0), "size_limit": ("size", p.MAX_ZIP + 1),
-    "repository": ("build_repository", "evil/builds"),
-    "nonce": ("nonce", "999"), "request_identity": ("request_id", "0" * 64),
-    "version": ("version", "20261010-073911-bbbbbbbb"), "unknown_key": ("extra", 1),
+    "schema_bool": (("schema",), True), "schema_one": (("schema",), 1),
+    "success_int": (("success",), 1),
+    "run_bool": (("run_id",), True), "run_string": (("run_id",), "9001"),
+    "attempt_zero": (("run_attempt",), 0), "build_id": (("build_id",), SHA + "-9001-1"),
+    "archive_name": (("assets", "windows", "x86_64", "name"), "../evil.zip"),
+    "root": (("assets", "windows", "aarch64", "archive_root"), "wrong"),
+    "architecture": (("assets", "windows", "aarch64", "architecture"), "x86_64"),
+    "sha_uppercase": (("assets", "windows", "x86_64", "sha256"), "A" * 64),
+    "size_bool": (("assets", "windows", "aarch64", "size"), True),
+    "size_zero": (("assets", "windows", "x86_64", "size"), 0),
+    "size_limit": (("assets", "windows", "aarch64", "size"), p.MAX_ZIP + 1),
+    "repository": (("build_repository",), "evil/builds"),
+    "nonce": (("nonce",), "999"), "request_identity": (("request_id",), "0" * 64),
+    "version": (("version",), "20261010-073911-bbbbbbbb"),
+    "unknown_key": (("extra",), 1),
 }, reject_manifest)
 
 
@@ -3171,7 +3363,7 @@ def reject_job(self, job_field_value):
 
 add_cases(ReleaseTests, "reject_job", {
     f"{name}_{label}": (name, field, value)
-    for name in ("build", "publish")
+    for name in ("build-x64", "build-arm64", "validate-arm64", "publish")
     for label, field, value in (
         ("attempt", "run_attempt", 1), ("run", "run_id", 9002),
         ("failed", "conclusion", "failure"), ("incomplete", "status", "in_progress"),
@@ -3224,7 +3416,7 @@ add_cases(ReleaseTests, "reject_tag", {
 
 
 def reject_zip_path(self, path):
-    root = "WezTerm-windows-" + VERSION
+    root = X86_ROOT
     self.rejected(p.check_zip, zip_bytes(extra=((path.replace("{root}", root), b"x"),)), root)
 
 
@@ -3268,13 +3460,13 @@ def reject_pin(self, path_value):
 add_cases(NixDataTests, "reject_pin", {
     "revision": (("revision",), "main"), "cargo_hash": (("cargoHash",), "bad"),
     "source_hash": (("sourceHash",), "bad"),
-    "headers": (("assets", "windows", "headers"), {"Authorization": "token"}),
-    "architectures": (("assets", "windows", "architectures"), ["aarch64"]),
-    "asset_bool": (("assets", "windows", "assetId"), True),
-    "size_bool": (("assets", "windows", "size"), True),
-    "hash_identity": (("assets", "windows", "hash"), SOURCE_HASH),
-    "url": (("assets", "windows", "url"), "https://evil.invalid/archive.zip"),
-    "status": (("assets", "windows", "status"), "ready"),
+    "headers": (("assets", "windows", "x86_64", "headers"), {"Authorization": "token"}),
+    "architecture": (("assets", "windows", "x86_64", "architecture"), "aarch64"),
+    "asset_bool": (("assets", "windows", "x86_64", "assetId"), True),
+    "size_bool": (("assets", "windows", "x86_64", "size"), True),
+    "hash_identity": (("assets", "windows", "x86_64", "hash"), SOURCE_HASH),
+    "url": (("assets", "windows", "x86_64", "url"), "https://evil.invalid/archive.zip"),
+    "status": (("assets", "windows", "x86_64", "status"), "ready"),
 }, reject_pin)
 
 

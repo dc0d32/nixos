@@ -36,14 +36,16 @@ WezTerm is **20261010-083911-e2a98e1b**, upstream commit
   macOS builds natively, assembles `WezTerm.app`, and ad-hoc signs executables
   and the app after fixup. This is not an upstream notarized universal app.
   Nix caches the source build normally; no nightly Darwin download remains.
-- Windows temporarily uses the upstream **x64** archive, asset **629718573**,
+- Windows temporarily pins the upstream **x64** archive, asset **629718573**,
   SHA-256
   `a7ae0ae77a8e72f459157c83fb154353ab7185908dbae947559b57b624381516`.
-  Native ARM64 is not supplied by this snapshot; the installer refuses other
-  host architectures rather than silently assuming emulation.
+  The architecture-keyed pin has a null ARM64 bootstrap entry because no native
+  upstream asset exists for this snapshot. The installer detects native AMD64
+  versus ARM64 and refuses ARM64 until a promoted native pin exists; it never
+  silently installs x64 under emulation.
 
-The Windows pin is explicitly **bootstrap-unpromoted**, not a durable completed
-pipeline release. Its previously verified identity matches the source pin.
+The x86-64 Windows pin is explicitly **bootstrap-unpromoted**, not a durable
+completed pipeline release. Its previously verified identity matches the source pin.
 Only `hm_win --setup` (or direct invocation of the staged installer) downloads
 it through the anonymous asset-ID API with `Accept: application/octet-stream`.
 Deleted assets fail closed; hashes prevent drift. Ordinary `hm_win`
@@ -87,9 +89,10 @@ The explicit installer copies Lua to
 `%USERPROFILE%\.config\nixwin\wezterm-trial\config\wezterm.lua`; the shortcut's
 `--config-file` selects only that isolated trial config. Neither command touches
 standard WezTerm configs (including `.config\wezterm\wezterm.lua` and
-`.wezterm.lua`). Binary installs live in version-specific
-`%LOCALAPPDATA%\nixwin\wezterm-trial\<version>-<sha256>` directories; running builds are
-never overwritten. Config changes apply to the next explicit deployment.
+`.wezterm.lua`). Binary installs live in architecture-specific content-addressed
+`%LOCALAPPDATA%\nixwin\wezterm-trial\<architecture>\<version>-<sha256>`
+directories; running builds are never overwritten. Config changes apply to the
+next explicit deployment.
 
 Primary modifier is **Cmd** on macOS, **Ctrl+Shift** elsewhere:
 
@@ -123,15 +126,19 @@ Unrelated updates continue if upstream request resolution fails.
 
 The separate public **dc0d32/wezterm-builds** service polls hourly or runs
 manually. It accepts only an open same-repository weekly PR, builds that exact
-`wezterm/wezterm` revision and submodules on a read-only Windows runner using
-upstream's build, Nextest and packaging procedure, then publishes on a fresh
-runner. Its writer executes only trusted control scripts, never upstream code.
-Permanent release tags/assets are source/run/attempt-addressed, include SHA-256
-and provenance, require GitHub release immutability, and are never overwritten.
+`wezterm/wezterm` revision and submodules for native x86-64 and ARM64 on a
+read-only Windows runner using upstream's build, Nextest and packaging
+procedure, then publishes on a fresh runner. Its writer executes only trusted
+control scripts, never upstream code. Permanent release tags/assets are
+source/run/attempt-addressed, include both architecture-qualified ZIPs,
+schema-2 provenance and SHA256SUMS, require GitHub release immutability, and are
+never overwritten.
 Successful releases are reused by source SHA; full retries get a new attempt ID.
 
-The NixOS hourly promotion coordinator verifies the immutable release, exact
-source, checksum, successful run/jobs and still-current open PR/request/head/base.
+The NixOS hourly promotion coordinator verifies the immutable four-asset
+release, exact source, both checksums, native PE machine types, architecture-
+specific ZIP contents, successful run/jobs and still-current open
+PR/request/head/base.
 It discovers source/Cargo hashes with trusted locked Nix tooling, then updates
 Unix source lock/version/hashes and Windows URL/hash together on the existing
 weekly PR using a compare-and-swap commit. Closed/merged/superseded requests and
