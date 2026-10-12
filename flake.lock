@@ -432,10 +432,10 @@
         "url": "https://github.com/wezterm/wezterm"
       },
       "original": {
-        "rev": "e2a98e1b8af156988ad0ac778658ac27b60a55fb",
-        "submodules": true,
         "type": "git",
-        "url": "https://github.com/wezterm/wezterm"
+        "url": "https://github.com/wezterm/wezterm",
+        "rev": "e2a98e1b8af156988ad0ac778658ac27b60a55fb",
+        "submodules": true
       }
     },
     "xwayland-satellite-stable": {
