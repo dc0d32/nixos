@@ -296,8 +296,8 @@ sudo /nix/nix-installer uninstall   # removes /nix, _nixbld* users,
 rm -rf ~/Library/Fonts/HomeManager  # the flake-managed font dir
 ```
 
-`pb-mb` imports the cross-platform `dev` bundle plus `alacritty`,
-`vscode`, and `fonts` (which, on darwin, mirrors the face set into
+`pb-mb` imports the cross-platform `dev` bundle plus the terminal trials,
+`vscode`, `lan-nix-cache`, and `fonts` (which, on darwin, mirrors the face set into
 `~/Library/Fonts/HomeManager/` for Core Text). Linux-only features
 (Wayland desktop, audio, power/battery, biometrics, impermanence,
 backup) are absent. `aarch64-darwin` is intentionally **not** added to
@@ -305,6 +305,78 @@ backup) are absent. `aarch64-darwin` is intentionally **not** added to
 itself, and `homeConfigurations` is published regardless, so leaving it
 out keeps `nix flake check` from carrying an un-buildable check on the
 Linux hosts.
+
+### General Mac LAN cache
+
+The Mac uses the same signed Attic cache (`http://nix-cache.lan:8080/nix`)
+and upstream pull-through proxy (`http://nix-cache.lan:8081`) as Linux.
+This applies to **all Nix commands**, not a particular terminal package.
+HM writes `~/.config/nix/nix.conf` using additive settings, preserving public
+caches and keys, requiring signatures, and enabling fallback with a
+three-second connection timeout when roaming.
+
+**One-time owner actions:** HM does not manage the Nix daemon or `/etc`.
+An untrusted daemon client cannot authorize a new substituter or signing key
+just by putting it in user config. Do not solve that by granting the user
+`trusted-users` privileges or disabling signature checks.
+
+1. If `~/.config/nix/nix.conf` already exists outside HM, migrate any settings
+   into your HM configuration and move the old file aside before switching.
+   On the current Mac it contains only the flakes/command experimental features,
+   which this module preserves.
+2. Activate `home-manager switch --flake .#'p@pb-mb'`.
+3. Install the generated, public-only daemon trust fragment yourself:
+
+   ```sh
+   sudo install -m 0644 ~/.config/nix/lan-cache-daemon.conf /etc/nix/lan-cache.conf
+   ```
+
+   Add `!include /etc/nix/lan-cache.conf` once to `/etc/nix/nix.conf` (or the
+   installer's administrator-managed included config), keeping existing
+   settings. Restart your installer's daemon; for the standard Nix launchd job:
+
+   ```sh
+   sudo launchctl kickstart -k system/org.nixos.nix-daemon
+   ```
+
+   The fragment adds only the two trusted URLs and the existing home cache
+   public key and keeps `require-sigs = true`. No private keys or tokens.
+
+**Sharing native Mac builds:** the Linux server warmer cannot build Darwin.
+It can store Darwin closures built on a matching Mac, sign them through Attic,
+and serve the exact same store paths to other Macs. Different platforms or
+changed derivation inputs still require their own builds.
+
+Deploy the cache host's `nix-cache-stage` / `nix-cache-publish` helpers first
+(see `homelab/nix/nix-cache.nix`). Uploads reuse operator SSH and **interactive
+remote sudo**, never an Attic token on the Mac. Verify/pin `nix-cache.lan`'s SSH
+host key against your already trusted cache-host identity; do not accept an
+unverified key or disable host-key checking. An existing SSH alias can be selected
+with HM's `lanNixCache.uploadSshTarget` option.
+
+```sh
+nix-cache-build .#homeConfigurations.'p@pb-mb'.activationPackage
+nix build .#some-output && nix-cache-upload ./result
+home-manager switch --flake .#'p@pb-mb' && nix-cache-upload --profile
+hm --cache                       # opt-in switch + publish current HM profile
+```
+
+These explicitly upload **selected output closures**, not the whole store or
+every build. Review their contents first: the Attic cache is publicly readable,
+including any private source/configuration referenced by a chosen closure.
+Ordinary `nix build`, `hm`, and `home-manager switch` substitute but do not upload.
+`nix-cache-build` keeps normal `nix build` result links to protect its outputs
+from local GC; use normal build arguments, not `--json` or `--no-link`.
+
+Uploads fail visibly off-LAN, on SSH/sudo/import failures, or if Attic rejects a
+push. Exported closures are staged privately on the server, imported only after
+sudo authorization, protected against server GC during publication, then pushed
+with the existing upstream-signature filter. Attic signs locally built paths;
+public upstream paths remain handled by the pull-through proxy. Normal cleanup
+removes staging files and publication GC roots. After a hard kill, inspect/remove
+only the affected `<id>.nar` under the operator's
+`~/.local/state/nix-cache-upload/` and root-owned
+`/nix/var/nix/gcroots/nix-cache-upload/<id>/` on the cache host.
 
 ## Native Windows (`hm_win`)
 

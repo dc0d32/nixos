@@ -80,6 +80,7 @@ in
         # Fonts: on darwin this installs the face set + mirrors it into
         # ~/Library/Fonts/HomeManager/. See flake-modules/fonts.nix.
         config.flake.modules.homeManager.fonts
+        config.flake.modules.homeManager.lan-nix-cache
       ];
 
       # HM manages itself.

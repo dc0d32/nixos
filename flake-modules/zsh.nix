@@ -169,7 +169,19 @@
 
           hm() {
             local host="$(_flake_host)"
-            nix run home-manager/master -- switch --flake "$NH_FLAKE#$USER@$host"
+            local upload=0
+            if [[ "''${1:-}" == "--cache" ]]; then
+              if ! command -v nix-cache-upload >/dev/null 2>&1; then
+                echo "hm --cache: LAN cache upload is not configured on this host." >&2
+                return 1
+              fi
+              upload=1
+              shift
+            fi
+            nix run home-manager/master -- switch --flake "$NH_FLAKE#$USER@$host" "$@" || return
+            if (( upload )); then
+              command nix-cache-upload --profile
+            fi
           }
 
           # nh (nix-helper) flake target — set here too (not just
