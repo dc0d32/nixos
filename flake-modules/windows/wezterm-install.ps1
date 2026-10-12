@@ -1,8 +1,8 @@
 # Install the pinned WezTerm trial beside other terminals, without defaults.
 # Retire when the trial is over or native Windows Nix can manage this package.
-# Run explicitly: hm_win --terminals (WSL), or & '<deployed>/wezterm-install.ps1'.
+# Run by hm_win --setup (WSL), or explicitly as & '<deployed>/wezterm-install.ps1'.
 # Windows x64 only: the upstream archive does not provide an ARM64 binary.
-# Font prerequisite: run normal hm_win once to register patched Fantasque.
+# hm_win registers patched Fantasque before invoking this installer.
 # No PATH changes, package-manager installs, default-terminal registration,
 # renderer overrides, or automatic upgrades. All scratch stays in build dirs.
 # BOOTSTRAP manifests refer to deletable upstream assets, not promoted releases.

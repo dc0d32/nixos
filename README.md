@@ -84,9 +84,9 @@ home-manager switch --flake .#'p@pb-mb'
 # on demand, independent of home-manager switch). See "Native Windows".
 hm_win
 
-# Explicitly install/update the isolated Windows x64 WezTerm trial
-# (normal hm_win registers its fonts first; does not change WT defaults)
-hm_win --terminals
+# Install/update the Windows toolkit and isolated x64 WezTerm trial
+# (does not change Windows Terminal defaults)
+hm_win --setup
 
 # Update all inputs
 nix flake update
@@ -102,8 +102,9 @@ nix fmt .
 Terminal trial preferences come from the shared Alacritty settings. Unix
 WezTerm builds from locked source, including the native signed macOS app.
 Windows is currently **bootstrap-unpromoted**; ordinary `hm_win` does not
-download its deletable interim archive. The token-free asynchronous release
-pipeline requires owner bootstrap before durable Windows promotion:
+download its deletable interim archive, while `hm_win --setup` installs it.
+The token-free asynchronous release pipeline requires owner bootstrap before
+durable Windows promotion:
 [setup and operations](scripts/wezterm-bootstrap.txt),
 [trial details and validation](docs/sessions/2026-10-11-terminal-trials.md).
 
@@ -399,15 +400,15 @@ Workflow:
 ```sh
 # inside WSL — builds the bundle from your ~/nixos checkout and pushes it:
 hm_win            # deploy the dotfiles only (fast)
-hm_win --setup    # deploy, then run setup.ps1 (winget + Scoop installs)
+hm_win --setup    # deploy, then install/update the toolkit and WezTerm Trial
 ```
 
 `hm_win` deploys the generated dotfiles into the Windows profile. Pass
-`--setup` (`-s`) to also run `setup.ps1` afterwards via the Windows
-PowerShell interop — that's off by default because deploying is fast and
-frequent while the installs are slow and idempotent (you only need them
-when the package list changed). You can also run `setup.ps1` yourself in
-PowerShell (the path is printed).
+`--setup` (`-s`) to also run `setup.ps1` and install/update the pinned
+Windows x64 WezTerm Trial afterwards via the Windows PowerShell interop.
+That's off by default because deploying is fast and frequent while installs
+are slow and idempotent. You can also run `setup.ps1` yourself in PowerShell
+(the path is printed), but that does not install WezTerm.
 
 Generation is gated behind `hm_win` alone: the artifacts are a separate
 flake package (`packages.<system>.windows-dotfiles`), and `hm_win` is a

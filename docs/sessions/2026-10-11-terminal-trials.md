@@ -44,10 +44,11 @@ WezTerm is **20261010-083911-e2a98e1b**, upstream commit
 
 The Windows pin is explicitly **bootstrap-unpromoted**, not a durable completed
 pipeline release. Its previously verified identity matches the source pin.
-Only explicit installation downloads it through the anonymous asset-ID API with
-`Accept: application/octet-stream`. Deleted assets fail closed; hashes prevent
-drift. Ordinary `hm_win` builds/stages only the manifest, Lua and installer and
-does not depend on this deletable archive.
+Only `hm_win --setup` (or direct invocation of the staged installer) downloads
+it through the anonymous asset-ID API with `Accept: application/octet-stream`.
+Deleted assets fail closed; hashes prevent drift. Ordinary `hm_win`
+builds/stages only the manifest, Lua and installer and does not depend on this
+deletable archive.
 
 Ghostty is the locked nixpkgs **1.3.1**: `ghostty` on Linux and the native,
 signed `ghostty-bin` on Darwin. The flake lock pins those package definitions.
@@ -71,16 +72,16 @@ Manager's application directory. Shell commands are `ghostty` and `wezterm start
 HM collision checks protect existing config files; move/back up any conflicting
 local config before activation rather than forcing replacement.
 
-On Windows, run ordinary `hm_win` once to deploy/register the existing patched
-fonts (no `--setup` needed if the toolkit already exists), then:
+On Windows, deploy only with ordinary `hm_win`, or install/update the toolkit,
+register the patched fonts and install the isolated WezTerm Trial together:
 
 ```sh
-hm_win --terminals
+hm_win --setup
 ```
 
-This explicitly installs only WezTerm Trial and creates its Start-menu shortcut.
-It does not run winget/Scoop, reinstall AI tooling, change PATH or terminal
-defaults. Ordinary `hm_win` stages the shared Lua file and installer under
+The setup path runs the existing winget/Scoop toolkit installer, registers the
+font, then installs WezTerm Trial and creates its Start-menu shortcut. It does
+not change terminal defaults. Ordinary `hm_win` stages the shared Lua file and installer under
 `%USERPROFILE%\.config\nixwin\wezterm-trial\<bundle>` without running it.
 The explicit installer copies Lua to
 `%USERPROFILE%\.config\nixwin\wezterm-trial\config\wezterm.lua`; the shortcut's
@@ -161,7 +162,7 @@ Unix rollback: use a previous Home Manager generation, or remove trial imports
 and activate; defaults require no restoration. Windows rollback: close the trial,
 repoint `WezTerm Trial.lnk` to a retained version's `wezterm-gui.exe` with
 `--config-file` pointing to a compatible retained/backed-up Lua config, or deploy
-the earlier checkout with `hm_win --terminals`. Config backups use `.bak.<stamp>`.
+the earlier checkout with `hm_win --setup`. Config backups use `.bak.<stamp>`.
 To remove Windows trial, delete its shortcut,
 `%LOCALAPPDATA%\nixwin\wezterm-trial` and
 `%USERPROFILE%\.config\nixwin\wezterm-trial` after closing the app.
