@@ -6,7 +6,7 @@
 # No PATH changes, package-manager installs, default-terminal registration,
 # renderer overrides, or automatic upgrades. All scratch stays in build dirs.
 # BOOTSTRAP manifests refer to deletable upstream assets, not promoted releases.
-# A future retained release uses assetStatus=promoted with its pinned URL/hash.
+# Promoted manifests use exact retained release URLs and pinned hashes, not REST downloads.
 [CmdletBinding()]
 param()
 
@@ -98,7 +98,7 @@ if (Test-Path -LiteralPath $installDir) {
         try {
             Invoke-WebRequest -Uri $asset.url -Headers $headers -UserAgent 'nixwin-wezterm-trial' -OutFile $archive -UseBasicParsing
         } catch {
-            throw "Pinned $($asset.assetStatus) $architecture archive unavailable: $($asset.url). No floating nightly or emulated-architecture fallback is allowed. If upstream deleted this bootstrap asset, promote a retained URL/hash in overlays/wezterm-pin.nix and redeploy. $($_.Exception.Message)"
+            throw "Pinned $($asset.assetStatus) $architecture archive unavailable: $($asset.url). No floating nightly or emulated-architecture fallback is allowed. Check connectivity and the exact pinned release; bootstrap assets may need replacement in overlays/wezterm-pin.nix. $($_.Exception.Message)"
         }
         if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $asset.sha256) {
             throw 'WezTerm archive SHA-256 mismatch; nothing installed.'

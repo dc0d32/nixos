@@ -108,6 +108,7 @@ let
     imports = config.flake.lib.bundles.homeManager.dev ++ [
       config.flake.modules.homeManager.azure
       config.flake.modules.homeManager.windows
+      config.flake.modules.homeManager.wsl-vault
     ];
 
     programs.home-manager.enable = true;

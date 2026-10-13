@@ -101,10 +101,11 @@ nix fmt .
 
 Terminal trial preferences come from the shared Alacritty settings. Unix
 WezTerm builds from locked source, including the native signed macOS app.
-Windows is currently **bootstrap-unpromoted**; ordinary `hm_win` does not
-download its deletable interim x86-64 archive, while `hm_win --setup` installs
-the exact native pin. ARM64 fails closed until the first verified dual-architecture
-release is promoted; it never installs x64 under emulation.
+Windows uses a **promoted immutable release** with native x86-64 and ARM64
+packages; ordinary `hm_win` only stages configuration, while `hm_win --setup`
+installs the exact native pin. ARM64 never installs x64 under emulation.
+Promoted installers download from the exact immutable release tag, avoiding
+anonymous GitHub REST API rate limits, and still verify the pinned SHA-256.
 The token-free asynchronous release pipeline requires owner bootstrap before
 durable Windows promotion:
 [setup and operations](scripts/wezterm-bootstrap.txt),
@@ -133,6 +134,33 @@ md-view # what guide/tools render through: glow with this repo's theme,
         # flowcharts); anything else is left as source rather than
         # drawn wrong. Same on native Windows.
 ```
+
+## WSL credential vault
+
+Both WSL configurations provide GNOME Keyring (Linux Secret Service), its WSLg
+password dialogs, and `secret-tool`. No GNOME desktop or Seahorse is installed.
+NixOS registers the credential service and password prompter; standalone Home
+Manager imports the current WSLg display into D-Bus/systemd from interactive zsh.
+No GPG key provisioning or command wrapper is needed.
+
+After the matching NixOS **and** Home Manager rebuilds above, open a fresh terminal:
+
+```sh
+copilot login
+```
+
+The first credential write may open a keyring-creation dialog. Choose a non-empty
+password so credentials are encrypted on disk. Later access prompts for that
+password when the keyring is locked, including after WSL shutdown/restart; WSL
+does not perform a password login that could unlock it automatically. Use normal
+`copilot` and `gh auth login` commands thereafter.
+
+The keyring stays unlocked while its daemon runs; already-running applications
+may retain tokens in memory. Keep your keyring password and a secure backup of
+`~/.local/share/keyrings` for recovery. No passwords or tokens are managed by Nix.
+Never choose an empty keyring password or accept Copilot's plaintext fallback.
+An existing pass store or GPG keys are left untouched, but pass-secret-service is
+not enabled alongside GNOME Keyring.
 
 ## Auto-update
 

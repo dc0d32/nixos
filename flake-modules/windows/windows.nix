@@ -286,9 +286,18 @@ let
         inherit (weztermPin) revision version;
         assets = builtins.mapAttrs
           (_architecture: asset:
-            if asset == null then null else {
-              inherit (asset) url sha256 archiveRoot architecture;
-              headers = asset.headers or { };
+            if asset == null then null else
+            let
+              promoted = (asset.status or "bootstrap-unpromoted") == "promoted";
+            in
+            {
+              inherit (asset) sha256 archiveRoot architecture;
+              # Immutable release downloads avoid anonymous REST API rate limits.
+              url =
+                if promoted then
+                  "https://github.com/${asset.buildRepository}/releases/download/${asset.releaseTag}/WezTerm-windows-${asset.architecture}-${asset.buildId}.zip"
+                else asset.url;
+              headers = if promoted then { } else asset.headers or { };
               assetStatus = asset.status or "bootstrap-unpromoted";
             })
           weztermPin.assets.windows;

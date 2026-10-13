@@ -1202,12 +1202,20 @@ class ZipTests(PipelineCase):
     def test_aarch64_exact_native_runtime(self):
         root = "WezTerm-windows-aarch64-" + VERSION
         p.check_zip(zip_bytes(architecture="aarch64"), root, "aarch64")
-        for name in ARM_RUNTIME:
+        for name in (*p.WINDOWS_EXECUTABLES, "wezterm.pdb"):
             with self.subTest(name=name):
                 self.rejected(
                     p.check_zip,
                     zip_bytes(architecture="aarch64", omit=(name,)),
                     root, "aarch64", message="runtime")
+
+    def test_aarch64_per_executable_debug_symbols_are_optional(self):
+        root = "WezTerm-windows-aarch64-" + VERSION
+        optional = tuple(sorted(p.WINDOWS_PDBS - {"wezterm.pdb"}))
+        for omitted in (*((name,) for name in optional), optional):
+            with self.subTest(omitted=omitted):
+                p.check_zip(zip_bytes(architecture="aarch64", omit=omitted),
+                            root, "aarch64")
 
     def test_aarch64_rejects_x64_sidecars_and_other_files(self):
         root = "WezTerm-windows-aarch64-" + VERSION
@@ -3249,9 +3257,24 @@ class WindowsInstallerContractTests(unittest.TestCase):
     def test_generated_manifest_is_metadata_only_and_architecture_keyed(self):
         self.assertIn("assets = builtins.mapAttrs", self.module)
         self.assertIn("if asset == null then null", self.module)
-        self.assertIn("inherit (asset) url sha256 archiveRoot architecture", self.module)
+        self.assertIn("inherit (asset) sha256 archiveRoot architecture", self.module)
         self.assertNotIn("fetchurl", self.module[self.module.index("weztermManifest"):
                                                 self.module.index("weztermManifest") + 700])
+
+    def test_promoted_download_uses_exact_release_not_rate_limited_api(self):
+        self.assertIn(
+            'promoted = (asset.status or "bootstrap-unpromoted") == "promoted";',
+            self.module)
+        self.assertIn(
+            'https://github.com/${asset.buildRepository}/releases/download/'
+            '${asset.releaseTag}/WezTerm-windows-${asset.architecture}-${asset.buildId}.zip',
+            self.module)
+        self.assertIn("else asset.url;", self.module)
+        self.assertIn("headers = if promoted then { } else asset.headers or { };",
+                      self.module)
+        self.assertIn("Get-FileHash -LiteralPath $archive -Algorithm SHA256",
+                      self.installer)
+        self.assertNotIn("releases/latest", self.module)
 
 
 def add_cases(cls, label, cases, run):

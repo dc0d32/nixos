@@ -27,6 +27,10 @@
 # flake-parts-level `wsl.defaultUser` singleton in favor of a proper
 # per-NixOS-config option.
 #
+# GNOME Keyring supplies Linux Secret Service without a GNOME desktop.
+# WSL skips password login, so standalone HM publishes the WSLg display
+# to D-Bus for encrypted-keyring creation and unlock dialogs.
+#
 # Retire when: WSL2 is no longer the dev environment for any host, OR
 #   Microsoft ships a NixOS-native WSL distribution (or upstream NixOS
 #   absorbs the dc0d32/nixos-aarch64-wsl fork) that makes this wrapper
@@ -43,6 +47,10 @@
     config = {
       wsl.enable = true;
       wsl.defaultUser = lib.mkDefault config.users.primary;
+
+      # WSLg supplies the display; no desktop session or password login is needed.
+      services.dbus.enable = true;
+      services.gnome.gnome-keyring.enable = true;
 
       # --- Force-disable things our other modules might turn on ---
       # Base modules now use lib.mkDefault for policy options, so
@@ -104,5 +112,30 @@
       # mkDefault collision as above).
       users.defaultUserShell = lib.mkForce pkgs.zsh;
     };
+  };
+
+  flake.modules.homeManager.wsl-vault = { lib, pkgs, ... }: {
+    home.packages = [ pkgs.libsecret ];
+
+    # The lingering user manager does not inherit a newly opened WSL terminal's display.
+    programs.zsh.initContent = lib.mkAfter ''
+      () {
+        local -a wslg_vars=()
+        if [[ -n "''${DISPLAY:-}" ]]; then
+          wslg_vars+=(DISPLAY)
+        fi
+        if [[ -n "''${WAYLAND_DISPLAY:-}" ]]; then
+          wslg_vars+=(WAYLAND_DISPLAY)
+        fi
+        if [[ -n "''${XAUTHORITY:-}" ]]; then
+          wslg_vars+=(XAUTHORITY)
+        fi
+        if (( ''${#wslg_vars[@]} )); then
+          if ! ${pkgs.dbus}/bin/dbus-update-activation-environment --systemd "''${wslg_vars[@]}"; then
+            print -u2 -- "WSLg display import failed; keyring password dialogs may not open."
+          fi
+        fi
+      }
+    '';
   };
 }

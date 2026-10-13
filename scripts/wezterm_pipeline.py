@@ -465,9 +465,10 @@ def check_pe_machine(data, architecture):
 
 def check_zip(data, root, architecture="x86_64"):
     require(architecture in WINDOWS_ARCHITECTURES, "ZIP architecture")
-    required = WINDOWS_EXECUTABLES | (
-        X86_SIDECARS | {"wezterm.pdb"} if architecture == "x86_64" else WINDOWS_PDBS)
-    allowed = None if architecture == "x86_64" else required
+    required = WINDOWS_EXECUTABLES | {"wezterm.pdb"} | (
+        X86_SIDECARS if architecture == "x86_64" else set())
+    # Per-executable debug symbols are optional, not native runtime dependencies.
+    allowed = None if architecture == "x86_64" else required | WINDOWS_PDBS
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         entries = archive.infolist()
         require(0 < len(entries) <= 10000, "ZIP member count")
