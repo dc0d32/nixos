@@ -1169,7 +1169,7 @@ let
 
       if [ "$run_setup" -eq 1 ]; then
         echo ""
-        echo "hm_win: installing/updating WezTerm Trial ..."
+        echo "hm_win: installing/updating WezTerm ..."
         "$psexe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$trial_script_win"
         echo ""
         echo "Done. Restart your terminal to pick up everything."

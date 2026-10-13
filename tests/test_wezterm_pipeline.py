@@ -3234,6 +3234,45 @@ class WindowsInstallerContractTests(unittest.TestCase):
         cls.installer = (ROOT / "flake-modules/windows/wezterm-install.ps1").read_text()
         cls.module = (ROOT / "flake-modules/windows/windows.nix").read_text()
 
+    def test_windows_renderer_preserves_local_backdrop_and_rdp_launch(self):
+        config = (ROOT / "flake-modules/terminal-trials.nix").read_text()
+        windows = config[config.index("      -- WebGPU loses"):config.index("    local function page")]
+        self.assertIn("""local remote = (os.getenv('SESSIONNAME') or ""):upper():match('^RDP') ~= nil""", windows)
+        self.assertIn("config.front_end = remote and 'WebGpu' or 'OpenGL'", windows)
+        self.assertIn("    if windows then\n      -- WebGPU loses", config)
+
+    def test_trial_backdrops_match_existing_terminals_without_changing_them(self):
+        config = (ROOT / "flake-modules/terminal-trials.nix").read_text()
+        niri = (ROOT / "flake-modules/niri/window-rules.nix").read_text()
+        self.assertIn("backdrop = { opacity = 0.8; blurRadius = 30; };", config)
+        self.assertIn("if isDarwin then backdrop.opacity else appearance.opacity", config)
+        self.assertIn('background-blur = ${if isDarwin then toString backdrop.blurRadius else "false"}', config)
+        self.assertIn("if windows or mac then", config)
+        self.assertIn("config.win32_system_backdrop = 'Acrylic'", config)
+        self.assertIn("config.macos_window_background_blur = ${toString backdrop.blurRadius}", config)
+        self.assertIn("config.window_background_opacity = ${toString backdrop.opacity}", config)
+        self.assertIn("opacity = backdrop.opacity;", config)
+        self.assertIn('matches = [{ app-id = "^Alacritty$"; }];\n          opacity = 0.85;', niri)
+        self.assertNotIn("alacrittyBackdrop", niri)
+        self.assertNotIn("alacrittyBackdrop", self.module)
+        self.assertIn("opacity = 85;", self.module)
+        self.assertIn("useAcrylic = true;", self.module)
+        alacritty = (ROOT / "flake-modules/alacritty.nix").read_text()
+        self.assertNotIn("alacrittyBackdrop", alacritty)
+
+    def test_prediction_style_uses_color_not_another_font_variant(self):
+        profile = (ROOT / "flake-modules/windows/profile.ps1").read_text()
+        self.assertIn('InlinePrediction = "$([char]27)[0;90m"', profile)
+
+    def test_shortcut_name_and_safe_legacy_cleanup(self):
+        self.assertIn("$shortcutPath = Join-Path $programs 'WezTerm.lnk'", self.installer)
+        self.assertIn("$legacyShortcut.TargetPath.StartsWith($managedRoot", self.installer)
+        self.assertIn("$legacyShortcut.Arguments -eq $arguments", self.installer)
+        self.assertIn("$legacyShortcut.Description.StartsWith('WezTerm Trial '", self.installer)
+        self.assertIn("Backup-File $legacyPath", self.installer)
+        self.assertIn("Remove-Item -LiteralPath $legacyPath", self.installer)
+        self.assertIn("Preserving unmanaged shortcut", self.installer)
+
     def test_native_architecture_selection_has_no_emulation_fallback(self):
         self.assertIn("'AMD64' { 'x86_64' }", self.installer)
         self.assertIn("'ARM64' { 'aarch64' }", self.installer)

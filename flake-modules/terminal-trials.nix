@@ -4,6 +4,8 @@
 { config, lib, ... }:
 let
   alacritty = config.flake.lib.alacrittySettings;
+  # Match the user's macOS Terminal profile without changing other terminals.
+  backdrop = { opacity = 0.8; blurRadius = 30; };
   # Alacritty's built-in palette (config/color.rs), used when colors is omitted.
   colors = lib.recursiveUpdate
     {
@@ -71,7 +73,8 @@ let
     window-decoration = ${if isDarwin then "auto" else if lib.toLower appearance.decorations == "none" then "none" else "auto"}
     background = ${appearance.background}
     foreground = ${appearance.foreground}
-    background-opacity = ${toString appearance.opacity}
+    background-opacity = ${toString (if isDarwin then backdrop.opacity else appearance.opacity)}
+    background-blur = ${if isDarwin then toString backdrop.blurRadius else "false"}
     cursor-style = ${{ Beam = "bar"; Block = "block"; Underline = "underline"; }.${appearance.cursorShape}}
     cursor-style-blink = ${lib.boolToString appearance.cursorBlink}
     command = ${zsh} -l
@@ -95,7 +98,7 @@ let
     ]}
   '';
   weztermConfig = ''
-    -- Generated trial config; front_end is deliberately unset (automatic RDP).
+    -- Generated shared terminal config.
     local wezterm = require 'wezterm'
     local act = wezterm.action
     local config = wezterm.config_builder()
@@ -106,6 +109,14 @@ let
     config.font_size = windows and ${toString appearance.sizeWindows} or ${toString appearance.sizeUnix}
     config.window_padding = { left = ${toString appearance.padding.x}, right = ${toString appearance.padding.x}, top = ${toString appearance.padding.y}, bottom = ${toString appearance.padding.y} }
     config.window_background_opacity = ${toString appearance.opacity}
+    if windows or mac then
+      config.window_background_opacity = ${toString backdrop.opacity}
+      if windows then
+        config.win32_system_backdrop = 'Acrylic'
+      else
+        config.macos_window_background_blur = ${toString backdrop.blurRadius}
+      end
+    end
     config.window_decorations = (windows or mac) and 'TITLE | RESIZE' or '${if lib.toLower appearance.decorations == "none" then "NONE" else "TITLE | RESIZE"}'
     config.default_cursor_style = '${if appearance.cursorBlink then "Blinking" else "Steady"}${{ Beam = "Bar"; Block = "Block"; Underline = "Underline"; }.${appearance.cursorShape}}'
     config.scrollback_lines = ${toString appearance.history}
@@ -125,6 +136,9 @@ let
     config.unix_domains = {}
     config.wsl_domains = {}
     if windows then
+      -- WebGPU loses Windows backdrop alpha; OpenGL works locally but fails on RDP.
+      local remote = (os.getenv('SESSIONNAME') or ""):upper():match('^RDP') ~= nil
+      config.front_end = remote and 'WebGpu' or 'OpenGL'
       -- Match hm_win's preference, including installations outside Program Files.
       local roots = { os.getenv('ProgramFiles') or "", os.getenv('LOCALAPPDATA') or "" }
       local pwsh = nil
@@ -187,7 +201,7 @@ in
         xdg.configFile."ghostty/config".text = ghostConfig pkgs.stdenv.isDarwin "${pkgs.zsh}/bin/zsh";
       }
     ] ++ lib.optional (options.programs ? niri) {
-      # Like Alacritty, paint opaque and let niri apply 0.85 once, after its
+      # Paint opaque and let niri apply 0.8 once, after its
       # catch-all 0.7 rule. No extra application-side alpha.
       programs.niri.settings.window-rules = lib.mkAfter [
         {
@@ -195,7 +209,7 @@ in
             { app-id = "^com\\.mitchellh\\.ghostty$"; }
             { app-id = "^org\\.wezfurlong\\.wezterm$"; }
           ];
-          opacity = 0.85;
+          opacity = backdrop.opacity;
         }
       ];
     });

@@ -106,6 +106,17 @@ packages; ordinary `hm_win` only stages configuration, while `hm_win --setup`
 installs the exact native pin. ARM64 never installs x64 under emulation.
 Promoted installers download from the exact immutable release tag, avoiding
 anonymous GitHub REST API rate limits, and still verify the pinned SHA-256.
+The Windows Start-menu entry is **WezTerm**. Local Windows launches use OpenGL
+for transparency; Remote Desktop sessions (`SESSIONNAME` starting with `RDP`)
+use WebGPU because OpenGL can fail there. Linux and macOS retain their default
+renderer. Start a new process after switching between local and remote sessions.
+PowerShell inline suggestions use plain gray text without changing font variants.
+WezTerm and Ghostty target the macOS Terminal profile's 80% opacity and blur 30.
+Both macOS terminals use numeric blur 30; niri supplies Linux opacity and its
+existing compositor blur, while Windows WezTerm uses 80% opacity with Acrylic
+(no equivalent numeric blur control). Other terminals and global niri blur
+settings are unchanged. The Windows WebGPU renderer does not provide
+this transparent backdrop, so RDP launches prioritize working rendering over blur.
 The token-free asynchronous release pipeline requires owner bootstrap before
 durable Windows promotion:
 [setup and operations](scripts/wezterm-bootstrap.txt),
