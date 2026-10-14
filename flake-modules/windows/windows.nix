@@ -20,7 +20,7 @@
 # Workflow:
 #   1. edit these files / the shared toolkit
 #   2. hm_win        (builds windows-dotfiles from ~/nixos, pushes it)
-#   3. hm_win --setup (installs/updates the toolkit and WezTerm Trial after
+#   3. hm_win --setup (installs/updates the toolkit and WezTerm after
 #      registering the patched Fantasque font)
 #
 # Contributes:
@@ -816,10 +816,10 @@ let
       cp ${mermaidAsciiExe}/bin/windows_amd64/mermaid-ascii.exe "$out/mermaid-ascii.exe"
       cp -r ${pkgs.fantasque-terminal}/share/windows-fonts "$out/fonts"
       cp ${setupScript}          "$out/setup.ps1"
-      mkdir -p "$out/wezterm-trial"
-      cp ${weztermLua}           "$out/wezterm-trial/wezterm.lua"
-      cp ${weztermManifest}      "$out/wezterm-trial/wezterm-pin.json"
-      cp ${./wezterm-install.ps1} "$out/wezterm-trial/wezterm-install.ps1"
+      mkdir -p "$out/wezterm"
+      cp ${weztermLua}           "$out/wezterm/wezterm.lua"
+      cp ${weztermManifest}      "$out/wezterm/wezterm-pin.json"
+      cp ${./wezterm-install.ps1} "$out/wezterm/wezterm-install.ps1"
     '';
 
   # ── `hm_win`: thin wrapper — builds the bundle, then deploys it ─────
@@ -839,7 +839,7 @@ let
       fi
 
       # --setup / -s: after deploying, run setup.ps1, register the patched
-      # font and install/update WezTerm Trial. Off by default — deploying
+      # font and install/update WezTerm. Off by default — deploying
       # dotfiles is fast and frequent; the installs are slow and idempotent.
       run_setup=0
       for arg in "$@"; do
@@ -848,7 +848,7 @@ let
           -h | --help)
             echo "usage: hm_win [--setup]"
             echo "  (no args)   deploy the Nix-generated dotfiles to the Windows profile"
-            echo "  --setup,-s  also install/update the toolkit and WezTerm Trial (Windows x64)"
+            echo "  --setup,-s  also install/update the toolkit and native Windows WezTerm"
             exit 0
             ;;
           *)
@@ -928,17 +928,17 @@ let
       echo "hm_win: deploying to $userprofile"
       # Content-addressed deploy directories preserve scripts/manifests from
       # previous explicit installs, without touching a running executable.
-      trial_dir="$nixwin/wezterm-trial/$(basename "$src")"
-      if [ ! -d "$trial_dir" ]; then
-        mkdir -p "$trial_dir"
+      wezterm_dir="$nixwin/wezterm/$(basename "$src")"
+      if [ ! -d "$wezterm_dir" ]; then
+        mkdir -p "$wezterm_dir"
       fi
       for artifact in wezterm.lua wezterm-pin.json wezterm-install.ps1; do
-        if [ ! -f "$trial_dir/$artifact" ] || ! cmp -s "$src/wezterm-trial/$artifact" "$trial_dir/$artifact"; then
-          deploy "$src/wezterm-trial/$artifact" "$trial_dir/$artifact"
+        if [ ! -f "$wezterm_dir/$artifact" ] || ! cmp -s "$src/wezterm/$artifact" "$wezterm_dir/$artifact"; then
+          deploy "$src/wezterm/$artifact" "$wezterm_dir/$artifact"
         fi
       done
-      trial_script_win="$(wslpath -w "$trial_dir/wezterm-install.ps1")"
-      echo "  WezTerm Trial installer deployed (not run): $trial_script_win"
+      wezterm_script_win="$(wslpath -w "$wezterm_dir/wezterm-install.ps1")"
+      echo "  WezTerm installer deployed (not run): $wezterm_script_win"
       deploy "$src/profile.ps1" "$profile_path"
       deploy "$src/starship.toml" "$cfg/starship.toml"
       # atuin reads %APPDATA%\atuin by default on Windows, NOT ~/.config;
@@ -1170,7 +1170,7 @@ let
       if [ "$run_setup" -eq 1 ]; then
         echo ""
         echo "hm_win: installing/updating WezTerm ..."
-        "$psexe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$trial_script_win"
+        "$psexe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$wezterm_script_win"
         echo ""
         echo "Done. Restart your terminal to pick up everything."
       else

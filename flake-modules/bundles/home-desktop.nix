@@ -40,7 +40,7 @@
     config.flake.lib.bundles.homeManager.dev
     ++ (with config.flake.modules.homeManager; [
       alacritty
-      terminal-trials
+      terminals
       audio
       bluetooth
       chrome

@@ -35,6 +35,7 @@
         autocd = true;
         autosuggestion.enable = true;
         syntaxHighlighting.enable = true;
+        syntaxHighlighting.styles.unknown-token = "fg=red";
         enableCompletion = true;
         history = {
           size = 100000;

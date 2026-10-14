@@ -1,6 +1,6 @@
-# Side-by-side terminal trials share appearance and shortcut intent across OSes.
+# WezTerm and Ghostty share appearance and shortcut intent across OSes.
 # Existing terminal defaults and compositor launch bindings remain untouched.
-# Retire when a terminal is selected and its permanent module replaces the trial.
+# Retire when neither WezTerm nor Ghostty is used.
 { config, lib, ... }:
 let
   alacritty = config.flake.lib.alacrittySettings;
@@ -39,6 +39,7 @@ let
     fontWindows = "FantasqueSansM Terminal Nerd Font Mono";
     style = alacritty.font.normal.style;
     sizeUnix = alacritty.font.size;
+    sizeMac = 14;
     sizeWindows = 13;
     padding = alacritty.window.padding;
     decorations = alacritty.window.decorations;
@@ -52,7 +53,7 @@ let
   };
   shortcuts = [
     { key = "c"; ghost = "copy_to_clipboard"; wez = "act.CopyTo('Clipboard')"; }
-    { key = "v"; ghost = "paste_from_clipboard"; wez = "act.PasteFrom('Clipboard')"; }
+    { key = "v"; ghost = "paste_from_clipboard"; wez = "paste"; }
     { key = "f"; ghost = "start_search"; wez = "act.Search { CaseInSensitiveString = '' }"; }
     { key = "equal"; ghostKey = "equal"; wezKey = "="; ghost = "increase_font_size:1"; wez = "act.IncreaseFontSize"; }
     { key = "minus"; wezKey = "-"; ghost = "decrease_font_size:1"; wez = "act.DecreaseFontSize"; }
@@ -67,7 +68,7 @@ let
   ghostConfig = isDarwin: zsh: ''
     font-family = ${appearance.fontUnix}
     font-style = ${appearance.style}
-    font-size = ${toString appearance.sizeUnix}
+    font-size = ${toString (if isDarwin then appearance.sizeMac else appearance.sizeUnix)}
     window-padding-x = ${toString appearance.padding.x}
     window-padding-y = ${toString appearance.padding.y}
     window-decoration = ${if isDarwin then "auto" else if lib.toLower appearance.decorations == "none" then "none" else "auto"}
@@ -106,7 +107,17 @@ let
     local mac = wezterm.target_triple:find('darwin') ~= nil
     local primary = mac and 'CMD' or 'CTRL|SHIFT'
     config.font = wezterm.font(windows and '${appearance.fontWindows}' or '${appearance.fontUnix}', { weight = '${if lib.hasInfix "Bold" appearance.style then "Bold" else "Regular"}', italic = ${lib.boolToString (lib.hasInfix "Italic" appearance.style)} })
-    config.font_size = windows and ${toString appearance.sizeWindows} or ${toString appearance.sizeUnix}
+    if windows then
+      -- Automatic bold/dim selection falls back to differently sized JetBrains.
+      -- Fantasque has no light face; dim text keeps Regular/Italic letterforms.
+      config.font_rules = {
+        { intensity = 'Bold', italic = false, font = wezterm.font('${appearance.fontWindows}', { weight = 'Bold', style = 'Normal' }) },
+        { intensity = 'Bold', italic = true, font = wezterm.font('${appearance.fontWindows}', { weight = 'Bold', style = 'Italic' }) },
+        { intensity = 'Half', italic = false, font = wezterm.font('${appearance.fontWindows}', { weight = 'Regular', style = 'Normal' }) },
+        { intensity = 'Half', italic = true, font = wezterm.font('${appearance.fontWindows}', { weight = 'Regular', style = 'Italic' }) },
+      }
+    end
+    config.font_size = windows and ${toString appearance.sizeWindows} or (mac and ${toString appearance.sizeMac} or ${toString appearance.sizeUnix})
     config.window_padding = { left = ${toString appearance.padding.x}, right = ${toString appearance.padding.x}, top = ${toString appearance.padding.y}, bottom = ${toString appearance.padding.y} }
     config.window_background_opacity = ${toString appearance.opacity}
     if windows or mac then
@@ -139,6 +150,17 @@ let
       -- WebGPU loses Windows backdrop alpha; OpenGL works locally but fails on RDP.
       local remote = (os.getenv('SESSIONNAME') or ""):upper():match('^RDP') ~= nil
       config.front_end = remote and 'WebGpu' or 'OpenGL'
+      if remote then
+        -- RDP may expose only the CPU-based Microsoft Basic Render Driver.
+        config.window_background_opacity = 1
+        config.win32_system_backdrop = 'Disable'
+        config.max_fps = 15
+        config.animation_fps = 1
+        config.cursor_blink_ease_in = 'Constant'
+        config.cursor_blink_ease_out = 'Constant'
+      else
+        config.window_background_opacity = 0.6
+      end
       -- Match hm_win's preference, including installations outside Program Files.
       local roots = { os.getenv('ProgramFiles') or "", os.getenv('LOCALAPPDATA') or "" }
       local pwsh = nil
@@ -167,6 +189,14 @@ let
         end
       end)
     end
+    local paste = wezterm.action_callback(function(window, pane)
+      if windows and pane:get_user_vars().nix_copilot == '1' then
+        -- Copilot checks images on Ctrl+V but needs terminal paste for ordinary text.
+        -- Let it own image access; do not spawn clipboard probes on the GUI thread.
+        window:perform_action(act.SendKey { key = 'v', mods = 'CTRL' }, pane)
+      end
+      window:perform_action(act.PasteFrom('Clipboard'), pane)
+    end)
     config.keys = {
       ${lib.concatMapStringsSep "\n" (s: "{ key = '${s.wezKey or s.key}', mods = primary, action = ${s.wez} },") shortcuts}
       { key = 'Tab', mods = 'CTRL', action = act.ActivateTabRelative(1) },
@@ -186,17 +216,17 @@ in
 {
   flake.lib = {
     inherit weztermConfig;
-    terminalTrialAppearance = appearance;
+    terminalAppearance = appearance;
     weztermPin = import ../overlays/wezterm-pin.nix;
   };
-  flake.modules.homeManager.terminal-trials = { pkgs, options, ... }: {
+  flake.modules.homeManager.terminals = { pkgs, options, ... }: {
     config = lib.mkMerge ([
       {
         home.packages = [
           pkgs.wezterm
           (if pkgs.stdenv.isDarwin then pkgs.ghostty-bin else pkgs.ghostty)
         ];
-        # Normal HM collision checks apply: no force/clobber of local trial configs.
+        # Normal HM collision checks apply: no force/clobber of local configs.
         xdg.configFile."wezterm/wezterm.lua".text = weztermConfig;
         xdg.configFile."ghostty/config".text = ghostConfig pkgs.stdenv.isDarwin "${pkgs.zsh}/bin/zsh";
       }

@@ -4,6 +4,7 @@ import base64
 import contextlib
 import copy
 import datetime as dt
+import errno
 import hashlib
 import importlib.util
 import io
@@ -14,6 +15,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 import urllib.error
@@ -3235,14 +3237,30 @@ class WindowsInstallerContractTests(unittest.TestCase):
         cls.module = (ROOT / "flake-modules/windows/windows.nix").read_text()
 
     def test_windows_renderer_preserves_local_backdrop_and_rdp_launch(self):
-        config = (ROOT / "flake-modules/terminal-trials.nix").read_text()
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
         windows = config[config.index("      -- WebGPU loses"):config.index("    local function page")]
         self.assertIn("""local remote = (os.getenv('SESSIONNAME') or ""):upper():match('^RDP') ~= nil""", windows)
         self.assertIn("config.front_end = remote and 'WebGpu' or 'OpenGL'", windows)
         self.assertIn("    if windows then\n      -- WebGPU loses", config)
 
-    def test_trial_backdrops_match_existing_terminals_without_changing_them(self):
-        config = (ROOT / "flake-modules/terminal-trials.nix").read_text()
+    def test_rdp_rendering_budget_and_local_windows_transparency_are_isolated(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        remote = config[config.index("      if remote then"):config.index("      -- Match hm_win")]
+        for setting in (
+            "config.window_background_opacity = 1",
+            "config.win32_system_backdrop = 'Disable'",
+            "config.max_fps = 15",
+            "config.animation_fps = 1",
+            "config.cursor_blink_ease_in = 'Constant'",
+            "config.cursor_blink_ease_out = 'Constant'",
+        ):
+            self.assertIn(setting, remote.split("      else")[0])
+        self.assertIn("      else\n        config.window_background_opacity = 0.6\n      end", remote)
+        self.assertEqual(config.count("config.max_fps ="), 1)
+        self.assertEqual(config.count("config.animation_fps ="), 1)
+
+    def test_backdrops_leave_existing_terminals_unchanged(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
         niri = (ROOT / "flake-modules/niri/window-rules.nix").read_text()
         self.assertIn("backdrop = { opacity = 0.8; blurRadius = 30; };", config)
         self.assertIn("if isDarwin then backdrop.opacity else appearance.opacity", config)
@@ -3264,10 +3282,96 @@ class WindowsInstallerContractTests(unittest.TestCase):
         profile = (ROOT / "flake-modules/windows/profile.ps1").read_text()
         self.assertIn('InlinePrediction = "$([char]27)[0;90m"', profile)
 
+    def test_command_validity_changes_color_not_font_weight(self):
+        zsh = (ROOT / "flake-modules/zsh.nix").read_text()
+        self.assertIn('syntaxHighlighting.styles.unknown-token = "fg=red";', zsh)
+
+    def test_windows_paste_is_scoped_to_copilot_and_preserves_text(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        paste = config[config.index("    local paste ="):config.index("    config.keys =")]
+        self.assertIn("{ key = \"v\"; ghost = \"paste_from_clipboard\"; wez = \"paste\"; }", config)
+        self.assertIn("windows and pane:get_user_vars().nix_copilot == '1'", paste)
+        self.assertIn("act.SendKey { key = 'v', mods = 'CTRL' }", paste)
+        self.assertIn("end\n      window:perform_action(act.PasteFrom('Clipboard'), pane)", paste)
+        self.assertNotIn("run_child_process", paste)
+
+    def test_copilot_profiles_clear_the_pane_marker_on_exit(self):
+        ai = (ROOT / "flake-modules/ai-cli.nix").read_text()
+        profile = (ROOT / "flake-modules/windows/profile.ps1").read_text()
+        for code in (ai, profile):
+            self.assertIn("SetUserVar=nix_copilot=MQ==", code)
+            self.assertIn("SetUserVar=nix_copilot=MA==", code)
+        self.assertIn('command copilot "$@"', ai)
+        self.assertIn("} always {", ai)
+        self.assertIn("(( ZSH_SUBSHELL == 0 ))", ai)
+        self.assertIn("-t 0 && -t 1 && -z \"''${TMUX:-}\"", ai)
+        function = profile[profile.index("function copilot {"):profile.index("# btop4win")]
+        self.assertIn("Get-Command copilot -CommandType Application -ErrorAction Stop", function)
+        self.assertIn("$Env:TERM_PROGRAM -eq 'WezTerm'", function)
+        self.assertIn("& $exe @args", function)
+        self.assertIn("finally {", function)
+
+    def test_wsl_declares_the_direct_windows_binary_interpreter(self):
+        wsl = (ROOT / "flake-modules/wsl.nix").read_text()
+        registration = wsl[wsl.index("boot.binfmt.registrations.WSLInterop"):wsl.index("# WSLg supplies")]
+        for option in ('magicOrExtension = "MZ";', 'interpreter = "/init";',
+                       "preserveArgvZero = true;", "wrapInterpreterInShell = false;"):
+            self.assertIn(option, registration)
+
+    def test_mac_fonts_are_larger_without_changing_linux_or_windows(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        self.assertIn("sizeUnix = alacritty.font.size;", config)
+        self.assertIn("sizeMac = 14;", config)
+        self.assertIn("sizeWindows = 13;", config)
+        self.assertIn("font-size = ${toString (if isDarwin then appearance.sizeMac else appearance.sizeUnix)}", config)
+        self.assertIn("or (mac and ${toString appearance.sizeMac} or ${toString appearance.sizeUnix})", config)
+
+    def test_windows_bold_and_dim_stay_in_the_registered_fantasque_family(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        rules = config[config.index("      config.font_rules = {"):config.index("    config.font_size =")]
+        self.assertIn("    if windows then\n      -- Automatic bold/dim selection", config)
+        for intensity, italic, weight, style in (
+            ("Bold", "false", "Bold", "Normal"),
+            ("Bold", "true", "Bold", "Italic"),
+            ("Half", "false", "Regular", "Normal"),
+            ("Half", "true", "Regular", "Italic"),
+        ):
+            self.assertIn(
+                f"intensity = '{intensity}', italic = {italic}, "
+                "font = wezterm.font('${appearance.fontWindows}', "
+                f"{{ weight = '{weight}', style = '{style}' }})",
+                rules,
+            )
+        self.assertNotIn("font_size", rules)
+
+    def test_taskbar_launches_discover_managed_config_without_arguments(self):
+        self.assertIn("$portableConfig = Join-Path $exeDir 'wezterm.lua'", self.installer)
+        self.assertIn("return dofile(wezterm.home_dir .. '/.config/nixwin/wezterm/config/wezterm.lua')", self.installer)
+        self.assertIn("Unmanaged portable config exists", self.installer)
+        self.assertIn("New-Item -Path $portableConfig -ItemType File -Value $loader", self.installer)
+        self.assertNotIn("New-Item -Path $portableConfig -ItemType File -Value $loader -Force", self.installer)
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        self.assertIn("config.default_prog = { pwsh or 'powershell.exe', '-NoLogo' }", config)
+
+    def test_active_module_and_deploy_paths_have_no_trial_naming(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        self.assertIn("flake.modules.homeManager.terminals =", config)
+        self.assertNotIn("terminalTrial", config)
+        self.assertNotIn("wezterm-trial", self.module)
+        self.assertNotIn("WezTerm Trial", self.module)
+        self.assertIn('wezterm_dir="$nixwin/wezterm/$(basename "$src")"', self.module)
+        for path in ("bundles/home-desktop.nix", "bundles/home-kid.nix", "hosts/pb-mb.nix"):
+            text = (ROOT / "flake-modules" / path).read_text()
+            self.assertNotIn("terminal-trials", text)
+            self.assertIn("terminals", text)
+
     def test_shortcut_name_and_safe_legacy_cleanup(self):
         self.assertIn("$shortcutPath = Join-Path $programs 'WezTerm.lnk'", self.installer)
-        self.assertIn("$legacyShortcut.TargetPath.StartsWith($managedRoot", self.installer)
-        self.assertIn("$legacyShortcut.Arguments -eq $arguments", self.installer)
+        self.assertIn("Test-ManagedWezTermShortcut $legacyShortcut", self.installer)
+        self.assertIn("$Link.TargetPath.StartsWith($managedRoot", self.installer)
+        self.assertIn("$Link.TargetPath.StartsWith($oldManagedRoot", self.installer)
+        self.assertIn("$Link.Arguments -eq $arguments", self.installer)
+        self.assertIn("$Link.Arguments -eq $oldArguments", self.installer)
         self.assertIn("$legacyShortcut.Description.StartsWith('WezTerm Trial '", self.installer)
         self.assertIn("Backup-File $legacyPath", self.installer)
         self.assertIn("Remove-Item -LiteralPath $legacyPath", self.installer)
@@ -3282,7 +3386,7 @@ class WindowsInstallerContractTests(unittest.TestCase):
 
     def test_selected_pin_marker_and_content_address_are_architecture_bound(self):
         self.assertIn("$asset.architecture -cne $architecture", self.installer)
-        self.assertIn('wezterm-trial\\$architecture\\$($pin.version)-$($asset.sha256)',
+        self.assertIn('wezterm\\$architecture\\$($pin.version)-$($asset.sha256)',
                       self.installer)
         self.assertIn('$markerValue = "$architecture $($asset.sha256)"', self.installer)
         self.assertIn("Promoted WezTerm archive root does not match", self.installer)
@@ -3314,6 +3418,130 @@ class WindowsInstallerContractTests(unittest.TestCase):
         self.assertIn("Get-FileHash -LiteralPath $archive -Algorithm SHA256",
                       self.installer)
         self.assertNotIn("releases/latest", self.module)
+
+
+@unittest.skipUnless(shutil.which("zsh"), "zsh is not installed")
+class CopilotPaneMarkerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        code = (ROOT / "flake-modules/ai-cli.nix").read_text()
+        start = code.index("        copilot() {")
+        cls.wrapper = code[start:code.index("      '';", start)].replace("''${", "${")
+
+    def run_wrapper(self, terminal=False, tmux=False, exit_code=0,
+                    invocation="copilot --resume 'two words'"):
+        with tempfile.TemporaryDirectory() as directory:
+            exe = Path(directory) / "copilot"
+            exe.write_text(
+                '#!/usr/bin/env bash\nprintf "%s\\n" "$@"\nexit "$MOCK_EXIT"\n'
+            )
+            exe.chmod(0o755)
+            env = {**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"],
+                   "MOCK_EXIT": str(exit_code), "TMUX": "test" if tmux else ""}
+            script = self.wrapper + "\n" + invocation + "\n"
+            if not terminal:
+                result = subprocess.run([shutil.which("zsh"), "-f", "-c", script],
+                                        env=env, capture_output=True, timeout=10)
+                self.assertEqual(result.stderr, b"")
+                return result.returncode, result.stdout
+            import pty
+            master, slave = pty.openpty()
+            try:
+                result = subprocess.run([shutil.which("zsh"), "-f", "-c", script],
+                                        env=env, stdin=slave, stdout=slave,
+                                        stderr=subprocess.PIPE, timeout=10)
+                self.assertEqual(result.stderr, b"")
+            finally:
+                os.close(slave)
+            try:
+                output = b""
+                while True:
+                    try:
+                        chunk = os.read(master, 4096)
+                    except OSError as error:
+                        if error.errno != errno.EIO:
+                            raise
+                        break
+                    if not chunk:
+                        break
+                    output += chunk
+            finally:
+                os.close(master)
+            return result.returncode, output.replace(b"\r\n", b"\n")
+
+    def test_pipe_has_no_markers_and_preserves_arguments_and_failure(self):
+        self.assertEqual(self.run_wrapper(exit_code=37),
+                         (37, b"--resume\ntwo words\n"))
+
+    def test_terminal_marker_is_cleared_after_success_and_failure(self):
+        for exit_code in (0, 37):
+            with self.subTest(exit_code=exit_code):
+                self.assertEqual(
+                    self.run_wrapper(terminal=True, exit_code=exit_code),
+                    (exit_code, b"\x1b]1337;SetUserVar=nix_copilot=MQ==\x07"
+                     b"--resume\ntwo words\n"
+                     b"\x1b]1337;SetUserVar=nix_copilot=MA==\x07"),
+                )
+
+    def test_tmux_does_not_mark_the_outer_pane(self):
+        self.assertEqual(self.run_wrapper(terminal=True, tmux=True),
+                         (0, b"--resume\ntwo words\n"))
+
+    def test_background_job_does_not_mark_or_clear_the_foreground_pane(self):
+        self.assertEqual(
+            self.run_wrapper(terminal=True, invocation="copilot --resume 'two words' &\nwait"),
+            (0, b"--resume\ntwo words\n"),
+        )
+
+
+class WezTermPasteRuntimeTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("WEZTERM_TEST_EXE") and shutil.which("wslpath"),
+                         "native Windows WezTerm test executable is not configured")
+    def test_generated_paste_callback_routes_only_the_marked_windows_app(self):
+        code = (ROOT / "flake-modules/terminals.nix").read_text()
+        callback = code[code.index("    local paste ="):code.index("    config.keys =")]
+        script = """
+local windows = true
+local wezterm = { action_callback = function(fn) return fn end }
+local act = {
+  SendKey = function(value) return { name = 'SendKey', value = value } end,
+  PasteFrom = function(value) return { name = 'PasteFrom', value = value } end,
+}
+""" + callback + """
+for _, case in ipairs({
+  { windows = true, marker = '1', count = 2 },
+  { windows = true, marker = '0', count = 1 },
+  { windows = true, count = 1 },
+  { windows = false, marker = '1', count = 1 },
+}) do
+  windows = case.windows
+  local actions = {}
+  local window = { perform_action = function(_, action)
+    table.insert(actions, action)
+  end }
+  local pane = { get_user_vars = function() return { nix_copilot = case.marker } end }
+  paste(window, pane)
+  assert(#actions == case.count)
+  if case.count == 2 then
+    assert(actions[1].name == 'SendKey')
+    assert(actions[1].value.key == 'v' and actions[1].value.mods == 'CTRL')
+  end
+  assert(actions[#actions].name == 'PasteFrom')
+  assert(actions[#actions].value == 'Clipboard')
+end
+return {}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "paste-test.lua"
+            config.write_text(script)
+            windows_path = subprocess.check_output(
+                ["wslpath", "-w", str(config)], text=True).strip()
+            result = subprocess.run(
+                [os.environ["WEZTERM_TEST_EXE"], "--config-file", windows_path, "ls-fonts"],
+                capture_output=True, timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertNotIn(b"assertion failed", result.stderr)
 
 
 def add_cases(cls, label, cases, run):

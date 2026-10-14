@@ -1,5 +1,5 @@
-# Install the pinned WezTerm trial beside other terminals, without defaults.
-# Retire when the trial is over or native Windows Nix can manage this package.
+# Install pinned WezTerm beside other terminals, without changing OS defaults.
+# Retire when native Windows Nix can manage this package.
 # Run by hm_win --setup (WSL), or explicitly as & '<deployed>/wezterm-install.ps1'.
 # Selects only the native x86-64 or ARM64 artifact; never uses x64 emulation.
 # hm_win registers patched Fantasque before invoking this installer.
@@ -19,7 +19,7 @@ if (-not $nativeArchitecture) { $nativeArchitecture = $env:PROCESSOR_ARCHITECTUR
 $architecture = switch ($nativeArchitecture) {
     'AMD64' { 'x86_64' }
     'ARM64' { 'aarch64' }
-    default { throw "WezTerm Trial does not support native Windows architecture $nativeArchitecture." }
+    default { throw "WezTerm does not support native Windows architecture $nativeArchitecture." }
 }
 
 $pin = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'wezterm-pin.json') -Raw | ConvertFrom-Json
@@ -70,7 +70,7 @@ foreach ($folder in @($localAppData, $userProfile, $programs)) {
     }
 }
 $buildId = "$architecture-$($pin.version)-$($asset.sha256)"
-$installDir = Join-Path $localAppData "nixwin\wezterm-trial\$architecture\$($pin.version)-$($asset.sha256)"
+$installDir = Join-Path $localAppData "nixwin\wezterm\$architecture\$($pin.version)-$($asset.sha256)"
 $exeDir = Join-Path $installDir $asset.archiveRoot
 $exe = Join-Path $exeDir 'wezterm-gui.exe'
 $marker = Join-Path $installDir 'installed-provenance.txt'
@@ -96,7 +96,7 @@ if (Test-Path -LiteralPath $installDir) {
         }
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         try {
-            Invoke-WebRequest -Uri $asset.url -Headers $headers -UserAgent 'nixwin-wezterm-trial' -OutFile $archive -UseBasicParsing
+            Invoke-WebRequest -Uri $asset.url -Headers $headers -UserAgent 'nixwin-wezterm' -OutFile $archive -UseBasicParsing
         } catch {
             throw "Pinned $($asset.assetStatus) $architecture archive unavailable: $($asset.url). No floating nightly or emulated-architecture fallback is allowed. Check connectivity and the exact pinned release; bootstrap assets may need replacement in overlays/wezterm-pin.nix. $($_.Exception.Message)"
         }
@@ -121,13 +121,30 @@ if (Test-Path -LiteralPath $installDir) {
     }
 }
 
-$configDir = Join-Path $userProfile '.config\nixwin\wezterm-trial\config'
+$configDir = Join-Path $userProfile '.config\nixwin\wezterm\config'
 New-Item -ItemType Directory -Path $configDir -Force | Out-Null
 $configTarget = Join-Path $configDir 'wezterm.lua'
 if (-not (Test-Path -LiteralPath $configTarget -PathType Leaf) -or
     (Get-FileHash -LiteralPath $configTarget).Hash -ne (Get-FileHash -LiteralPath $configSource).Hash) {
     Backup-File $configTarget
     Copy-Item -LiteralPath $configSource -Destination $configTarget -Force
+}
+
+# Taskbar pins can drop shortcut arguments. Portable config discovery keeps
+# this managed executable on the same config without taking over other installs.
+$portableConfig = Join-Path $exeDir 'wezterm.lua'
+$loader = @'
+-- Managed nixwin WezTerm loader; packaged binaries remain untouched.
+local wezterm = require 'wezterm'
+return dofile(wezterm.home_dir .. '/.config/nixwin/wezterm/config/wezterm.lua')
+'@
+if (Test-Path -LiteralPath $portableConfig) {
+    if (-not (Test-Path -LiteralPath $portableConfig -PathType Leaf) -or
+        (Get-Content -LiteralPath $portableConfig -Raw).TrimEnd() -cne $loader.TrimEnd()) {
+        throw "Unmanaged portable config exists at $portableConfig; preserved. Rename it before retrying."
+    }
+} else {
+    New-Item -Path $portableConfig -ItemType File -Value $loader | Out-Null
 }
 
 $shortcutPath = Join-Path $programs 'WezTerm.lnk'
@@ -139,11 +156,20 @@ try {
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $arguments = "--config-file `"$configTarget`""
     $description = "WezTerm $buildId ($($asset.assetStatus), explicit install)"
-    $managedRoot = (Join-Path $localAppData 'nixwin\wezterm-trial') + '\'
+    $managedRoot = (Join-Path $localAppData 'nixwin\wezterm') + '\'
+    $oldManagedRoot = (Join-Path $localAppData 'nixwin\wezterm-trial') + '\'
+    $oldConfigTarget = Join-Path $userProfile '.config\nixwin\wezterm-trial\config\wezterm.lua'
+    $oldArguments = "--config-file `"$oldConfigTarget`""
+    function Test-ManagedWezTermShortcut($Link) {
+        $current = $Link.TargetPath.StartsWith($managedRoot, [StringComparison]::OrdinalIgnoreCase) -and
+            $Link.Arguments -eq $arguments
+        $old = $Link.TargetPath.StartsWith($oldManagedRoot, [StringComparison]::OrdinalIgnoreCase) -and
+            $Link.Arguments -eq $oldArguments
+        $named = $Link.Description.StartsWith('WezTerm ', [StringComparison]::Ordinal)
+        return ($current -or $old) -and $named
+    }
     if ((Test-Path -LiteralPath $shortcutPath -PathType Leaf) -and
-        (-not $shortcut.TargetPath.StartsWith($managedRoot, [StringComparison]::OrdinalIgnoreCase) -or
-         $shortcut.Arguments -ne $arguments -or
-         -not $shortcut.Description.StartsWith('WezTerm ', [StringComparison]::Ordinal))) {
+        -not (Test-ManagedWezTermShortcut $shortcut)) {
         throw "Unmanaged shortcut already exists at $shortcutPath; preserved. Rename it before retrying."
     }
     if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf) -or
@@ -162,8 +188,7 @@ try {
     $legacyPath = Join-Path $programs 'WezTerm Trial.lnk'
     if (Test-Path -LiteralPath $legacyPath -PathType Leaf) {
         $legacyShortcut = $shell.CreateShortcut($legacyPath)
-        if ($legacyShortcut.TargetPath.StartsWith($managedRoot, [StringComparison]::OrdinalIgnoreCase) -and
-            $legacyShortcut.Arguments -eq $arguments -and
+        if ((Test-ManagedWezTermShortcut $legacyShortcut) -and
             $legacyShortcut.Description.StartsWith('WezTerm Trial ', [StringComparison]::Ordinal)) {
             Backup-File $legacyPath
             Remove-Item -LiteralPath $legacyPath
@@ -177,5 +202,6 @@ try {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
 }
 Write-Host "Installed WezTerm $($pin.version): $exe"
-Write-Host 'Launch from Start: WezTerm. Windows Terminal and other installations are unchanged.'
+Write-Host 'Launch from Start: WezTerm. Unpin any old taskbar entry and pin the updated WezTerm.'
+Write-Host 'Windows Terminal and other installations are unchanged; old install directories are retained.'
 Write-Host 'Font prerequisite: normal hm_win must have registered the patched Fantasque font once.'

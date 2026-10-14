@@ -48,6 +48,15 @@
       wsl.enable = true;
       wsl.defaultUser = lib.mkDefault config.users.primary;
 
+      # The fork enables interop but does not restore its handler after it is lost.
+      # Retire when the upstream WSL module declares this registration itself.
+      boot.binfmt.registrations.WSLInterop = {
+        magicOrExtension = "MZ";
+        interpreter = "/init";
+        preserveArgvZero = true;
+        wrapInterpreterInShell = false;
+      };
+
       # WSLg supplies the display; no desktop session or password login is needed.
       services.dbus.enable = true;
       services.gnome.gnome-keyring.enable = true;

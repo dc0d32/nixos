@@ -151,6 +151,21 @@ function gl { git log --oneline --graph --decorate @args }
 function lg { lazygit @args }
 function gdft { git -c diff.external=difft diff @args }   # structural diff
 
+# Copilot app state lets WezTerm route its usual paste key without changing other apps.
+function copilot {
+    $exe = (Get-Command copilot -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $markPane = $Env:TERM_PROGRAM -eq 'WezTerm' -and
+                (-not [Console]::IsInputRedirected) -and
+                (-not [Console]::IsOutputRedirected)
+    if ($markPane) { [Console]::Write("$([char]27)]1337;SetUserVar=nix_copilot=MQ==$([char]7)") }
+    try {
+        & $exe @args
+    }
+    finally {
+        if ($markPane) { [Console]::Write("$([char]27)]1337;SetUserVar=nix_copilot=MA==$([char]7)") }
+    }
+}
+
 # btop4win is the native-Windows port of btop; expose it as `btop` to match
 # Linux/mac muscle memory and terminal-help.md. winget installs it portable
 # and creates an on-PATH shim named `btop.exe` (which this function shadows)

@@ -68,6 +68,27 @@ in
 
       home.sessionPath = [ localBin ];
 
+      # Publish app state even through wsl.exe, whose foreground process hides Copilot.
+      # No markers in pipes, subshell/background jobs, or tmux's outer pane.
+      programs.zsh.initContent = ''
+        copilot() {
+          local exit_code=0 mark_pane=0
+          if (( ZSH_SUBSHELL == 0 )) && [[ -t 0 && -t 1 && -z "''${TMUX:-}" ]]; then
+            printf '\033]1337;SetUserVar=nix_copilot=MQ==\007'
+            mark_pane=1
+          fi
+          {
+            command copilot "$@"
+            exit_code=$?
+          } always {
+            if (( mark_pane )); then
+              printf '\033]1337;SetUserVar=nix_copilot=MA==\007'
+            fi
+          }
+          return "$exit_code"
+        }
+      '';
+
       home.activation.aiUvTools = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         uv=${pkgs.uv}/bin/uv
         # Pin uv to the nixpkgs Python (3.13, satisfies graphrag's

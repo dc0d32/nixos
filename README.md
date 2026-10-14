@@ -57,7 +57,7 @@ Design choices:
   live under `flake-modules/<feature>.nix`.
 - **Compositor**: niri. **Shell**: zsh. **Editor**: vim.
   **Terminal**: alacritty (native Terminal.app on macOS). Ghostty/WezTerm
-  are side-by-side trials, not replacement defaults.
+  are installed side by side, not replacement defaults.
 - **No secrets module yet** — added later if needed (sops-nix or agenix).
 
 ## Day-to-day
@@ -84,7 +84,7 @@ home-manager switch --flake .#'p@pb-mb'
 # on demand, independent of home-manager switch). See "Native Windows".
 hm_win
 
-# Install/update the Windows toolkit and isolated x64 WezTerm trial
+# Install/update the Windows toolkit and isolated native WezTerm
 # (does not change Windows Terminal defaults)
 hm_win --setup
 
@@ -99,7 +99,8 @@ nix flake check
 nix fmt .
 ```
 
-Terminal trial preferences come from the shared Alacritty settings. Unix
+WezTerm and Ghostty share base preferences from Alacritty, with macOS font size
+set to 14 pt in both (Linux and Windows font sizes are unchanged). Unix
 WezTerm builds from locked source, including the native signed macOS app.
 Windows uses a **promoted immutable release** with native x86-64 and ARM64
 packages; ordinary `hm_win` only stages configuration, while `hm_win --setup`
@@ -110,17 +111,37 @@ The Windows Start-menu entry is **WezTerm**. Local Windows launches use OpenGL
 for transparency; Remote Desktop sessions (`SESSIONNAME` starting with `RDP`)
 use WebGPU because OpenGL can fail there. Linux and macOS retain their default
 renderer. Start a new process after switching between local and remote sessions.
+The managed executable has a small adjacent config loader, so taskbar launches
+also use PowerShell 7 (`pwsh`, or Windows PowerShell if unavailable), rather than
+falling back to cmd when shortcut arguments are lost. `hm_win --setup` installs
+under `%LOCALAPPDATA%\nixwin\wezterm` and configures
+`%USERPROFILE%\.config\nixwin\wezterm\config\wezterm.lua`. It migrates identified
+old shortcuts but retains old install/config directories for recovery. Unpin
+the old taskbar entry and pin the updated **WezTerm** after upgrading.
+RDP can expose only the CPU-based Microsoft Basic Render Driver. Remote launches
+disable backdrop effects and limit rendering to 15 FPS with 1 FPS blink animation
+to reduce work. This is a mitigation, not a confirmed performance fix; if Copilot
+still saturates CPU, use Windows Terminal for that session.
 PowerShell inline suggestions use plain gray text without changing font variants.
+Windows WezTerm explicitly selects Fantasque Bold/Bold Italic and uses Regular/
+Italic for dim text, avoiding automatic fallback to differently sized JetBrains.
+Zsh keeps unrecognized commands red but regular-weight, so becoming a recognized
+green command does not also change font weight or letterforms.
+In Windows WezTerm, `Ctrl+Shift+V` handles both text and images in Copilot launched
+from the managed PowerShell or WSL zsh profile. The profile marks the active app;
+the shortcut sends Copilot its image-paste key and performs ordinary text paste.
+Other applications retain normal text paste. Reload the managed profiles and
+WezTerm config after deploying; an already-running Copilot has no profile marker.
 WezTerm and Ghostty target the macOS Terminal profile's 80% opacity and blur 30.
 Both macOS terminals use numeric blur 30; niri supplies Linux opacity and its
-existing compositor blur, while Windows WezTerm uses 80% opacity with Acrylic
+existing compositor blur, while local Windows WezTerm uses 60% opacity with Acrylic
 (no equivalent numeric blur control). Other terminals and global niri blur
 settings are unchanged. The Windows WebGPU renderer does not provide
 this transparent backdrop, so RDP launches prioritize working rendering over blur.
 The token-free asynchronous release pipeline requires owner bootstrap before
 durable Windows promotion:
 [setup and operations](scripts/wezterm-bootstrap.txt),
-[trial details and validation](docs/sessions/2026-10-11-terminal-trials.md).
+[original setup decisions and validation](docs/sessions/2026-10-11-terminal-trials.md).
 
 Two commands exist for the humans rather than the maintainer — except
 one of them is very much for the maintainer. Both are in the **base**
@@ -145,6 +166,27 @@ md-view # what guide/tools render through: glow with this repo's theme,
         # flowcharts); anything else is left as source rather than
         # drawn wrong. Same on native Windows.
 ```
+
+## WSL Windows interop
+
+Both WSL configurations register Windows executables with `binfmt_misc`, routing
+them directly through WSL's `/init`. This lets `powershell.exe` and `pwsh.exe`
+launch from Linux and enables Copilot's Windows clipboard image attachments.
+Apply changes with the NixOS rebuild for your architecture (`wsl` or `wsl-arm`),
+not just home-manager.
+
+If Windows executables fail with `exec format error` and the `WSLInterop` handler
+is missing, restore it without restarting WSL:
+
+```sh
+printf '%s\n' ':WSLInterop:M::MZ::/init:P' |
+  sudo tee /proc/sys/fs/binfmt_misc/register >/dev/null
+```
+
+This manual repair lasts only until the handler is removed again; the declarative
+registration restores it at boot and when its systemd service is restarted.
+For an image attachment, take a fresh screenshot and press `Alt+V` at Copilot's
+main input. Copying text commands afterwards can replace the clipboard image.
 
 ## WSL credential vault
 
@@ -338,7 +380,7 @@ sudo /nix/nix-installer uninstall   # removes /nix, _nixbld* users,
 rm -rf ~/Library/Fonts/HomeManager  # the flake-managed font dir
 ```
 
-`pb-mb` imports the cross-platform `dev` bundle plus the terminal trials,
+`pb-mb` imports the cross-platform `dev` bundle plus `terminals`,
 `vscode`, `lan-nix-cache`, and `fonts` (which, on darwin, mirrors the face set into
 `~/Library/Fonts/HomeManager/` for Core Text). Linux-only features
 (Wayland desktop, audio, power/battery, biometrics, impermanence,
@@ -441,12 +483,12 @@ Workflow:
 ```sh
 # inside WSL — builds the bundle from your ~/nixos checkout and pushes it:
 hm_win            # deploy the dotfiles only (fast)
-hm_win --setup    # deploy, then install/update the toolkit and WezTerm Trial
+hm_win --setup    # deploy, then install/update the toolkit and WezTerm
 ```
 
 `hm_win` deploys the generated dotfiles into the Windows profile. Pass
 `--setup` (`-s`) to also run `setup.ps1` and install/update the pinned
-Windows x64 WezTerm Trial afterwards via the Windows PowerShell interop.
+native Windows WezTerm afterwards via the Windows PowerShell interop.
 That's off by default because deploying is fast and frequent while installs
 are slow and idempotent. You can also run `setup.ps1` yourself in PowerShell
 (the path is printed), but that does not install WezTerm.
