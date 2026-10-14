@@ -1146,9 +1146,12 @@ let
               \$Existing = \$Shell.CreateShortcut(\$LinkPath)
               if (\$Existing.TargetPath -like '*Tabby.exe') { \$Icon = \$Existing.TargetPath }
             }
+            \$Default = Join-Path \$Env:LOCALAPPDATA 'Programs\Tabby\Tabby.exe'
+            if (-not \$Icon -and (Test-Path -LiteralPath \$Default)) { \$Icon = \$Default }
             \$Link = \$Shell.CreateShortcut(\$LinkPath)
             \$Link.TargetPath = (Get-Command powershell.exe -CommandType Application).Source
-            \$Link.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + \$Launcher + '"'
+            \$Quote = [string][char]34
+            \$Link.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ' + \$Quote + \$Launcher + \$Quote
             if (\$Icon) { \$Link.IconLocation = \$Icon + ',0' }
             \$Link.Save()
           }"
