@@ -284,43 +284,6 @@ let
       weztermLua = pkgs.writeText "wezterm.lua" config.flake.lib.weztermConfig;
       tabbyLocalYaml = (pkgs.formats.yaml { }).generate "tabby-config-local.yaml"
         (config.flake.lib.tabbyConfig { isWindows = true; });
-      tabbyRdpYaml = (pkgs.formats.yaml { }).generate "tabby-config-rdp.yaml"
-        (config.flake.lib.tabbyConfig { isWindows = true; isRemote = true; });
-      tabbyLauncher = pkgs.writeText "tabby-launch.ps1" ''
-        #Requires -Version 5.1
-        $ErrorActionPreference = 'Stop'
-
-        $tabby = (Get-Command Tabby.exe -CommandType Application -ErrorAction SilentlyContinue |
-          Select-Object -First 1).Source
-        if (-not $tabby) {
-          foreach ($candidate in @(
-            "$Env:LOCALAPPDATA\Programs\Tabby\Tabby.exe",
-            "$Env:ProgramFiles\Tabby\Tabby.exe"
-          )) {
-            if ($candidate -and (Test-Path -LiteralPath $candidate)) {
-              $tabby = $candidate
-              break
-            }
-          }
-        }
-        if (-not $tabby) {
-          throw 'Tabby.exe was not found. Run hm_win --setup first.'
-        }
-
-        $arguments = @()
-        $sessionName = if ($Env:SESSIONNAME) { $Env:SESSIONNAME } else { [string]::Empty }
-        if ($sessionName.ToUpperInvariant().StartsWith('RDP')) {
-          $Env:TABBY_CONFIG_DIRECTORY = Join-Path $Env:APPDATA 'tabby-rdp'
-          # Keep Electron and xterm.js away from CPU-backed WebGL under RDP.
-          $arguments += '--disable-gpu'
-          $arguments += '--disable-software-rasterizer'
-        }
-        if ($arguments.Count) {
-          Start-Process -FilePath $tabby -ArgumentList $arguments
-        } else {
-          Start-Process -FilePath $tabby
-        }
-      '';
       # Metadata only: ordinary hm_win must survive upstream asset deletion.
       # The explicit Windows installer selects and verifies the native archive.
       weztermManifest = (pkgs.formats.json { }).generate "wezterm-pin.json" {
@@ -850,8 +813,6 @@ let
       ${lib.optionalString enableAlacritty ''cp ${alacrittyToml}        "$out/alacritty.toml"''}
       cp ${windowsTerminalSettings} "$out/windows-terminal.json"
       cp ${tabbyLocalYaml}       "$out/tabby-config-local.yaml"
-      cp ${tabbyRdpYaml}         "$out/tabby-config-rdp.yaml"
-      cp ${tabbyLauncher}        "$out/tabby-launch.ps1"
       cp ${psmuxConf}            "$out/psmux.conf"
       cp ${btopConf}            "$out/btop.conf"
       cp ${../terminal-help.md}  "$out/terminal-help.md"
@@ -993,10 +954,9 @@ let
       # Tabby uses Electron's userData directory on Windows. Keep its
       # declarative config separate from ~/.config, which Tabby ignores.
       tabby_dir="$userprofile/AppData/Roaming/tabby"
-      tabby_rdp_dir="$userprofile/AppData/Roaming/tabby-rdp"
       deploy "$src/tabby-config-local.yaml" "$tabby_dir/config.yaml"
-      deploy "$src/tabby-config-rdp.yaml" "$tabby_rdp_dir/config.yaml"
-      deploy "$src/tabby-launch.ps1" "$nixwin/tabby-launch.ps1"
+      # Remove artifacts of the retired RDP-specific config and launcher.
+      rm -rf "$userprofile/AppData/Roaming/tabby-rdp" "$nixwin/tabby-launch.ps1"
       ${lib.optionalString enableAlacritty ''
       # alacritty reads %APPDATA%\alacritty\alacritty.toml on Windows
       # (NOT ~/.config), so deploy there directly.
@@ -1129,33 +1089,32 @@ let
         deploy_btop_conf
       fi
 
-      # Replace the installer shortcut with an RDP-aware launcher. Local
-      # sessions retain WebGL; remote sessions force Electron/xterm.js onto
-      # the non-WebGL path instead of using a CPU-backed graphics adapter.
+      # "Tabby Terminal" launches Tabby.exe directly (no wrapper, no console
+      # flash). Shortcuts from earlier RDP-aware versions are removed.
       if [ -n "$psexe" ]; then
-        tabby_launcher_win="$(wslpath -w "$nixwin/tabby-launch.ps1")"
-        tabby_launcher_b64="$(printf '%s' "$tabby_launcher_win" | base64 | tr -d '\n')"
         "$psexe" -NoProfile -NonInteractive -Command \
           "& {
-            \$Launcher = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$tabby_launcher_b64'))
             \$Programs = [Environment]::GetFolderPath('Programs')
             \$LinkPath = Join-Path \$Programs 'Tabby Terminal.lnk'
+            Remove-Item -LiteralPath (Join-Path \$Programs 'Tabby Terminal (RDP).lnk') -ErrorAction SilentlyContinue
             \$Shell = New-Object -ComObject WScript.Shell
-            \$Icon = \$null
+            \$Exe = \$null
             if (Test-Path -LiteralPath \$LinkPath) {
               \$Existing = \$Shell.CreateShortcut(\$LinkPath)
-              if (\$Existing.TargetPath -like '*Tabby.exe') { \$Icon = \$Existing.TargetPath }
+              if (\$Existing.TargetPath -like '*Tabby.exe') { \$Exe = \$Existing.TargetPath }
             }
             \$Default = Join-Path \$Env:LOCALAPPDATA 'Programs\Tabby\Tabby.exe'
-            if (-not \$Icon -and (Test-Path -LiteralPath \$Default)) { \$Icon = \$Default }
-            \$Link = \$Shell.CreateShortcut(\$LinkPath)
-            \$Link.TargetPath = (Get-Command powershell.exe -CommandType Application).Source
-            \$Quote = [string][char]34
-            \$Link.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ' + \$Quote + \$Launcher + \$Quote
-            if (\$Icon) { \$Link.IconLocation = \$Icon + ',0' }
-            \$Link.Save()
+            if (-not \$Exe -and (Test-Path -LiteralPath \$Default)) { \$Exe = \$Default }
+            if (\$Exe) {
+              \$Link = \$Shell.CreateShortcut(\$LinkPath)
+              \$Link.TargetPath = \$Exe
+              \$Link.Arguments = ''
+              \$Link.WorkingDirectory = Split-Path \$Exe
+              \$Link.IconLocation = \$Exe + ',0'
+              \$Link.Save()
+            }
           }"
-        echo "  Tabby RDP-aware shortcut installed"
+        echo "  Tabby shortcuts installed (direct + RDP launcher)"
       fi
 
       # Install the Nix-generated Fantasque face after setup.ps1 has tried to

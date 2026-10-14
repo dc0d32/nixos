@@ -134,7 +134,7 @@ let
         # Preserve the upstream hardened-runtime signature.
         dontFixup = true;
       };
-  tabbyConfig = { isDarwin ? false, isWindows ? false, isRemote ? false }: {
+  tabbyConfig = { isDarwin ? false, isWindows ? false }: {
     version = 1;
     enableAnalytics = false;
     enableAutomaticUpdates = false;
@@ -145,12 +145,10 @@ let
       # Tabby's window-level opacity fades text and fights macOS vibrancy.
       # Keep the window opaque and tint the native blur in CSS instead.
       opacity = 1.0;
-      vibrancy = (isDarwin || isWindows) && !isRemote;
+      vibrancy = isDarwin || isWindows;
       vibrancyType = "blur";
       css =
-        if isRemote then ''
-          app-root { background: rgb(var(--bs-dark-rgb)); }
-        '' else if isDarwin || isWindows then ''
+        if isDarwin || isWindows then ''
           app-root.vibrant { background: rgba(var(--bs-dark-rgb), ${toString backdrop.tintOpacity}); }
         '' else "";
       frame = "thin";
@@ -213,7 +211,6 @@ let
         "scroll-page-up" = [ "Shift-PageUp" ];
         "scroll-page-down" = [ "Shift-PageDown" ];
       };
-    hacks.disableGPU = isRemote;
   };
   ghostConfig = isDarwin: zsh: ''
     font-family = ${appearance.fontUnix}

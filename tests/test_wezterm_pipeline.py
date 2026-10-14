@@ -3296,23 +3296,17 @@ class WindowsInstallerContractTests(unittest.TestCase):
             '"reopen-tab" = if isDarwin then [ "⌘-Shift-T" ] else [ ];',
             'paneMods = if isDarwin then "${primary}-${alt}" else "Ctrl-Alt-Shift";',
             'opacity = 1.0;',
-            'vibrancy = (isDarwin || isWindows) && !isRemote;',
+            'vibrancy = isDarwin || isWindows;',
             'app-root.vibrant { background: rgba(var(--bs-dark-rgb), ${toString backdrop.tintOpacity}); }',
-            'hacks.disableGPU = isRemote;',
         ):
             self.assertIn(setting, tabby)
 
-    def test_tabby_windows_launcher_avoids_software_webgl_only_on_rdp(self):
+    def test_tabby_windows_shortcut_launches_exe_directly(self):
         windows = (ROOT / "flake-modules/windows/windows.nix").read_text()
-        launcher = windows[windows.index('tabbyLauncher ='):windows.index("      # Metadata only:")]
-        self.assertIn("SESSIONNAME", launcher)
-        self.assertIn("$Env:TABBY_CONFIG_DIRECTORY = Join-Path $Env:APPDATA 'tabby-rdp'", launcher)
-        self.assertIn("'--disable-gpu'", launcher)
-        self.assertIn("'--disable-software-rasterizer'", launcher)
-        self.assertIn("if ($arguments.Count)", launcher)
-        self.assertIn("Start-Process -FilePath $tabby -ArgumentList $arguments", launcher)
-        self.assertIn("else {\n          Start-Process -FilePath $tabby\n        }", launcher)
         self.assertIn("'Tabby Terminal.lnk'", windows)
+        self.assertIn("\\$Link.TargetPath = \\$Exe", windows)
+        self.assertNotIn("tabbyLauncher", windows)
+        self.assertNotIn("isRemote", windows)
 
     def test_backdrops_leave_existing_terminals_unchanged(self):
         config = (ROOT / "flake-modules/terminals.nix").read_text()

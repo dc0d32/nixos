@@ -275,9 +275,9 @@ dock routes the monitor through and isn't stable across docks.
 Managed GUI terminal alternatives are WezTerm, Ghostty and Tabby on desktop
 Linux/macOS, with WezTerm and Tabby also installed by native Windows
 `hm_win --setup`. They share the flake's Fantasque font, palette, history and
-shortcut intent. Tabby's Windows shortcut keeps WebGL locally and disables it
-for GPU-less RDP sessions. Native macOS and local Windows sessions use a
-lightly tinted native blur; the separate Windows RDP profile stays opaque.
+shortcut intent. Tabby's Windows shortcut launches `Tabby.exe` directly with a
+single config; Chromium decides GPU vs software rendering. Native macOS and
+Windows use a lightly tinted native blur.
 
 ## Project dev shells (templates)
 
