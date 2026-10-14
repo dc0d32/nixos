@@ -5,7 +5,7 @@
 let
   alacritty = config.flake.lib.alacrittySettings;
   # Match the user's macOS Terminal profile without changing other terminals.
-  backdrop = { opacity = 0.8; blurRadius = 30; };
+  backdrop = { opacity = 0.8; blurRadius = 30; tintOpacity = 0.2; };
   # Alacritty's built-in palette (config/color.rs), used when colors is omitted.
   colors = lib.recursiveUpdate
     {
@@ -134,7 +134,7 @@ let
         # Preserve the upstream hardened-runtime signature.
         dontFixup = true;
       };
-  tabbyConfig = { isDarwin ? false, isWindows ? false }: {
+  tabbyConfig = { isDarwin ? false, isWindows ? false, isRemote ? false }: {
     version = 1;
     enableAnalytics = false;
     enableAutomaticUpdates = false;
@@ -142,9 +142,17 @@ let
     recoverTabs = true;
     appearance = {
       colorSchemeMode = "dark";
-      opacity = if isDarwin then backdrop.opacity else 1.0;
-      vibrancy = isDarwin;
+      # Tabby's window-level opacity fades text and fights macOS vibrancy.
+      # Keep the window opaque and tint the native blur in CSS instead.
+      opacity = 1.0;
+      vibrancy = (isDarwin || isWindows) && !isRemote;
       vibrancyType = "blur";
+      css =
+        if isRemote then ''
+          app-root { background: rgb(var(--bs-dark-rgb)); }
+        '' else if isDarwin || isWindows then ''
+          app-root.vibrant { background: rgba(var(--bs-dark-rgb), ${toString backdrop.tintOpacity}); }
+        '' else "";
       frame = "thin";
       tabsLocation = "top";
       flexTabs = false;
@@ -202,7 +210,7 @@ let
         "scroll-page-up" = [ "Shift-PageUp" ];
         "scroll-page-down" = [ "Shift-PageDown" ];
       };
-    hacks.disableGPU = false;
+    hacks.disableGPU = isRemote;
   };
   ghostConfig = isDarwin: zsh: ''
     font-family = ${appearance.fontUnix}

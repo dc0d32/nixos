@@ -276,7 +276,8 @@ Managed GUI terminal alternatives are WezTerm, Ghostty and Tabby on desktop
 Linux/macOS, with WezTerm and Tabby also installed by native Windows
 `hm_win --setup`. They share the flake's Fantasque font, palette, history and
 shortcut intent. Tabby's Windows shortcut keeps WebGL locally and disables it
-for GPU-less RDP sessions.
+for GPU-less RDP sessions. Native macOS and local Windows sessions use a
+lightly tinted native blur; the separate Windows RDP profile stays opaque.
 
 ## Project dev shells (templates)
 

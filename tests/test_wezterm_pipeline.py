@@ -3277,7 +3277,8 @@ class WindowsInstallerContractTests(unittest.TestCase):
         self.assertIn('{ name = "Tabby Terminal"; id = "Eugeny.Tabby"; }', windows)
         self.assertIn('"Library/Application Support/tabby/config.yaml".source', terminals)
         self.assertIn('"tabby/config.yaml".source', terminals)
-        self.assertIn('deploy "$src/tabby-config.yaml" "$tabby_dir/config.yaml"', windows)
+        self.assertIn('deploy "$src/tabby-config-local.yaml" "$tabby_dir/config.yaml"', windows)
+        self.assertIn('deploy "$src/tabby-config-rdp.yaml" "$tabby_rdp_dir/config.yaml"', windows)
 
     def test_tabby_uses_shared_appearance_and_shortcuts(self):
         config = (ROOT / "flake-modules/terminals.nix").read_text()
@@ -3294,6 +3295,10 @@ class WindowsInstallerContractTests(unittest.TestCase):
             '"pane-maximize" = [ "${primary}-Z" ];',
             '"reopen-tab" = if isDarwin then [ "⌘-Shift-T" ] else [ ];',
             'paneMods = if isDarwin then "${primary}-${alt}" else "Ctrl-Alt-Shift";',
+            'opacity = 1.0;',
+            'vibrancy = (isDarwin || isWindows) && !isRemote;',
+            'app-root.vibrant { background: rgba(var(--bs-dark-rgb), ${toString backdrop.tintOpacity}); }',
+            'hacks.disableGPU = isRemote;',
         ):
             self.assertIn(setting, tabby)
 
@@ -3301,6 +3306,7 @@ class WindowsInstallerContractTests(unittest.TestCase):
         windows = (ROOT / "flake-modules/windows/windows.nix").read_text()
         launcher = windows[windows.index('tabbyLauncher ='):windows.index("      # Metadata only:")]
         self.assertIn("SESSIONNAME", launcher)
+        self.assertIn("$Env:TABBY_CONFIG_DIRECTORY = Join-Path $Env:APPDATA 'tabby-rdp'", launcher)
         self.assertIn("'--disable-gpu'", launcher)
         self.assertIn("'--disable-software-rasterizer'", launcher)
         self.assertIn("if ($arguments.Count)", launcher)
@@ -3311,7 +3317,7 @@ class WindowsInstallerContractTests(unittest.TestCase):
     def test_backdrops_leave_existing_terminals_unchanged(self):
         config = (ROOT / "flake-modules/terminals.nix").read_text()
         niri = (ROOT / "flake-modules/niri/window-rules.nix").read_text()
-        self.assertIn("backdrop = { opacity = 0.8; blurRadius = 30; };", config)
+        self.assertIn("backdrop = { opacity = 0.8; blurRadius = 30; tintOpacity = 0.2; };", config)
         self.assertIn("if isDarwin then backdrop.opacity else appearance.opacity", config)
         self.assertIn('background-blur = ${if isDarwin then toString backdrop.blurRadius else "false"}', config)
         self.assertIn("if windows or mac then", config)

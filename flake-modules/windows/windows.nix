@@ -282,8 +282,10 @@ let
       starshipToml = (pkgs.formats.toml { }).generate "starship.toml" starshipSettings;
       atuinToml = (pkgs.formats.toml { }).generate "atuin-config.toml" atuinSettings;
       weztermLua = pkgs.writeText "wezterm.lua" config.flake.lib.weztermConfig;
-      tabbyYaml = (pkgs.formats.yaml { }).generate "tabby-config.yaml"
+      tabbyLocalYaml = (pkgs.formats.yaml { }).generate "tabby-config-local.yaml"
         (config.flake.lib.tabbyConfig { isWindows = true; });
+      tabbyRdpYaml = (pkgs.formats.yaml { }).generate "tabby-config-rdp.yaml"
+        (config.flake.lib.tabbyConfig { isWindows = true; isRemote = true; });
       tabbyLauncher = pkgs.writeText "tabby-launch.ps1" ''
         #Requires -Version 5.1
         $ErrorActionPreference = 'Stop'
@@ -308,6 +310,7 @@ let
         $arguments = @()
         $sessionName = if ($Env:SESSIONNAME) { $Env:SESSIONNAME } else { [string]::Empty }
         if ($sessionName.ToUpperInvariant().StartsWith('RDP')) {
+          $Env:TABBY_CONFIG_DIRECTORY = Join-Path $Env:APPDATA 'tabby-rdp'
           # Keep Electron and xterm.js away from CPU-backed WebGL under RDP.
           $arguments += '--disable-gpu'
           $arguments += '--disable-software-rasterizer'
@@ -846,7 +849,8 @@ let
       cp ${atuinToml}            "$out/atuin-config.toml"
       ${lib.optionalString enableAlacritty ''cp ${alacrittyToml}        "$out/alacritty.toml"''}
       cp ${windowsTerminalSettings} "$out/windows-terminal.json"
-      cp ${tabbyYaml}            "$out/tabby-config.yaml"
+      cp ${tabbyLocalYaml}       "$out/tabby-config-local.yaml"
+      cp ${tabbyRdpYaml}         "$out/tabby-config-rdp.yaml"
       cp ${tabbyLauncher}        "$out/tabby-launch.ps1"
       cp ${psmuxConf}            "$out/psmux.conf"
       cp ${btopConf}            "$out/btop.conf"
@@ -989,7 +993,9 @@ let
       # Tabby uses Electron's userData directory on Windows. Keep its
       # declarative config separate from ~/.config, which Tabby ignores.
       tabby_dir="$userprofile/AppData/Roaming/tabby"
-      deploy "$src/tabby-config.yaml" "$tabby_dir/config.yaml"
+      tabby_rdp_dir="$userprofile/AppData/Roaming/tabby-rdp"
+      deploy "$src/tabby-config-local.yaml" "$tabby_dir/config.yaml"
+      deploy "$src/tabby-config-rdp.yaml" "$tabby_rdp_dir/config.yaml"
       deploy "$src/tabby-launch.ps1" "$nixwin/tabby-launch.ps1"
       ${lib.optionalString enableAlacritty ''
       # alacritty reads %APPDATA%\alacritty\alacritty.toml on Windows
