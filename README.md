@@ -277,7 +277,7 @@ Linux/macOS, with WezTerm and Tabby also installed by native Windows
 `hm_win --setup`. They share the flake's Fantasque font, palette, history and
 shortcut intent. Tabby's Windows shortcut launches `Tabby.exe` directly with a
 single config; Chromium decides GPU vs software rendering. Native macOS and
-Windows use a lightly tinted native blur.
+Windows stays opaque; macOS uses a lightly tinted native blur.
 
 ## Project dev shells (templates)
 

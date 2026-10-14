@@ -3296,7 +3296,8 @@ class WindowsInstallerContractTests(unittest.TestCase):
             '"reopen-tab" = if isDarwin then [ "⌘-Shift-T" ] else [ ];',
             'paneMods = if isDarwin then "${primary}-${alt}" else "Ctrl-Alt-Shift";',
             'opacity = 1.0;',
-            'vibrancy = isDarwin || isWindows;',
+            'vibrancy = isDarwin;',
+            'app-root { background: rgb(var(--bs-dark-rgb)); }',
             'app-root.vibrant { background: rgba(var(--bs-dark-rgb), ${toString backdrop.tintOpacity}); }',
         ):
             self.assertIn(setting, tabby)

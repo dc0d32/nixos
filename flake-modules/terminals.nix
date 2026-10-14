@@ -145,11 +145,13 @@ let
       # Tabby's window-level opacity fades text and fights macOS vibrancy.
       # Keep the window opaque and tint the native blur in CSS instead.
       opacity = 1.0;
-      vibrancy = isDarwin || isWindows;
+      vibrancy = isDarwin;
       vibrancyType = "blur";
       css =
-        if isDarwin || isWindows then ''
+        if isDarwin then ''
           app-root.vibrant { background: rgba(var(--bs-dark-rgb), ${toString backdrop.tintOpacity}); }
+        '' else if isWindows then ''
+          app-root { background: rgb(var(--bs-dark-rgb)); }
         '' else "";
       frame = "thin";
       tabsLocation = "top";
