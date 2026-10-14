@@ -9,6 +9,7 @@
 #   - direnv        per-project env
 #   - gh            GitHub CLI
 #   - git           version control + identity
+#   - mcat          terminal document/media viewer
 #   - nix-settings  user-profile GC policy (mirrors NixOS-side
 #                   nix-settings; see flake-modules/nix-settings-hm.nix)
 #   - tmux          terminal multiplexer
@@ -38,6 +39,7 @@
     discovery
     gh
     git
+    mcat
     nix-settings
     tmux
     vim

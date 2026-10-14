@@ -272,6 +272,12 @@ layout overrides them while it exists. Key external monitors by
 connector name like `DP-2` — connector numbering depends on which port a
 dock routes the monitor through and isn't stable across docks.
 
+Managed GUI terminal alternatives are WezTerm, Ghostty and Tabby on desktop
+Linux/macOS, with WezTerm and Tabby also installed by native Windows
+`hm_win --setup`. They share the flake's Fantasque font, palette, history and
+shortcut intent. Tabby's Windows shortcut keeps WebGL locally and disables it
+for GPU-less RDP sessions.
+
 ## Project dev shells (templates)
 
 Per-project toolchains live as flake templates. Scaffold one into a new
@@ -516,7 +522,8 @@ PowerShell 7 / Windows Terminal / Azure CLI) plus the few CLI packages
 whose Scoop builds bundle app-control-blocked launcher executables
 (`git` ships `git-bash.exe`/`pinentry.exe`, `uv` ships `uvw.exe`;
 `git-lfs` alongside git); (2) `uv tool install`s the pure-Python tools
-(`visidata`); (3) Scoop-installs the rest of the CLI toolkit + a Nerd
+(`visidata`); (3) Scoop-installs the rest of the CLI toolkit, including
+`mcat`, plus a Nerd
 Font; (4) removes any older Scoop copies of the winget-moved tools. Then
 restart the terminal.
 

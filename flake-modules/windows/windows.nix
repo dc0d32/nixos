@@ -2,7 +2,7 @@
 #
 # There is no native Nix on Windows, so this does NOT manage Windows the
 # way home-manager manages Linux. Instead it *generates* the Windows
-# config artifacts (PowerShell profile, starship.toml, alacritty.toml,
+# config artifacts (PowerShell profile, starship.toml, terminal configs,
 # a psmux/tmux config, a Scoop install script, a winget configuration)
 # from Nix, and ships a WSL-side command
 # `hm_win` that copies them into the Windows user profile under
@@ -20,7 +20,7 @@
 # Workflow:
 #   1. edit these files / the shared toolkit
 #   2. hm_win        (builds windows-dotfiles from ~/nixos, pushes it)
-#   3. hm_win --setup (installs/updates the toolkit and WezTerm after
+#   3. hm_win --setup (installs/updates the toolkit, Tabby and WezTerm after
 #      registering the patched Fantasque font)
 #
 # Contributes:
@@ -135,6 +135,7 @@ let
     { name = "7-Zip"; id = "7zip.7zip"; }
     { name = "PowerShell 7"; id = "Microsoft.PowerShell"; }
     { name = "Windows Terminal"; id = "Microsoft.WindowsTerminal"; }
+    { name = "Tabby Terminal"; id = "Eugeny.Tabby"; }
     { name = "Azure CLI"; id = "Microsoft.AzureCLI"; }
   ];
 
@@ -182,6 +183,7 @@ let
     "navi"
     "duckdb"
     "miller"
+    "mcat"
     "yazi"
     "vifm"
     "starship"
@@ -280,6 +282,42 @@ let
       starshipToml = (pkgs.formats.toml { }).generate "starship.toml" starshipSettings;
       atuinToml = (pkgs.formats.toml { }).generate "atuin-config.toml" atuinSettings;
       weztermLua = pkgs.writeText "wezterm.lua" config.flake.lib.weztermConfig;
+      tabbyYaml = (pkgs.formats.yaml { }).generate "tabby-config.yaml"
+        (config.flake.lib.tabbyConfig { isWindows = true; });
+      tabbyLauncher = pkgs.writeText "tabby-launch.ps1" ''
+        #Requires -Version 5.1
+        $ErrorActionPreference = 'Stop'
+
+        $tabby = (Get-Command Tabby.exe -CommandType Application -ErrorAction SilentlyContinue |
+          Select-Object -First 1).Source
+        if (-not $tabby) {
+          foreach ($candidate in @(
+            "$Env:LOCALAPPDATA\Programs\Tabby\Tabby.exe",
+            "$Env:ProgramFiles\Tabby\Tabby.exe"
+          )) {
+            if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+              $tabby = $candidate
+              break
+            }
+          }
+        }
+        if (-not $tabby) {
+          throw 'Tabby.exe was not found. Run hm_win --setup first.'
+        }
+
+        $arguments = @()
+        $sessionName = if ($Env:SESSIONNAME) { $Env:SESSIONNAME } else { [string]::Empty }
+        if ($sessionName.ToUpperInvariant().StartsWith('RDP')) {
+          # Keep Electron and xterm.js away from CPU-backed WebGL under RDP.
+          $arguments += '--disable-gpu'
+          $arguments += '--disable-software-rasterizer'
+        }
+        if ($arguments.Count) {
+          Start-Process -FilePath $tabby -ArgumentList $arguments
+        } else {
+          Start-Process -FilePath $tabby
+        }
+      '';
       # Metadata only: ordinary hm_win must survive upstream asset deletion.
       # The explicit Windows installer selects and verifies the native archive.
       weztermManifest = (pkgs.formats.json { }).generate "wezterm-pin.json" {
@@ -808,6 +846,8 @@ let
       cp ${atuinToml}            "$out/atuin-config.toml"
       ${lib.optionalString enableAlacritty ''cp ${alacrittyToml}        "$out/alacritty.toml"''}
       cp ${windowsTerminalSettings} "$out/windows-terminal.json"
+      cp ${tabbyYaml}            "$out/tabby-config.yaml"
+      cp ${tabbyLauncher}        "$out/tabby-launch.ps1"
       cp ${psmuxConf}            "$out/psmux.conf"
       cp ${btopConf}            "$out/btop.conf"
       cp ${../terminal-help.md}  "$out/terminal-help.md"
@@ -839,7 +879,7 @@ let
       fi
 
       # --setup / -s: after deploying, run setup.ps1, register the patched
-      # font and install/update WezTerm. Off by default — deploying
+      # font and install/update Tabby and WezTerm. Off by default — deploying
       # dotfiles is fast and frequent; the installs are slow and idempotent.
       run_setup=0
       for arg in "$@"; do
@@ -848,7 +888,7 @@ let
           -h | --help)
             echo "usage: hm_win [--setup]"
             echo "  (no args)   deploy the Nix-generated dotfiles to the Windows profile"
-            echo "  --setup,-s  also install/update the toolkit and native Windows WezTerm"
+            echo "  --setup,-s  also install/update the toolkit, Tabby and native Windows WezTerm"
             exit 0
             ;;
           *)
@@ -946,6 +986,11 @@ let
       # Nix-generated config (compact/inline style, matching the WSL/zsh
       # setup) instead of atuin's own default.
       deploy "$src/atuin-config.toml" "$cfg/atuin/config.toml"
+      # Tabby uses Electron's userData directory on Windows. Keep its
+      # declarative config separate from ~/.config, which Tabby ignores.
+      tabby_dir="$userprofile/AppData/Roaming/tabby"
+      deploy "$src/tabby-config.yaml" "$tabby_dir/config.yaml"
+      deploy "$src/tabby-launch.ps1" "$nixwin/tabby-launch.ps1"
       ${lib.optionalString enableAlacritty ''
       # alacritty reads %APPDATA%\alacritty\alacritty.toml on Windows
       # (NOT ~/.config), so deploy there directly.
@@ -1076,6 +1121,32 @@ let
         # setup.ps1 just installed btop4win via winget; the earlier deploy
         # pass ran before that and skipped btop.conf. Land it now.
         deploy_btop_conf
+      fi
+
+      # Replace the installer shortcut with an RDP-aware launcher. Local
+      # sessions retain WebGL; remote sessions force Electron/xterm.js onto
+      # the non-WebGL path instead of using a CPU-backed graphics adapter.
+      if [ -n "$psexe" ]; then
+        tabby_launcher_win="$(wslpath -w "$nixwin/tabby-launch.ps1")"
+        tabby_launcher_b64="$(printf '%s' "$tabby_launcher_win" | base64 | tr -d '\n')"
+        "$psexe" -NoProfile -NonInteractive -Command \
+          "& {
+            \$Launcher = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$tabby_launcher_b64'))
+            \$Programs = [Environment]::GetFolderPath('Programs')
+            \$LinkPath = Join-Path \$Programs 'Tabby Terminal.lnk'
+            \$Shell = New-Object -ComObject WScript.Shell
+            \$Icon = \$null
+            if (Test-Path -LiteralPath \$LinkPath) {
+              \$Existing = \$Shell.CreateShortcut(\$LinkPath)
+              if (\$Existing.TargetPath -like '*Tabby.exe') { \$Icon = \$Existing.TargetPath }
+            }
+            \$Link = \$Shell.CreateShortcut(\$LinkPath)
+            \$Link.TargetPath = (Get-Command powershell.exe -CommandType Application).Source
+            \$Link.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + \$Launcher + '"'
+            if (\$Icon) { \$Link.IconLocation = \$Icon + ',0' }
+            \$Link.Save()
+          }"
+        echo "  Tabby RDP-aware shortcut installed"
       fi
 
       # Install the Nix-generated Fantasque face after setup.ps1 has tried to

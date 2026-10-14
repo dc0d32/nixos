@@ -3238,10 +3238,10 @@ class WindowsInstallerContractTests(unittest.TestCase):
 
     def test_windows_renderer_preserves_local_backdrop_and_rdp_launch(self):
         config = (ROOT / "flake-modules/terminals.nix").read_text()
-        windows = config[config.index("      -- WebGPU loses"):config.index("    local function page")]
+        windows = config[config.index("      -- OpenGL works"):config.index("    local function page")]
         self.assertIn("""local remote = (os.getenv('SESSIONNAME') or ""):upper():match('^RDP') ~= nil""", windows)
-        self.assertIn("config.front_end = remote and 'WebGpu' or 'OpenGL'", windows)
-        self.assertIn("    if windows then\n      -- WebGPU loses", config)
+        self.assertIn("config.front_end = remote and 'Software' or 'OpenGL'", windows)
+        self.assertIn("    if windows then\n      -- OpenGL works", config)
 
     def test_rdp_rendering_budget_and_local_windows_transparency_are_isolated(self):
         config = (ROOT / "flake-modules/terminals.nix").read_text()
@@ -3258,6 +3258,55 @@ class WindowsInstallerContractTests(unittest.TestCase):
         self.assertIn("      else\n        config.window_background_opacity = 0.6\n      end", remote)
         self.assertEqual(config.count("config.max_fps ="), 1)
         self.assertEqual(config.count("config.animation_fps ="), 1)
+
+    def test_mcat_is_available_on_unix_and_native_windows(self):
+        base = (ROOT / "flake-modules/bundles/home-base.nix").read_text()
+        module = (ROOT / "flake-modules/mcat.nix").read_text()
+        windows = (ROOT / "flake-modules/windows/windows.nix").read_text()
+        self.assertIn("\n    mcat\n", base)
+        self.assertIn("home.packages = [ pkgs.mcat ];", module)
+        self.assertIn('\n    "mcat"\n', windows)
+
+    def test_tabby_is_managed_across_unix_darwin_and_windows(self):
+        terminals = (ROOT / "flake-modules/terminals.nix").read_text()
+        windows = (ROOT / "flake-modules/windows/windows.nix").read_text()
+        for system in ("x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin"):
+            self.assertIn(f"{system} = {{", terminals)
+        self.assertIn("pkgs.appimageTools.wrapType2", terminals)
+        self.assertIn('cp -R Tabby.app "$out/Applications/"', terminals)
+        self.assertIn('{ name = "Tabby Terminal"; id = "Eugeny.Tabby"; }', windows)
+        self.assertIn('"Library/Application Support/tabby/config.yaml".source', terminals)
+        self.assertIn('"tabby/config.yaml".source', terminals)
+        self.assertIn('deploy "$src/tabby-config.yaml" "$tabby_dir/config.yaml"', windows)
+
+    def test_tabby_uses_shared_appearance_and_shortcuts(self):
+        config = (ROOT / "flake-modules/terminals.nix").read_text()
+        tabby = config[config.index("  tabbyConfig ="):config.index("  ghostConfig =")]
+        for setting in (
+            'frontend = "xterm-webgl";',
+            'enableAnalytics = false;',
+            'enableAutomaticUpdates = false;',
+            'font = if isWindows then appearance.fontWindows else appearance.fontUnix;',
+            'scrollbackLines = appearance.history;',
+            'colors = appearance.ansi ++ appearance.brights;',
+            '"split-right" = [ "${primary}-D" ];',
+            '"split-bottom" = [ "${primary}-E" ];',
+            '"pane-maximize" = [ "${primary}-Z" ];',
+            '"reopen-tab" = if isDarwin then [ "⌘-Shift-T" ] else [ ];',
+            'paneMods = if isDarwin then "${primary}-${alt}" else "Ctrl-Alt-Shift";',
+        ):
+            self.assertIn(setting, tabby)
+
+    def test_tabby_windows_launcher_avoids_software_webgl_only_on_rdp(self):
+        windows = (ROOT / "flake-modules/windows/windows.nix").read_text()
+        launcher = windows[windows.index('tabbyLauncher ='):windows.index("      # Metadata only:")]
+        self.assertIn("SESSIONNAME", launcher)
+        self.assertIn("'--disable-gpu'", launcher)
+        self.assertIn("'--disable-software-rasterizer'", launcher)
+        self.assertIn("if ($arguments.Count)", launcher)
+        self.assertIn("Start-Process -FilePath $tabby -ArgumentList $arguments", launcher)
+        self.assertIn("else {\n          Start-Process -FilePath $tabby\n        }", launcher)
+        self.assertIn("'Tabby Terminal.lnk'", windows)
 
     def test_backdrops_leave_existing_terminals_unchanged(self):
         config = (ROOT / "flake-modules/terminals.nix").read_text()

@@ -1,6 +1,6 @@
-# WezTerm and Ghostty share appearance and shortcut intent across OSes.
+# WezTerm, Ghostty and Tabby share appearance and shortcut intent across OSes.
 # Existing terminal defaults and compositor launch bindings remain untouched.
-# Retire when neither WezTerm nor Ghostty is used.
+# Retire when none of these managed terminal alternatives is used.
 { config, lib, ... }:
 let
   alacritty = config.flake.lib.alacrittySettings;
@@ -65,6 +65,145 @@ let
     { key = "e"; ghost = "new_split:down"; wez = "act.SplitVertical { domain = 'CurrentPaneDomain' }"; }
     { key = "z"; ghost = "toggle_split_zoom"; wez = "act.TogglePaneZoomState"; }
   ];
+  tabbyPin = {
+    version = "1.0.238";
+    sources = {
+      x86_64-linux = {
+        asset = "tabby-1.0.238-linux-x64.AppImage";
+        hash = "sha512-D/rkcmbkUPZFQtAf6133fVV7tsW+r8sdsmp0t2X23fvyH61o05hIJSrIKfYkmzz2mCJtSxpvbTF25WjeLczJuw==";
+      };
+      aarch64-linux = {
+        asset = "tabby-1.0.238-linux-arm64.AppImage";
+        hash = "sha512-vbQF31pOgSPxuOKCB9x6HjjVZviQpP5ZtWSqSXie0Wr0456j8BFBj6nzhV4889EuqZBVwOV9zJ/EbHBwTh6pVg==";
+      };
+      x86_64-darwin = {
+        asset = "tabby-1.0.238-macos-x86_64.zip";
+        hash = "sha512-7dvbp6+PLtXFxSHYmcx++zEB/yPgBMgcTavrBWTkZ6nyS0hgZrCa7QmZDO3nfUwMynb+p1f/7Coqeqz8+8zoew==";
+      };
+      aarch64-darwin = {
+        asset = "tabby-1.0.238-macos-arm64.zip";
+        hash = "sha512-cxEca/dUoJp4HbcxkA0XVWgxRLalO3LZ3I3dSm25yHrRrRIRhrgP3kFOQzRCEA/2mpfm5b43fbzNixQbpb+EiQ==";
+      };
+    };
+  };
+  mkTabbyPackage = pkgs:
+    let
+      pname = "tabby";
+      inherit (tabbyPin) version;
+      source = tabbyPin.sources.${pkgs.stdenv.hostPlatform.system}
+        or (throw "Tabby Terminal is not pinned for ${pkgs.stdenv.hostPlatform.system}");
+      src = pkgs.fetchurl {
+        url = "https://github.com/Eugeny/tabby/releases/download/v${version}/${source.asset}";
+        inherit (source) hash;
+      };
+      meta = {
+        description = "Cross-platform terminal with a WebGL renderer and software fallback";
+        homepage = "https://tabby.sh/";
+        license = lib.licenses.mit;
+        sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+        platforms = builtins.attrNames tabbyPin.sources;
+        mainProgram = "tabby";
+      };
+    in
+    if pkgs.stdenv.isLinux then
+      pkgs.appimageTools.wrapType2
+        {
+          inherit pname version src meta;
+          extraInstallCommands =
+            let
+              contents = pkgs.appimageTools.extractType2 { inherit pname version src; };
+            in
+            ''
+              install -Dm444 ${contents}/tabby.desktop "$out/share/applications/tabby.desktop"
+              substituteInPlace "$out/share/applications/tabby.desktop" \
+                --replace-fail 'Exec=AppRun' 'Exec=tabby'
+              cp -r ${contents}/usr/share/icons "$out/share/"
+            '';
+        }
+    else
+      pkgs.stdenvNoCC.mkDerivation {
+        inherit pname version src meta;
+        nativeBuildInputs = [ pkgs.unzip ];
+        sourceRoot = ".";
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out/Applications"
+          cp -R Tabby.app "$out/Applications/"
+          runHook postInstall
+        '';
+        # Preserve the upstream hardened-runtime signature.
+        dontFixup = true;
+      };
+  tabbyConfig = { isDarwin ? false, isWindows ? false }: {
+    version = 1;
+    enableAnalytics = false;
+    enableAutomaticUpdates = false;
+    enableWelcomeTab = false;
+    recoverTabs = true;
+    appearance = {
+      colorSchemeMode = "dark";
+      opacity = if isDarwin then backdrop.opacity else 1.0;
+      vibrancy = isDarwin;
+      vibrancyType = "blur";
+      frame = "thin";
+      tabsLocation = "top";
+      flexTabs = false;
+      lastTabClosesWindow = false;
+    };
+    terminal = {
+      frontend = "xterm-webgl";
+      profile = if isWindows then "local:powershell-core" else "local:default";
+      font = if isWindows then appearance.fontWindows else appearance.fontUnix;
+      fontSize =
+        if isWindows then appearance.sizeWindows
+        else if isDarwin then appearance.sizeMac
+        else appearance.sizeUnix;
+      fontWeight = 400;
+      fontWeightBold = 700;
+      ligatures = false;
+      cursor = { Beam = "beam"; Block = "block"; Underline = "underline"; }.${appearance.cursorShape};
+      cursorBlink = appearance.cursorBlink;
+      scrollbackLines = appearance.history;
+      copyOnSelect = false;
+      bracketedPaste = true;
+      warnOnMultilinePaste = true;
+      colorScheme = {
+        name = "Nix managed";
+        inherit (appearance) foreground background;
+        cursor = appearance.foreground;
+        colors = appearance.ansi ++ appearance.brights;
+      };
+    };
+    hotkeys =
+      let
+        primary = if isDarwin then "⌘" else "Ctrl-Shift";
+        alt = if isDarwin then "⌥" else "Alt";
+        paneMods = if isDarwin then "${primary}-${alt}" else "Ctrl-Alt-Shift";
+      in
+      {
+        copy = [ "${primary}-C" ];
+        paste = [ "${primary}-V" ];
+        search = [ "${primary}-F" ];
+        "zoom-in" = [ "${primary}-=" ];
+        "zoom-out" = [ "${primary}--" ];
+        "reset-zoom" = [ "${primary}-0" ];
+        "new-tab" = [ "${primary}-T" ];
+        "reopen-tab" = if isDarwin then [ "⌘-Shift-T" ] else [ ];
+        "close-tab" = [ "${primary}-W" ];
+        "split-right" = [ "${primary}-D" ];
+        "split-bottom" = [ "${primary}-E" ];
+        "pane-maximize" = [ "${primary}-Z" ];
+        "pane-nav-left" = [ "${paneMods}-Left" ];
+        "pane-nav-right" = [ "${paneMods}-Right" ];
+        "pane-nav-up" = [ "${paneMods}-Up" ];
+        "pane-nav-down" = [ "${paneMods}-Down" ];
+        "next-tab" = [ "Ctrl-Tab" ];
+        "previous-tab" = [ "Ctrl-Shift-Tab" ];
+        "scroll-page-up" = [ "Shift-PageUp" ];
+        "scroll-page-down" = [ "Shift-PageDown" ];
+      };
+    hacks.disableGPU = false;
+  };
   ghostConfig = isDarwin: zsh: ''
     font-family = ${appearance.fontUnix}
     font-style = ${appearance.style}
@@ -147,9 +286,11 @@ let
     config.unix_domains = {}
     config.wsl_domains = {}
     if windows then
-      -- WebGPU loses Windows backdrop alpha; OpenGL works locally but fails on RDP.
+      -- OpenGL works locally but fails on RDP. Do not force WebGPU there:
+      -- a GPU-less VM exposes Microsoft's CPU-backed D3D adapter, which can
+      -- peg every vCPU. WezTerm's Software frontend is its intended RDP path.
       local remote = (os.getenv('SESSIONNAME') or ""):upper():match('^RDP') ~= nil
-      config.front_end = remote and 'WebGpu' or 'OpenGL'
+      config.front_end = remote and 'Software' or 'OpenGL'
       if remote then
         -- RDP may expose only the CPU-based Microsoft Basic Render Driver.
         config.window_background_opacity = 1
@@ -215,33 +356,49 @@ let
 in
 {
   flake.lib = {
-    inherit weztermConfig;
+    inherit tabbyConfig tabbyPin weztermConfig;
     terminalAppearance = appearance;
     weztermPin = import ../overlays/wezterm-pin.nix;
   };
-  flake.modules.homeManager.terminals = { pkgs, options, ... }: {
-    config = lib.mkMerge ([
-      {
-        home.packages = [
-          pkgs.wezterm
-          (if pkgs.stdenv.isDarwin then pkgs.ghostty-bin else pkgs.ghostty)
-        ];
-        # Normal HM collision checks apply: no force/clobber of local configs.
-        xdg.configFile."wezterm/wezterm.lua".text = weztermConfig;
-        xdg.configFile."ghostty/config".text = ghostConfig pkgs.stdenv.isDarwin "${pkgs.zsh}/bin/zsh";
-      }
-    ] ++ lib.optional (options.programs ? niri) {
-      # Paint opaque and let niri apply 0.8 once, after its
-      # catch-all 0.7 rule. No extra application-side alpha.
-      programs.niri.settings.window-rules = lib.mkAfter [
+  flake.modules.homeManager.terminals = { pkgs, options, ... }:
+    let
+      tabby = mkTabbyPackage pkgs;
+      tabbyYaml = (pkgs.formats.yaml { }).generate "tabby-config.yaml" (tabbyConfig {
+        isDarwin = pkgs.stdenv.isDarwin;
+      });
+    in
+    {
+      config = lib.mkMerge ([
         {
-          matches = [
-            { app-id = "^com\\.mitchellh\\.ghostty$"; }
-            { app-id = "^org\\.wezfurlong\\.wezterm$"; }
+          home.packages = [
+            pkgs.wezterm
+            (if pkgs.stdenv.isDarwin then pkgs.ghostty-bin else pkgs.ghostty)
+            tabby
           ];
-          opacity = backdrop.opacity;
+          # Normal HM collision checks apply: no force/clobber of local configs.
+          xdg.configFile = {
+            "wezterm/wezterm.lua".text = weztermConfig;
+            "ghostty/config".text = ghostConfig pkgs.stdenv.isDarwin "${pkgs.zsh}/bin/zsh";
+          } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+            "tabby/config.yaml".source = tabbyYaml;
+          };
+          home.file = lib.mkIf pkgs.stdenv.isDarwin {
+            "Library/Application Support/tabby/config.yaml".source = tabbyYaml;
+          };
         }
-      ];
-    });
-  };
+      ] ++ lib.optional (options.programs ? niri) {
+        # Paint opaque and let niri apply 0.8 once, after its
+        # catch-all 0.7 rule. No extra application-side alpha.
+        programs.niri.settings.window-rules = lib.mkAfter [
+          {
+            matches = [
+              { app-id = "^com\\.mitchellh\\.ghostty$"; }
+              { app-id = "^org\\.wezfurlong\\.wezterm$"; }
+              { app-id = "^tabby$"; }
+            ];
+            opacity = backdrop.opacity;
+          }
+        ];
+      });
+    };
 }
