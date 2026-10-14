@@ -1108,7 +1108,7 @@ let
             if (\$Exe) {
               \$Link = \$Shell.CreateShortcut(\$LinkPath)
               \$Link.TargetPath = \$Exe
-              \$Link.Arguments = ''
+              \$Link.Arguments = [string]::Empty
               \$Link.WorkingDirectory = Split-Path \$Exe
               \$Link.IconLocation = \$Exe + ',0'
               \$Link.Save()
