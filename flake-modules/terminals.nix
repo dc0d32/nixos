@@ -163,15 +163,16 @@ let
       profile = if isWindows then "local:powershell-core" else "local:default";
       font = if isWindows then appearance.fontWindows else appearance.fontUnix;
       # Tabby sizes are CSS pixels, while the shared appearance sizes are points.
+      # Tabby runs one point smaller than the other terminals.
       fontSize =
-        let px = pt: builtins.floor (pt * 4.0 / 3.0 + 0.5);
+        let px = pt: builtins.floor ((pt - 1) * 4.0 / 3.0 + 0.5);
         in
         if isWindows then px appearance.sizeWindows
-        else if isDarwin then appearance.sizeMac
+        else if isDarwin then appearance.sizeMac - 1
         else px appearance.sizeUnix;
       fontWeight = 400;
       fontWeightBold = 700;
-      ligatures = false;
+      ligatures = true;
       cursor = { Beam = "beam"; Block = "block"; Underline = "underline"; }.${appearance.cursorShape};
       cursorBlink = appearance.cursorBlink;
       scrollbackLines = appearance.history;
