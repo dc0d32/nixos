@@ -255,22 +255,9 @@
       pre-commit-check = inputs.git-hooks.lib.${system}.run {
         src = ../.;
         hooks = {
-          # Custom gitleaks hook — git-hooks.nix doesn't ship a built-in
-          # one in the version we pin, so we define it as a generic
-          # `system`-language hook. `gitleaks protect --staged` scans the
-          # currently-staged diff and exits non-zero on a finding.
-          gitleaks = {
-            enable = true;
-            name = "gitleaks (secret scan)";
-            entry = "${pkgs.gitleaks}/bin/gitleaks protect --staged --redact --verbose";
-            language = "system";
-            # We want to scan the staged diff as a whole, not be invoked
-            # once per file — pre-commit's default behavior of passing
-            # filenames as args would make gitleaks scan those files'
-            # contents on disk (which may differ from what's staged) and
-            # is the wrong mode for this hook.
-            pass_filenames = false;
-          };
+          # The built-in hook scans the staged diff as a whole and does not
+          # receive working-tree filenames.
+          gitleaks.enable = true;
           nixpkgs-fmt.enable = true;
 
           # See `check-bash-shebang` above. Receives staged filenames
