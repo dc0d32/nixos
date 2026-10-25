@@ -20,7 +20,9 @@
 
       # Languages
       python3
-      nodejs
+      # nodejs 24.21.0 predates the 2026-10 security release; use the patched
+      # maintained line until the default nodejs package reaches 24.22.1.
+      nodejs_22
 
       # tree-sitter CLI — available from the shell for grammar
       # development (parser generation, `tree-sitter test`, etc.).
