@@ -295,8 +295,10 @@ in
 
           programs.home-manager.enable = true;
 
-          # idle timings and EDITOR/VISUAL are module defaults now
-          # (idle.nix 300/420/900, vim.nix "vim").
+          # This fixed desktop must remain reachable and preserve open work
+          # across idle periods. Keep lock + monitor power-off, but reserve
+          # suspend/hibernate for explicit user actions.
+          idle.suspendAfter = null;
           audio = audioCfg;
 
           home.username = primaryUser;
@@ -310,7 +312,12 @@ in
         name = "${kid}@${hostName}";
         value = {
           pkgs = hmPkgs;
-          module = config.flake.lib.mkKidHmModule { username = kid; audio = audioCfg; };
+          module = {
+            imports = [
+              (config.flake.lib.mkKidHmModule { username = kid; audio = audioCfg; })
+            ];
+            idle.suspendAfter = null;
+          };
         };
       })
       kidUsers);

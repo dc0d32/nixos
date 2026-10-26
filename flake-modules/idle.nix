@@ -64,9 +64,9 @@
           description = "Seconds of inactivity before powering off monitors.";
         };
         suspendAfter = lib.mkOption {
-          type = lib.types.int;
+          type = lib.types.nullOr lib.types.int;
           default = 900;
-          description = "Seconds of inactivity before systemd suspend.";
+          description = "Seconds of inactivity before systemd suspend, or null to disable automatic suspend.";
         };
       };
 
@@ -89,8 +89,11 @@
               command = dpmsOffCmd;
               resumeCommand = dpmsOnCmd;
             }
-            { timeout = cfg.suspendAfter; command = suspendCmd; }
-          ];
+          ]
+          ++ lib.optional (cfg.suspendAfter != null) {
+            timeout = cfg.suspendAfter;
+            command = suspendCmd;
+          };
           events = {
             before-sleep = "${lockScreen}";
             lock = "${lockScreen}";
