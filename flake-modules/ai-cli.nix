@@ -70,6 +70,9 @@ in
 
       # Publish app state even through wsl.exe, whose foreground process hides Copilot.
       # No markers in pipes, subshell/background jobs, or tmux's outer pane.
+      # Calls the nix package by store path, not `command copilot`: under WSL
+      # the Windows PATH (interop) can sort ahead of ~/.nix-profile/bin and
+      # shadow it with an older npm/VS Code copy (seen: 0.0.365 vs 1.0.x).
       programs.zsh.initContent = ''
         copilot() {
           local exit_code=0 mark_pane=0
@@ -78,7 +81,7 @@ in
             mark_pane=1
           fi
           {
-            command copilot "$@"
+            ${pkgs.github-copilot-cli}/bin/copilot "$@"
             exit_code=$?
           } always {
             if (( mark_pane )); then
