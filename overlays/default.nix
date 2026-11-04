@@ -36,10 +36,6 @@
   # Retire when upstream packaging supplies an equally recent shared pin.
   (import ./wezterm.nix { src = inputs.wezterm-src; })
 
-  # OpenCode: sign Bun's compiled binary so recent macOS releases accept it.
-  # Retire when nixpkgs includes NixOS/nixpkgs#550458. See the file header.
-  (import ./opencode-darwin.nix)
-
   # Thrift: drop its test build on Darwin, where the vendored Catch tests no
   # longer compile under the Apple SDK 26 libcxx (breaks arrow-cpp/pyarrow/
   # visidata). Retire when nixpkgs' thrift builds on aarch64-darwin without
