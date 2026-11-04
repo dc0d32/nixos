@@ -9,6 +9,7 @@
 #   - direnv        per-project env
 #   - gh            GitHub CLI
 #   - git           version control + identity
+#   - herdr         agent-aware terminal multiplexer (trial; tmux stays)
 #   - mcat          terminal document/media viewer
 #   - nix-settings  user-profile GC policy (mirrors NixOS-side
 #                   nix-settings; see flake-modules/nix-settings-hm.nix)
@@ -39,6 +40,7 @@
     discovery
     gh
     git
+    herdr
     mcat
     nix-settings
     tmux

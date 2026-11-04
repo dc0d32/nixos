@@ -45,4 +45,9 @@
   # visidata). Retire when nixpkgs' thrift builds on aarch64-darwin without
   # it. See the file header.
   (import ./thrift-darwin.nix)
+
+  # herdr: agent-aware terminal multiplexer, packaged from the official
+  # static release binaries (upstream builds need Rust 1.96.1 + Zig 0.16).
+  # Retire when nixpkgs packages it. See the file header.
+  (import ./herdr.nix)
 ]

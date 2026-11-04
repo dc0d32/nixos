@@ -188,6 +188,9 @@ let
     "vifm"
     "starship"
     "atuin"
+    # herdr — agent-aware multiplexer (trial alongside psmux). In Scoop's
+    # `main` bucket; config comes from flake.lib.herdrSettings via hm_win.
+    "herdr"
     "ruff"
     "numbat"
     "sd"
@@ -436,6 +439,13 @@ let
         bind r source-file ~/.psmux.conf \; display "config reloaded"
       '';
 
+      # herdr config — the same flake.lib.herdrSettings the Linux/macOS
+      # module (flake-modules/herdr.nix) renders, so the platforms can't
+      # drift. herdr reads %APPDATA%\herdr\config.toml on Windows and
+      # picks pwsh (falling back to powershell.exe) for new panes itself.
+      herdrToml = (pkgs.formats.toml { }).generate "herdr-config.toml"
+        config.flake.lib.herdrSettings;
+
       # btop4win config — mirrors the Linux btop (flake.lib.btopSettings)
       # so both monitors look the same, with a few Windows-specific tweaks.
       # btop4win reads btop.conf ONLY from the same folder as btop4win.exe
@@ -665,6 +675,61 @@ let
             }
         }
 
+        # herdr agent integrations. herdr's sidebar can tell *that* an agent
+        # runs from screen detection, but session ids (for resume) and
+        # authoritative working/blocked state come from a small hook or
+        # plugin that `herdr integration install` writes into each agent's
+        # own config. Idempotent, and re-run every time so a herdr upgrade
+        # (which bumps the integration version) refreshes them. An agent is
+        # skipped, not failed, when absent: herdr refuses to install into a
+        # config directory that does not exist.
+        #
+        # Directories mirror herdr's own resolution (src/integration/env.rs):
+        # COPILOT_HOME or ~/.copilot; always ~/.config/opencode; HERMES_HOME
+        # or %LOCALAPPDATA%\hermes. For copilot and opencode, an installed
+        # agent that has never run has no config dir yet, so we create it
+        # (the agent would on first run). Hermes is not given that
+        # treatment: pre-creating its home before first run could change how
+        # it bootstraps, so it needs one run first.
+        Write-Host '== herdr: agent integrations (copilot, opencode, hermes) =='
+        $herdrExe = Join-Path $shimDir 'herdr.exe'
+        if (-not (Test-Path -LiteralPath $herdrExe)) {
+          $herdrCmd = Get-Command herdr -ErrorAction SilentlyContinue
+          $herdrExe = if ($herdrCmd) { $herdrCmd.Source } else { $null }
+        }
+        if (-not $herdrExe) {
+          Write-Warning 'herdr not found; skipping agent integrations. Re-run setup.ps1 once it is installed.'
+        } else {
+          $herdrStatus = @(& $herdrExe integration status 2>$null)
+          $herdrAgents = @(
+            @{ name = 'copilot'; cmd = 'copilot'; create = $true
+               dir = $(if ($Env:COPILOT_HOME) { $Env:COPILOT_HOME } else { Join-Path $HOME '.copilot' }) },
+            @{ name = 'opencode'; cmd = 'opencode'; create = $true
+               dir = (Join-Path $HOME '.config\opencode') },
+            @{ name = 'hermes'; cmd = 'hermes'; create = $false
+               dir = $(if ($Env:HERMES_HOME) { $Env:HERMES_HOME } else { Join-Path $Env:LOCALAPPDATA 'hermes' }) }
+          )
+          foreach ($a in $herdrAgents) {
+            if (@($herdrStatus | Where-Object { $_ -like "$($a.name): current*" }).Count -gt 0) {
+              Write-Host "  ok (installed): herdr integration $($a.name)"
+              continue
+            }
+            if (-not (Test-Path -LiteralPath $a.dir)) {
+              if ($a.create -and (Get-Command $a.cmd -ErrorAction SilentlyContinue)) {
+                New-Item -ItemType Directory -Force -Path $a.dir | Out-Null
+              } else {
+                Write-Host "  skip $($a.name): no config dir at $($a.dir) (run $($a.cmd) once, then re-run setup)"
+                continue
+              }
+            }
+            Write-Host "  herdr integration install $($a.name)"
+            & $herdrExe integration install $a.name
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "  herdr integration install $($a.name) failed (exit $LASTEXITCODE)"
+            }
+          }
+        }
+
         Write-Host '== Step 5/6: cursor theme (Bibata-Modern-Classic) =='
         # Matches the Linux Bibata-Modern-Classic set. Pinned+hashed
         # official release zip; applied user-scoped (HKCU + %LOCALAPPDATA%),
@@ -814,6 +879,7 @@ let
       cp ${windowsTerminalSettings} "$out/windows-terminal.json"
       cp ${tabbyLocalYaml}       "$out/tabby-config-local.yaml"
       cp ${psmuxConf}            "$out/psmux.conf"
+      cp ${herdrToml}           "$out/herdr.toml"
       cp ${btopConf}            "$out/btop.conf"
       cp ${../terminal-help.md}  "$out/terminal-help.md"
       cp ${mdViewStyle}          "$out/md-view-style.json"
@@ -981,6 +1047,8 @@ let
       # psmux (native-Windows tmux) reads ~/.psmux.conf from the Windows
       # home directory.
       deploy "$src/psmux.conf" "$userprofile/.psmux.conf"
+      # herdr reads %APPDATA%\herdr\config.toml on Windows (not ~/.config).
+      deploy "$src/herdr.toml" "$userprofile/AppData/Roaming/herdr/config.toml"
       # btop4win reads btop.conf ONLY from the folder its exe is launched
       # from (GetModuleFileNameW; not %APPDATA%/~). winget installs it
       # portable under %LOCALAPPDATA%\Microsoft\WinGet\Packages\… AND drops
