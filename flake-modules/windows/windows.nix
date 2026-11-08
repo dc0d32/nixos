@@ -98,8 +98,9 @@ let
     sha256 = "DCB2719EF346DAB5B609FCB193A5F13CFC4B0502E3F4DE1AD43D349477402F47";
   };
 
-  # ── Alacritty on Windows: DISABLED ──────────────────────────────────
-  # Alacritty was dropped as a Windows terminal (2026-08-31). On Windows it
+  # ── Alacritty on Windows: ENABLED ───────────────────────────────────
+  # Alacritty was dropped as a Windows terminal on 2026-08-31 and re-enabled
+  # on 2026-11-08 at the maintainer's request. KNOWN TRADE-OFF: on Windows it
   # delegates glyph fallback to DirectWrite's system fallback, which — unlike
   # Linux fontconfig — cannot be pointed at a monospace face, so glyphs
   # missing from the primary font fall back to a *proportional* face and
@@ -107,17 +108,16 @@ let
   # use `FontFallback::get_system_fallback()`; alacritty#4899 is maintainer
   # wontfix: "font fallback is done through the system"). Windows Terminal,
   # which DOES support an explicit font-fallback list (`face = "A, B"`), is
-  # the Windows terminal now.
+  # still deployed alongside it and is the one to use if glyphs overlap.
   #
-  # NOTHING below is deleted — the full Alacritty wiring is kept but gated on
-  # this one flag so re-enabling is a single flip: the scoop package, config
-  # generation (`alacrittyToml`), the deploy step, and the RDP Mesa
-  # software-GL step (setup.ps1 Step 6) all key off `enableAlacritty`. While
-  # it is false, setup.ps1 additionally `scoop uninstall`s any previously
+  # The whole Alacritty wiring is gated on this one flag: the scoop package,
+  # config generation (`alacrittyToml`), the deploy step, and the RDP Mesa
+  # software-GL step (setup.ps1 Step 6) all key off `enableAlacritty`. When it
+  # is false, setup.ps1 additionally `scoop uninstall`s any previously
   # installed copy (see `scoopRetired`), so flipping it off actively removes
   # Alacritty on the next `hm_win`/`--setup` run rather than merely ceasing
   # to install it.
-  enableAlacritty = false;
+  enableAlacritty = true;
 
   # ── Package sources ─────────────────────────────────────────────────
   # Scoop is the DEFAULT for the CLI toolkit — most of these are single
@@ -208,12 +208,11 @@ let
     # inside a Visual Studio developer shell.
     "uutils-coreutils"
   ]
-  # GPU terminal — DISABLED (see `enableAlacritty` above); kept, gated, so
-  # re-enabling is one flag flip. On Scoop (not winget) deliberately: the
-  # RDP Mesa software-GL step (setup.ps1 Step 6) drops an app-local
+  # GPU terminal — gated on `enableAlacritty` above. On Scoop (not winget)
+  # deliberately: the RDP Mesa software-GL step (setup.ps1 Step 6) drops an app-local
   # opengl32.dll next to alacritty.exe, and Scoop's per-user
   # apps\alacritty\current\ is writable without admin, unlike winget's
-  # Program Files install. `extras` bucket (added by setup.ps1). While the
+  # Program Files install. `extras` bucket (added by setup.ps1). When the
   # flag is false this is omitted from installs and setup.ps1 uninstalls
   # any old copy (see `scoopRetired`).
   ++ lib.optional enableAlacritty "alacritty";
@@ -269,12 +268,9 @@ let
     "Atuinsh.Atuin"
     "astral-sh.ruff"
     "chmln.sd"
-    # Alacritty is retired on Windows (enableAlacritty = false — see the
-    # flag's comment above). It was previously moved winget -> Scoop for
-    # the RDP Mesa GL step; it now lives on neither. Kept in this
-    # uninstall list so setup.ps1 removes any lingering winget copy on
-    # machines that still have it. Also uninstalled from Scoop via
-    # scoopRetired.
+    # Alacritty was moved winget -> Scoop for the RDP Mesa GL step (see
+    # `enableAlacritty`), so any winget copy is removed to leave a single
+    # source on PATH.
     "Alacritty.Alacritty"
   ];
 
