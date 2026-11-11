@@ -308,10 +308,10 @@ let
 
       # alacritty.toml — generated from the SAME definition the Linux
       # alacritty module uses (flake.lib.alacrittySettings), so the
-      # terminal is identical on both sides. One Windows-only override
-      # baked in here: `window.decorations` forced back to "Full" (Linux
-      # runs borderless under niri; on Windows there is no WM to move or
-      # close a title-bar-less window).
+      # terminal is identical on both sides. Windows-only overrides baked in
+      # here: the patched Windows font family and `window.decorations` forced
+      # back to "Full" (Linux runs borderless under niri; on Windows there is
+      # no WM to move or close a title-bar-less window).
       #
       # `terminal.shell` is deliberately NOT set here. We want alacritty
       # to start pwsh (PowerShell 7, matching profile.ps1) — but only
@@ -326,6 +326,11 @@ let
       # alacritty looks on Windows.
       alacrittyToml = (pkgs.formats.toml { }).generate "alacritty.toml"
         (config.flake.lib.alacrittySettings // {
+          font = config.flake.lib.alacrittySettings.font // {
+            normal = config.flake.lib.alacrittySettings.font.normal // {
+              family = "FantasqueSansM Terminal Nerd Font Mono";
+            };
+          };
           window = config.flake.lib.alacrittySettings.window // {
             decorations = "Full";
           };
