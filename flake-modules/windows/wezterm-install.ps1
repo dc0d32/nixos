@@ -147,61 +147,45 @@ if (Test-Path -LiteralPath $portableConfig) {
     New-Item -Path $portableConfig -ItemType File -Value $loader | Out-Null
 }
 
-$shortcutPath = Join-Path $programs 'WezTerm.lnk'
-New-Item -ItemType Directory -Path $programs -Force | Out-Null
+# Start-menu shortcuts are deliberately NOT created. Retire the ones an
+# earlier version of this installer made, and never touch an unrelated
+# entry: a shortcut is ours only if it targets the managed install root with
+# our exact arguments and a "WezTerm ..." description.
+$arguments = "--config-file `"$configTarget`""
+$managedRoot = (Join-Path $localAppData 'nixwin\wezterm') + '\'
+$oldManagedRoot = (Join-Path $localAppData 'nixwin\wezterm-trial') + '\'
+$oldConfigTarget = Join-Path $userProfile '.config\nixwin\wezterm-trial\config\wezterm.lua'
+$oldArguments = "--config-file `"$oldConfigTarget`""
+function Test-ManagedWezTermShortcut($Link) {
+    $current = $Link.TargetPath.StartsWith($managedRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        $Link.Arguments -eq $arguments
+    $old = $Link.TargetPath.StartsWith($oldManagedRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        $Link.Arguments -eq $oldArguments
+    $named = $Link.Description.StartsWith('WezTerm ', [StringComparison]::Ordinal)
+    return ($current -or $old) -and $named
+}
 $shell = New-Object -ComObject WScript.Shell
-$shortcut = $null
-$legacyShortcut = $null
 try {
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $arguments = "--config-file `"$configTarget`""
-    $description = "WezTerm $buildId ($($asset.assetStatus), explicit install)"
-    $managedRoot = (Join-Path $localAppData 'nixwin\wezterm') + '\'
-    $oldManagedRoot = (Join-Path $localAppData 'nixwin\wezterm-trial') + '\'
-    $oldConfigTarget = Join-Path $userProfile '.config\nixwin\wezterm-trial\config\wezterm.lua'
-    $oldArguments = "--config-file `"$oldConfigTarget`""
-    function Test-ManagedWezTermShortcut($Link) {
-        $current = $Link.TargetPath.StartsWith($managedRoot, [StringComparison]::OrdinalIgnoreCase) -and
-            $Link.Arguments -eq $arguments
-        $old = $Link.TargetPath.StartsWith($oldManagedRoot, [StringComparison]::OrdinalIgnoreCase) -and
-            $Link.Arguments -eq $oldArguments
-        $named = $Link.Description.StartsWith('WezTerm ', [StringComparison]::Ordinal)
-        return ($current -or $old) -and $named
-    }
-    if ((Test-Path -LiteralPath $shortcutPath -PathType Leaf) -and
-        -not (Test-ManagedWezTermShortcut $shortcut)) {
-        throw "Unmanaged shortcut already exists at $shortcutPath; preserved. Rename it before retrying."
-    }
-    if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf) -or
-        $shortcut.TargetPath -ne $exe -or $shortcut.Arguments -ne $arguments -or
-        $shortcut.WorkingDirectory -ne $userProfile -or
-        $shortcut.IconLocation -ne "$exe,0" -or $shortcut.Description -ne $description) {
-        Backup-File $shortcutPath
-        $shortcut.TargetPath = $exe
-        $shortcut.Arguments = $arguments
-        $shortcut.WorkingDirectory = $userProfile
-        $shortcut.IconLocation = "$exe,0"
-        $shortcut.Description = $description
-        $shortcut.Save()
-    }
-    # Retire only our old shortcut, never an unrelated installation's entry.
-    $legacyPath = Join-Path $programs 'WezTerm Trial.lnk'
-    if (Test-Path -LiteralPath $legacyPath -PathType Leaf) {
-        $legacyShortcut = $shell.CreateShortcut($legacyPath)
-        if ((Test-ManagedWezTermShortcut $legacyShortcut) -and
-            $legacyShortcut.Description.StartsWith('WezTerm Trial ', [StringComparison]::Ordinal)) {
-            Backup-File $legacyPath
-            Remove-Item -LiteralPath $legacyPath
-        } else {
-            Write-Warning "Preserving unmanaged shortcut: $legacyPath"
+    foreach ($name in 'WezTerm.lnk', 'WezTerm Trial.lnk') {
+        $path = Join-Path $programs $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        $link = $shell.CreateShortcut($path)
+        try {
+            if (Test-ManagedWezTermShortcut $link) {
+                Backup-File $path
+                Remove-Item -LiteralPath $path
+                Write-Host "Removed managed shortcut: $path"
+            } else {
+                Write-Warning "Preserving unmanaged shortcut: $path"
+            }
+        } finally {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)
         }
     }
 } finally {
-    if ($legacyShortcut) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($legacyShortcut) }
-    if ($shortcut) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut) }
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
 }
 Write-Host "Installed WezTerm $($pin.version): $exe"
-Write-Host 'Launch from Start: WezTerm. Unpin any old taskbar entry and pin the updated WezTerm.'
+Write-Host "No Start-menu shortcut is created. Launch it directly: $exe"
 Write-Host 'Windows Terminal and other installations are unchanged; old install directories are retained.'
 Write-Host 'Font prerequisite: normal hm_win must have registered the patched Fantasque font once.'

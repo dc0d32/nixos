@@ -945,10 +945,53 @@ let
       # it needs no `--impure` and adapts to the real account name and an
       # OneDrive-redirected Documents folder. powershell.exe (5.1) always
       # exists; prefer pwsh.exe (7) if installed.
+      #
+      # Finding it must not depend on the Windows PATH being appended to
+      # WSL's (appendWindowsPath=false, a trimmed non-login PATH). Order:
+      #   1. pwsh.exe on PATH (cheap; the usual case)
+      #   2. the stock MSI location by absolute path
+      #   3. ask Windows PowerShell 5.1 -- reached by its fixed absolute path
+      #      if it isn't on PATH either -- where pwsh.exe is, using
+      #      *Windows'* PATH, which includes the Store app-execution alias
+      #      dir (the real package dir under Program Files\WindowsApps is
+      #      not runnable from WSL, so the alias is the usable answer)
+      #   4. fall back to 5.1 itself
       psexe=""
-      for c in pwsh.exe powershell.exe; do
-        if command -v "$c" >/dev/null 2>&1; then psexe="$c"; break; fi
-      done
+      ps51_abs=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+      pwsh_msi="/mnt/c/Program Files/PowerShell/7/pwsh.exe"
+      if command -v pwsh.exe >/dev/null 2>&1; then
+        psexe="pwsh.exe"
+      elif [ -x "$pwsh_msi" ]; then
+        psexe="$pwsh_msi"
+      else
+        ps51=""
+        if command -v powershell.exe >/dev/null 2>&1; then
+          ps51="powershell.exe"
+        elif [ -x "$ps51_abs" ]; then
+          ps51="$ps51_abs"
+        fi
+        if [ -n "$ps51" ]; then
+          psexe="$ps51"
+          pwsh_win="$("$ps51" -NoProfile -NonInteractive -Command \
+            '(Get-Command pwsh.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source' \
+            2>/dev/null | tr -d '\r\n')"
+          if [ -n "$pwsh_win" ] && pwsh_wsl="$(wslpath -u "$pwsh_win" 2>/dev/null)" && [ -x "$pwsh_wsl" ]; then
+            psexe="$pwsh_wsl"
+          fi
+        fi
+      fi
+      # Which PowerShell $psexe is (it may now be an absolute path).
+      psname="''${psexe##*/}"
+      psname="''${psname%.exe}"
+      # Shell for terminals that pin a profile (Windows Terminal, Tabby):
+      # PowerShell 7, else Windows PowerShell 5.1. cmd is the notional last
+      # resort, but powershell.exe ships with every Windows, so it is only
+      # reachable when this probe itself finds nothing; then the declared
+      # pwsh default is left alone.
+      case "$psname" in
+        powershell) win_shell=powershell ;;
+        *) win_shell=pwsh ;;
+      esac
       userprofile_win=""
       profile_win=""
       if [ -n "$psexe" ]; then
@@ -1022,6 +1065,11 @@ let
       # declarative config separate from ~/.config, which Tabby ignores.
       tabby_dir="$userprofile/AppData/Roaming/tabby"
       deploy "$src/tabby-config-local.yaml" "$tabby_dir/config.yaml"
+      if [ "$win_shell" = powershell ]; then
+        sed -i 's/^\([[:space:]]*profile: \)local:powershell-core\([[:space:]]*\)$/\1local:powershell\2/' \
+          "$tabby_dir/config.yaml"
+        echo "  tabby: PowerShell 7 not found; default profile set to Windows PowerShell"
+      fi
       # Remove artifacts of the retired RDP-specific config and launcher.
       rm -rf "$userprofile/AppData/Roaming/tabby-rdp" "$nixwin/tabby-launch.ps1"
       ${lib.optionalString enableAlacritty ''
@@ -1037,7 +1085,7 @@ let
       # closes instantly (even with --hold). $psexe is the same probe used
       # for the rest of hm_win; strip the .exe for alacritty's program.
       alacritty_shell="powershell"
-      if [ -n "$psexe" ]; then alacritty_shell="''${psexe%.exe}"; fi
+      if [ -n "$psname" ]; then alacritty_shell="$psname"; fi
       {
         echo ""
         echo "[terminal.shell]"
@@ -1106,15 +1154,21 @@ let
       # and unrelated preferences remain untouched.
       shopt -s nullglob
       wt_found=0
+      # Stock WT GUIDs: PowerShell 7 comes from the managed settings; Windows
+      # PowerShell 5.1 is {61c54bbd-...} when pwsh isn't installed.
+      wt_default="$(jq -r .defaultProfile "$src/windows-terminal.json")"
+      if [ "$win_shell" = powershell ]; then
+        wt_default="{61c54bbd-c2c6-5271-96e7-009a87ff44bf}"
+      fi
       for s in "$userprofile"/AppData/Local/Packages/Microsoft.WindowsTerminal_*/LocalState/settings.json; do
         wt_found=1
         backup "$s"
         tmp="$(mktemp)"
-        if jq --slurpfile managed "$src/windows-terminal.json" '
+        if jq --slurpfile managed "$src/windows-terminal.json" --arg dp "$wt_default" '
                . = (. + $managed[0].windowSettings)
                | .profiles = (.profiles // {})
                | .profiles.defaults = ((.profiles.defaults // {}) + $managed[0].profileDefaults)
-               | .defaultProfile = $managed[0].defaultProfile
+               | .defaultProfile = $dp
              ' \
              "$s" > "$tmp" 2>/dev/null; then
           mv "$tmp" "$s"
@@ -1158,32 +1212,29 @@ let
         deploy_btop_conf
       fi
 
-      # "Tabby Terminal" launches Tabby.exe directly (no wrapper, no console
-      # flash). Shortcuts from earlier RDP-aware versions are removed.
+      # Start-menu shortcuts are deliberately not created for Tabby. Retire
+      # the ones earlier versions made: "Tabby Terminal.lnk" only when it is
+      # our plain direct launcher (Tabby.exe target, no arguments), so a
+      # user-customised or unrelated shortcut is preserved; the RDP-aware
+      # variant is always ours.
       if [ -n "$psexe" ]; then
         "$psexe" -NoProfile -NonInteractive -Command \
           "& {
             \$Programs = [Environment]::GetFolderPath('Programs')
-            \$LinkPath = Join-Path \$Programs 'Tabby Terminal.lnk'
             Remove-Item -LiteralPath (Join-Path \$Programs 'Tabby Terminal (RDP).lnk') -ErrorAction SilentlyContinue
-            \$Shell = New-Object -ComObject WScript.Shell
-            \$Exe = \$null
+            \$LinkPath = Join-Path \$Programs 'Tabby Terminal.lnk'
             if (Test-Path -LiteralPath \$LinkPath) {
+              \$Shell = New-Object -ComObject WScript.Shell
               \$Existing = \$Shell.CreateShortcut(\$LinkPath)
-              if (\$Existing.TargetPath -like '*Tabby.exe') { \$Exe = \$Existing.TargetPath }
+              \$Ours = \$Existing.TargetPath -like '*Tabby.exe' -and [string]::IsNullOrEmpty(\$Existing.Arguments)
+              [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject(\$Existing)
+              [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject(\$Shell)
+              if (\$Ours) { Remove-Item -LiteralPath \$LinkPath; 'removed' } else { 'preserved' }
             }
-            \$Default = Join-Path \$Env:LOCALAPPDATA 'Programs\Tabby\Tabby.exe'
-            if (-not \$Exe -and (Test-Path -LiteralPath \$Default)) { \$Exe = \$Default }
-            if (\$Exe) {
-              \$Link = \$Shell.CreateShortcut(\$LinkPath)
-              \$Link.TargetPath = \$Exe
-              \$Link.Arguments = [string]::Empty
-              \$Link.WorkingDirectory = Split-Path \$Exe
-              \$Link.IconLocation = \$Exe + ',0'
-              \$Link.Save()
-            }
-          }"
-        echo "  Tabby shortcuts installed (direct + RDP launcher)"
+          }" 2>/dev/null | while IFS= read -r r; do
+            r="''${r%$'\r'}"
+            echo "  Tabby Start-menu shortcut: $r"
+          done || true
       fi
 
       # Install the Nix-generated Fantasque face after setup.ps1 has tried to

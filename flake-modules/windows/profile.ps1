@@ -26,9 +26,14 @@
 if (Get-Module -ListAvailable -Name PSReadLine) {
     Import-Module PSReadLine
     Set-PSReadLineOption -EditMode Emacs
-    Set-PSReadLineOption -PredictionSource History
-    # Keep suggestions in the same regular face as input, distinguished by color.
-    Set-PSReadLineOption -Colors @{ InlinePrediction = "$([char]27)[0;90m" }
+    # Inline prediction needs PSReadLine 2.1+ (PowerShell 7). Windows
+    # PowerShell 5.1 ships 2.0, which has neither -PredictionSource nor the
+    # InlinePrediction color, so probe the cmdlet instead of assuming.
+    if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) {
+        Set-PSReadLineOption -PredictionSource History
+        # Keep suggestions in the same regular face as input, distinguished by color.
+        Set-PSReadLineOption -Colors @{ InlinePrediction = "$([char]27)[0;90m" }
+    }
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
     Set-PSReadLineKeyHandler -Key Tab        -Function MenuComplete
     Set-PSReadLineKeyHandler -Key UpArrow   -Function HistorySearchBackward
@@ -115,8 +120,10 @@ $IsVCDevShell = [bool]($Env:VSINSTALLDIR -or $Env:VCINSTALLDIR -or
 if ((-not $Env:PS_KEEP_ALIASES) -and (-not $IsVCDevShell) -and
     (Get-Command numfmt -CommandType Application -ErrorAction SilentlyContinue)) {
     foreach ($n in $PSAliasesShadowedByUutils) {
-        # -Force: several of the defaults are ReadOnly/AllScope.
-        Remove-Alias -Name $n -Force -ErrorAction SilentlyContinue
+        # -Force: several of the defaults are ReadOnly/AllScope. Removed via
+        # the Alias: drive because Remove-Alias only exists in PowerShell 6+
+        # (this profile is also loaded by Windows PowerShell 5.1).
+        Remove-Item -Path "Alias:\$n" -Force -ErrorAction SilentlyContinue
     }
     # `mkdir` and `more` are FUNCTIONS in PowerShell, not aliases, so they
     # need removing from the Function: drive instead.
