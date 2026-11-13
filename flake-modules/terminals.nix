@@ -258,13 +258,36 @@ let
     local primary = mac and 'CMD' or 'CTRL|SHIFT'
     config.font = wezterm.font(windows and '${appearance.fontWindows}' or '${appearance.fontUnix}', { weight = '${if lib.hasInfix "Bold" appearance.style then "Bold" else "Regular"}', italic = ${lib.boolToString (lib.hasInfix "Italic" appearance.style)} })
     if windows then
+      -- Explicit per-script fallbacks, in the order WezTerm tries them after
+      -- the primary face (which already carries symbols, braille, arrows,
+      -- math, ...). WezTerm shapes with HarfBuzz and draws COLR colour
+      -- glyphs, so unlike Alacritty these all render properly: colour emoji,
+      -- CJK, Indic and Thai. Listed here rather than left to the implicit
+      -- system fallback so the choice is deterministic. Han unification means
+      -- the first CJK face decides which regional forms ideographs use.
+      local fallbacks = {
+        'Segoe UI Emoji',
+        'Nirmala UI',       -- Devanagari, Bengali, Tamil, Telugu, Gujarati, ...
+        'Leelawadee UI',    -- Thai, Lao, Khmer
+        'Yu Gothic',        -- Japanese
+        'Microsoft YaHei',  -- Simplified Chinese
+        'Microsoft JhengHei', -- Traditional Chinese
+        'Malgun Gothic',    -- Korean
+        'Segoe UI Symbol',
+      }
+      local function win_font(attrs)
+        local list = { { family = '${appearance.fontWindows}', weight = attrs.weight, style = attrs.style } }
+        for _, family in ipairs(fallbacks) do table.insert(list, family) end
+        return wezterm.font_with_fallback(list)
+      end
+      config.font = win_font { weight = '${if lib.hasInfix "Bold" appearance.style then "Bold" else "Regular"}', style = '${if lib.hasInfix "Italic" appearance.style then "Italic" else "Normal"}' }
       -- Automatic bold/dim selection falls back to differently sized JetBrains.
       -- Fantasque has no light face; dim text keeps Regular/Italic letterforms.
       config.font_rules = {
-        { intensity = 'Bold', italic = false, font = wezterm.font('${appearance.fontWindows}', { weight = 'Bold', style = 'Normal' }) },
-        { intensity = 'Bold', italic = true, font = wezterm.font('${appearance.fontWindows}', { weight = 'Bold', style = 'Italic' }) },
-        { intensity = 'Half', italic = false, font = wezterm.font('${appearance.fontWindows}', { weight = 'Regular', style = 'Normal' }) },
-        { intensity = 'Half', italic = true, font = wezterm.font('${appearance.fontWindows}', { weight = 'Regular', style = 'Italic' }) },
+        { intensity = 'Bold', italic = false, font = win_font { weight = 'Bold', style = 'Normal' } },
+        { intensity = 'Bold', italic = true, font = win_font { weight = 'Bold', style = 'Italic' } },
+        { intensity = 'Half', italic = false, font = win_font { weight = 'Regular', style = 'Normal' } },
+        { intensity = 'Half', italic = true, font = win_font { weight = 'Regular', style = 'Italic' } },
       }
     end
     config.font_size = windows and ${toString appearance.sizeWindows} or (mac and ${toString appearance.sizeMac} or ${toString appearance.sizeUnix})

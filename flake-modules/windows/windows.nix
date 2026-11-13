@@ -106,9 +106,12 @@ let
   # missing from the primary font fall back to a *proportional* face and
   # overlap adjacent cells, with no config-level fix (alacritty/crossfont
   # use `FontFallback::get_system_fallback()`; alacritty#4899 is maintainer
-  # wontfix: "font fallback is done through the system"). Windows Terminal,
-  # which DOES support an explicit font-fallback list (`face = "A, B"`), is
-  # still deployed alongside it and is the one to use if glyphs overlap.
+  # wontfix: "font fallback is done through the system"). Mitigated at the
+  # font: the Windows build of the Fantasque terminal face fills whole symbol
+  # blocks at one cell (overlays/fantasque-terminal.nix), so only code points
+  # no monospace source has still fall back. Windows Terminal, which DOES
+  # support an explicit font-fallback list (`face = "A, B"`), is still
+  # deployed alongside it and is the one to use if glyphs still overlap.
   #
   # The whole Alacritty wiring is gated on this one flag: the scoop package,
   # config generation (`alacrittyToml`), the deploy step, and the RDP Mesa
@@ -364,7 +367,10 @@ let
               # The selected Fantasque face includes grid-safe terminal
               # symbols, so DirectWrite never reaches an oversized fallback
               # for btop triangles, Braille spinners, or clock faces.
-              face = "FantasqueSansM Terminal Nerd Font Mono";
+              # Comma list = DirectWrite fallback chain. Windows Terminal
+              # shapes text and draws colour glyphs, so emoji, Indic, Thai and
+              # CJK render properly through these.
+              face = "FantasqueSansM Terminal Nerd Font Mono, Segoe UI Emoji, Nirmala UI, Leelawadee UI, Yu Gothic, Microsoft YaHei, Microsoft JhengHei, Malgun Gothic, Segoe UI Symbol";
               # Retain the established Windows size; DirectWrite's metrics
               # make this the closest visual match to Alacritty at 12pt.
               size = 13;
