@@ -107,7 +107,7 @@ let
   # overlap adjacent cells, with no config-level fix (alacritty/crossfont
   # use `FontFallback::get_system_fallback()`; alacritty#4899 is maintainer
   # wontfix: "font fallback is done through the system"). Mitigated at the
-  # font: the Windows build of the Fantasque terminal face fills whole symbol
+  # font: the Fantasque terminal face fills whole symbol
   # blocks at one cell (overlays/fantasque-terminal.nix), so only code points
   # no monospace source has still fall back. Windows Terminal, which DOES
   # support an explicit font-fallback list (`face = "A, B"`), is still

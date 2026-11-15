@@ -7,8 +7,8 @@
 # proportional fallback faces whose ink can spill into neighboring cells.
 # Keep Fantasque's letterforms and existing Nerd glyphs, filling only those
 # missing code points from monospace sources with explicit one- or two-cell
-# advances. The Windows build additionally fills whole symbol blocks (arrows,
-# math, technical, geometric, dingbats, ...) so no narrow symbol falls back.
+# advances. All builds also fill whole symbol blocks (arrows, math, technical,
+# geometric, dingbats, ...) so no narrow symbol falls back to a platform face.
 #
 # RETIRE WHEN
 # Fantasque Sans Mono Nerd Font ships these glyphs itself with terminal-safe
@@ -36,6 +36,7 @@ in
             windowsDir="$out/share/windows-fonts"
             mkdir -p "$outDir"
             mkdir -p "$windowsDir"
+            log="$(mktemp)"
 
             for style in Regular Bold Italic BoldItalic; do
               caskStyle="$style"
@@ -80,9 +81,7 @@ in
       for codepoint in range(0x1F550, 0x1F568):
           copy_glyph(clocks, codepoint, cell * 2)
 
-      target.generate(output_path)
-
-      # Windows-only structural fill. Alacritty cannot configure a symbol
+      # Structural fill, applied to every output. Alacritty cannot configure a symbol
       # fallback and DirectWrite substitutes a proportional face for every
       # code point this font lacks, so any missing narrow glyph can spill over
       # neighbouring cells. Instead of patching glyphs one bug at a time,
@@ -95,7 +94,8 @@ in
       # emoji), which belong at two cells in a colour or CJK face, and scripts
       # that need shaping or bidi (Arabic, Indic, Thai, ...), which no
       # monospace font can render correctly.
-      # Linux and macOS outputs above are untouched.
+      # The Linux/macOS face and the Windows face share this fill and differ
+      # only in family name, so every platform renders the same glyphs.
       import unicodedata
       FILL_BLOCKS = [
           (0x00A0, 0x058F),    # Latin, IPA, Greek, Cyrillic, Armenian
@@ -169,9 +169,11 @@ in
                   copy_fitted(source, kind, codepoint)
                   added += 1
                   break
-      print("windows font: filled", added, "missing glyphs")
+      print("terminal font: filled", added, "missing glyphs")
       for source in opened:
           source.close()
+
+      target.generate(output_path)
 
       display_style = "Bold Italic" if style == "BoldItalic" else style
       target.familyname = "FantasqueSansM Terminal Nerd Font Mono"
@@ -194,7 +196,13 @@ in
                 ${noto}/NotoSansSymbols.ttf \
                 ${noto}/NotoSansSymbols2-Regular.otf \
                 ${noto}/NotoSansMath-Regular.otf \
-                ${noto}/NotoMusic-Regular.otf
+                ${noto}/NotoMusic-Regular.otf \
+                > "$log" 2>&1 || { cat "$log" >&2; exit 1; }
+
+              # FontForge narrates every glyph it converts while pasting between
+              # fonts. Drop only those known-benign messages (a failure above
+              # dumps the full log) so a genuinely new warning stays visible.
+              grep -vE "^(Copyright \(c\)| License GPLv3| with many parts BSD| Version: | Based on sources from|<sys>:0: UserWarning: pkg_resources|The glyph named .* is mapped to U\+|But its name indicates it should be mapped to U\+|Use-my-metrics flag set|Internal Error: Invalid 2nd order spline in SplineRefigure2$|At least one anchor point was lost when pasting|Bad device table$|The following table\(s\) in the font have been ignored by FontForge|  Ignoring '(HVAR|MVAR|STAT|VVAR|VORG)')" "$log" || true
             done
 
             runHook postInstall
