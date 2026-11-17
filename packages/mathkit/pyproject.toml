@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mathkit"
+version = "0.1.0"
+description = "Friendly maths helpers: checking, worked steps, and visual aids."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "sympy",
+  "numpy",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+widgets = ["ipywidgets"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
