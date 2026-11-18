@@ -71,7 +71,7 @@
 #   - math-tools                           one Python env (SymPy, mathkit
 #                                          helpers, Jupyter), the "Maths"
 #                                          VS Code profile + launcher, starter
-#                                          notebooks in ~/math, JupyterLab,
+#                                          notebooks in ~/src/math/samples, JupyterLab,
 #                                          Qalculate!, KmPlot. Declares a
 #                                          non-default VS Code profile, so
 #                                          the kids' extensions directory is

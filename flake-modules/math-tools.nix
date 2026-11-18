@@ -23,8 +23,9 @@
 # directory, so extensions the kids install by hand no longer persist; add what
 # they want here instead.
 #
-# Starter notebooks from packages/mathkit/notebooks are copied into ~/math on
-# activation, only when missing, so the kids' edits are never overwritten.
+# Starter notebooks from packages/mathkit/notebooks are copied into
+# ~/src/math/samples on activation, only when missing, so the kids' edits are
+# never overwritten. ~/src/math itself is their own working folder.
 #
 # Qalculate! covers everyday calculation with units and exact fractions; KmPlot
 # plots functions and shows derivatives and integrals without any code.
@@ -74,14 +75,14 @@
         exec ${py} "$@"
       '';
       mathLab = pkgs.writeShellScriptBin "math-lab" ''
-        dir="$HOME/math"
+        dir="$HOME/src/math"
         mkdir -p "$dir"
         exec ${pyEnv}/bin/jupyter-lab --notebook-dir="$dir" "$@"
       '';
       mathStudio = pkgs.writeShellScriptBin "math-studio" ''
-        dir="$HOME/math"
-        mkdir -p "$dir"
-        exec ${pkgs.vscode}/bin/code --profile Maths "$dir" "$dir/00-start-here.ipynb" "$@"
+        dir="$HOME/src/math"
+        mkdir -p "$dir/samples"
+        exec ${pkgs.vscode}/bin/code --profile Maths "$dir" "$dir/samples/00-start-here.ipynb" "$@"
       '';
       mathStudioItem = pkgs.makeDesktopItem {
         name = "math-studio";
@@ -114,9 +115,9 @@
       xdg.dataFile."jupyter/kernels/${kernelName}/kernel.json".text = kernelSpec;
 
       home.activation.seedMathNotebooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        mkdir -p "$HOME/math"
+        mkdir -p "$HOME/src/math/samples"
         for nb in ${notebooks}/*.ipynb; do
-          dest="$HOME/math/$(basename "$nb")"
+          dest="$HOME/src/math/samples/$(basename "$nb")"
           [ -e "$dest" ] || install -m 0644 "$nb" "$dest"
         done
       '';

@@ -19,7 +19,8 @@
   JupyterLab, `mathkit`), reused by `math-python`, the "Maths (Python +
   SymPy)" Jupyter kernelspec, `math-lab` and the VS Code profile; the
   `Maths` VS Code profile; a "Maths Studio" launcher
-  (`code --profile Maths ~/math`); starter notebooks seeded into `~/math`
+  (`code --profile Maths ~/src/math`); starter notebooks seeded into
+  `~/src/math/samples`
   (only when missing).
 - `flake-modules/solvespace.nix` (kid bundle): constraint-based sketching for
   geometry homework.
