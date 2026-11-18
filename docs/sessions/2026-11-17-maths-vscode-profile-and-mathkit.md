@@ -30,7 +30,9 @@
   `compare_fractions`, `numberline`, `tangent`, `riemann`, `unit_circle`,
   `explore_*`), seven starter notebooks, 49 unittest tests.
 - The `homelab/` GeoGebra stack also gained GeoGebra Discovery
-  (`/discovery/`); see `homelab/sessions/2026-11-17-geogebra-discovery.md`.
+  (`/discovery/`), deployed on Ursa generation 84; see
+  `homelab/sessions/2026-11-17-geogebra-discovery.md` (includes the CSP fix that
+  unblocked its CAS).
 
 ## Decisions and why
 
