@@ -68,14 +68,13 @@
 #   - idle, niri, desktop-shell,           compositor stack +
 #     lockscreen, wallpaper                 bar/launcher/notifications/
 #                                            cliphist + swaylock-effects
-#   - math-tools                           one Python env (SymPy, mathkit
-#                                          helpers, Jupyter), the "Maths"
-#                                          VS Code profile + launcher, starter
-#                                          notebooks in ~/src/math/samples, JupyterLab,
-#                                          Qalculate!, KmPlot. Declares a
-#                                          non-default VS Code profile, so
-#                                          the kids' extensions directory is
-#                                          immutable (see math-tools.nix).
+#   - math-tools                           the ~/src/math workspace: a
+#                                          seeded folder (notebooks in
+#                                          samples/, VS Code folder settings,
+#                                          a direnv `.envrc` that builds the
+#                                          Python env), the "Maths Studio"
+#                                          launcher, Qalculate!, KmPlot. Does
+#                                          not touch VS Code's own state.
 #   - solvespace                           constraint-based 2D/3D sketching
 #                                          for geometry homework
 #   - kid-launcher                         hides app-menu noise from

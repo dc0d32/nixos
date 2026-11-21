@@ -41,6 +41,9 @@ the canonical record of architectural decisions and rationale.
 - When a file mixes `options` with `flake.modules.*`, the latter MUST
   be wrapped in an explicit `config = { … };`. Pure-leaf modules
   without options can write `flake.modules.*` at the top level.
+- After any `nix flake update` / nixpkgs bump run `./scripts/sync-maths-lock.sh`
+  and commit `maths/flake.lock` with `flake.lock`: the kids' maths environment
+  is a flake of its own and does not follow the fleet by itself.
 - Format with `nix fmt .` (nixpkgs-fmt) before committing. The path
   argument is required — bare `nix fmt` hangs reading stdin.
 - In shared modules, use `lib.mkDefault` for policy values so hosts can

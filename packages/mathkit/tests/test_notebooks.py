@@ -19,8 +19,8 @@ EXPECTED_NOTEBOOKS = [
 ]
 
 EXPECTED_KERNELSPEC = {
-    "name": "mathpython",
-    "display_name": "Maths (Python + SymPy)",
+    "name": "python3",
+    "display_name": "Python 3",
     "language": "python",
 }
 

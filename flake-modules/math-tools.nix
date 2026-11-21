@@ -1,89 +1,141 @@
-# Maths tools for the kids (home-manager): one Python environment, a
-# purpose-built VS Code profile, a helper library, a calculator and a plotter.
+# Maths workspace for the kids (home-manager): a plain folder, ~/src/math, plus a
+# launcher, a calculator and a function plotter.
 #
 # Why it exists: the kids already know Python, so the symbolic side of their
 # maths (derivatives, integrals, limits, linear algebra) is SymPy in a Jupyter
 # notebook rather than a new language such as Maxima's. SymPy returns only
 # answers, so packages/mathkit adds what a teacher would: a friendly answer
-# checker, step-by-step working (derivatives, integrals, equations, fractions)
-# and interactive pictures (tangent lines, Riemann sums, the unit circle).
+# checker, step-by-step working and interactive pictures.
 #
-# One environment feeds everything: `math-python` (CLI), the "Maths" Jupyter
-# kernel, the VS Code `Maths` profile's interpreter, and `math-lab`
-# (JupyterLab, the fallback UI). The environment MUST contain `notebook`: with
-# only `ipykernel` VS Code refuses to start the kernel and then suggests
-# `uv venv`, which cannot work on a Nix store Python.
+# Design rule, learned the hard way: let VS Code own VS Code and let Nix own the
+# Python. Declaring VS Code's internal state from home-manager (named profiles,
+# the extension index, settings.json) fought it at every step: read-only
+# settings popups, a ~/.vscode/extensions clash that broke `hm switch` and the
+# unattended auto-update, and extensions that never loaded. So this module
+# touches nothing of VS Code's. See docs/sessions/2026-11-20-maths-workspace-direnv.md.
 #
-# VS Code profile `Maths` (opened by the "Maths Studio" launcher via
-# `code --profile Maths`): Microsoft's Python / Pylance / Jupyter extensions
-# pinned from nixpkgs, large type, AI features switched off (the kids may use
-# AI for programming but not for maths, so this is per-profile and a nudge
-# rather than a lock - a local VS Code cannot enforce it). Declaring any
-# non-default profile makes Home Manager require an immutable extensions
-# directory, so extensions the kids install by hand no longer persist; add what
-# they want here instead.
+# How it fits together:
+#   - ~/src/math is seeded from templates/maths (an `.envrc` plus `.vscode/`
+#     settings and a recommended-extensions list) and from
+#     packages/mathkit/notebooks (-> ~/src/math/samples). Copy-if-missing, so
+#     the kids' edits are never overwritten; updates reach existing folders only
+#     if someone deletes the file.
+#   - `.envrc` runs `use flake github:dc0d32/nixos?dir=maths` (maths/flake.nix,
+#     a flake with nixpkgs as its only input); direnv builds the Python environment on first use and
+#     links it at ~/src/math/.direnv/python, which `.vscode/settings.json`
+#     points VS Code at. The environment is rebuilt automatically the first
+#     time the folder is used after a week without a rebuild (a stamp file the
+#     `.envrc` watches), and keeps the old one if the rebuild fails. What it
+#     rebuilds to is whatever maths/flake.lock says; see
+#     scripts/sync-maths-lock.sh.
+#   - `math-studio` (also the "Maths Studio" launcher) prepares the folder,
+#     builds the environment (in a terminal the first time, so progress is
+#     visible), lets VS Code install the recommended extensions itself, and
+#     opens the folder in the kids' normal VS Code.
 #
-# Starter notebooks from packages/mathkit/notebooks are copied into
-# ~/src/math/samples on activation, only when missing, so the kids' edits are
-# never overwritten. ~/src/math itself is their own working folder.
+# Needs the `direnv` module (with nix-direnv) in the account's bundle, which the
+# kid bundle already has through `base`.
 #
 # Qalculate! covers everyday calculation with units and exact fractions; KmPlot
 # plots functions and shows derivatives and integrals without any code.
 #
-# `python3` in the base bundle stays untouched; the separate `math-python`
-# command keeps the two environments from colliding in the profile.
-#
-# Carried by the kid bundle only. Retire when: the kids stop using them, OR a
+# Carried by the kid bundle only. Retire when: the kids stop using it, OR a
 # step-by-step tool worth adopting replaces the notebooks.
 { ... }:
 {
   flake.modules.homeManager.math-tools = { lib, pkgs, ... }:
     let
-      mathkit = pkgs.python3Packages.buildPythonPackage {
-        pname = "mathkit";
-        version = "0.1.0";
-        pyproject = true;
-        src = ../packages/mathkit;
-        build-system = [ pkgs.python3Packages.setuptools ];
-        dependencies = with pkgs.python3Packages; [ sympy numpy matplotlib ];
-        pythonImportsCheck = [ "mathkit" ];
-        doCheck = false;
+      template = ../templates/maths;
+      notebooks = ../packages/mathkit/notebooks;
+      direnv = "${pkgs.direnv}/bin/direnv";
+      code = "${pkgs.vscode}/bin/code";
+
+      # Seeds ~/src/math. Safe to run any number of times.
+      mathSetup = pkgs.writeShellApplication {
+        name = "math-setup";
+        runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.diffutils pkgs.jq ];
+        text = ''
+          dir="$HOME/src/math"
+          mkdir -p "$dir/samples"
+
+          seed() {
+            [ -e "$2" ] && return 0
+            mkdir -p "$(dirname "$2")"
+            install -m 0644 "$1" "$2"
+          }
+
+          (cd ${template} && find . -type f -print0) |
+            while IFS= read -r -d "" f; do
+              seed "${template}/$f" "$dir/$f"
+            done
+          for nb in ${notebooks}/*.ipynb; do
+            seed "$nb" "$dir/samples/$(basename "$nb")"
+          done
+
+          # An earlier version of this module shipped notebooks that name a
+          # `mathpython` kernel, which no longer exists. Repoint only that one
+          # line of metadata, so nothing the kids wrote is touched.
+          for nb in "$dir"/samples/*.ipynb; do
+            [ -e "$nb" ] || continue
+            if jq -e '.metadata.kernelspec.name == "mathpython"' "$nb" >/dev/null 2>&1; then
+              tmp="$(mktemp)"
+              jq '.metadata.kernelspec = {name: "python3", display_name: "Python 3", language: "python"}' "$nb" > "$tmp" &&
+                cat "$tmp" > "$nb"
+              rm -f "$tmp"
+            fi
+          done
+
+          # Approve the .envrc only while it is still exactly the one we
+          # shipped; if someone edited it, they approve it themselves.
+          if cmp -s "$dir/.envrc" ${template}/.envrc; then
+            ${direnv} allow "$dir" || true
+          fi
+        '';
       };
 
-      pyEnv = pkgs.python3.withPackages (ps: [
-        ps.sympy
-        ps.numpy
-        ps.scipy
-        ps.matplotlib
-        ps.ipython
-        ps.ipykernel
-        ps.ipywidgets
-        ps.notebook
-        ps.jupyterlab
-        mathkit
-      ]);
-      py = "${pyEnv}/bin/python";
+      mathStudio = pkgs.writeShellApplication {
+        name = "math-studio";
+        runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.jq mathSetup ];
+        text = ''
+          dir="$HOME/src/math"
+          math-setup
 
-      kernelName = "mathpython";
-      kernelSpec = builtins.toJSON {
-        argv = [ py "-m" "ipykernel_launcher" "-f" "{connection_file}" ];
-        display_name = "Maths (Python + SymPy)";
-        language = "python";
+          # The first run, and the first run after a week away (see .envrc),
+          # builds the Python environment. That takes minutes and prints
+          # progress: make sure there is a terminal to show it in.
+          stale() {
+            [ -z "$(find "$dir/.direnv" -maxdepth 1 -name refreshed -mtime -7 2>/dev/null)" ]
+          }
+          if [ ! -t 1 ] && { [ ! -e "$dir/.direnv/python/bin/python" ] || stale; }; then
+            exec ${pkgs.alacritty}/bin/alacritty -e "$0" "$@"
+          fi
+
+          pause() { if [ -t 0 ]; then read -r -p "Press Enter to close. " _ || true; fi; }
+
+          cd "$dir"
+          echo "Getting your maths tools ready (the first time, and about once a week, this takes a few minutes)..."
+          if ! ${direnv} exec . true; then
+            echo
+            echo "Could not set up the Python tools. Is the internet connected?"
+            echo "Ask a grown-up, or just try again."
+            pause
+            exit 1
+          fi
+
+          # VS Code installs its own extensions; we only ask for the ones the
+          # folder recommends, and only when they are missing.
+          have="$(${code} --list-extensions 2>/dev/null || true)"
+          for ext in $(jq -r '.recommendations[]' ${template}/.vscode/extensions.json); do
+            if ! printf '%s\n' "$have" | grep -qix "$ext"; then
+              ${code} --install-extension "$ext" ||
+                echo "(Could not install $ext; will try again next time.)"
+            fi
+          done
+
+          exec ${code} --disable-workspace-trust "$dir" "$dir/samples/00-start-here.ipynb" "$@"
+        '';
       };
 
-      mathPython = pkgs.writeShellScriptBin "math-python" ''
-        exec ${py} "$@"
-      '';
-      mathLab = pkgs.writeShellScriptBin "math-lab" ''
-        dir="$HOME/src/math"
-        mkdir -p "$dir"
-        exec ${pyEnv}/bin/jupyter-lab --notebook-dir="$dir" "$@"
-      '';
-      mathStudio = pkgs.writeShellScriptBin "math-studio" ''
-        dir="$HOME/src/math"
-        mkdir -p "$dir/samples"
-        exec ${pkgs.vscode}/bin/code --profile Maths "$dir" "$dir/samples/00-start-here.ipynb" "$@"
-      '';
       mathStudioItem = pkgs.makeDesktopItem {
         name = "math-studio";
         desktopName = "Maths Studio";
@@ -91,66 +143,17 @@
         categories = [ "Education" ];
         exec = "${mathStudio}/bin/math-studio";
       };
-      mathLabItem = pkgs.makeDesktopItem {
-        name = "math-lab";
-        desktopName = "Maths Notebook (JupyterLab)";
-        comment = "JupyterLab with SymPy, the browser-style notebook";
-        categories = [ "Education" ];
-        exec = "${pkgs.alacritty}/bin/alacritty -e ${mathLab}/bin/math-lab";
-      };
-
-      notebooks = ../packages/mathkit/notebooks;
     in
     {
       home.packages = [
-        mathPython
-        mathLab
         mathStudio
         mathStudioItem
-        mathLabItem
         pkgs.qalculate-gtk
         pkgs.kdePackages.kmplot
       ];
 
-      xdg.dataFile."jupyter/kernels/${kernelName}/kernel.json".text = kernelSpec;
-
-      home.activation.seedMathNotebooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        mkdir -p "$HOME/src/math/samples"
-        for nb in ${notebooks}/*.ipynb; do
-          dest="$HOME/src/math/samples/$(basename "$nb")"
-          [ -e "$dest" ] || install -m 0644 "$nb" "$dest"
-        done
+      home.activation.seedMathWorkspace = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${mathSetup}/bin/math-setup || verboseEcho "math-setup failed; the Maths Studio launcher will retry"
       '';
-
-      programs.vscode.mutableExtensionsDir = lib.mkForce false;
-      programs.vscode.profiles.Maths = {
-        extensions = with pkgs.vscode-extensions; [
-          ms-python.python
-          ms-python.vscode-pylance
-          ms-python.debugpy
-          ms-toolsai.jupyter
-          ms-toolsai.jupyter-renderers
-          ms-toolsai.vscode-jupyter-cell-tags
-          ms-toolsai.vscode-jupyter-slideshow
-          ms-toolsai.jupyter-keymap
-        ];
-        userSettings = {
-          "python.defaultInterpreterPath" = py;
-          "python.terminal.activateEnvironment" = false;
-          "python.analysis.typeCheckingMode" = "off";
-          "jupyter.widgetScriptSources" = [ "jsdelivr.com" "unpkg.com" ];
-          "jupyter.askForKernelRestart" = false;
-          "chat.disableAIFeatures" = true;
-          "editor.inlineSuggest.enabled" = false;
-          "github.copilot.enable" = { "*" = false; };
-          "telemetry.telemetryLevel" = "off";
-          "workbench.startupEditor" = "none";
-          "security.workspace.trust.enabled" = false;
-          "editor.fontSize" = 16;
-          "editor.minimap.enabled" = false;
-          "files.autoSave" = "afterDelay";
-          "window.zoomLevel" = 0.5;
-        };
-      };
     };
 }

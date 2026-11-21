@@ -1,5 +1,12 @@
 # 2026-11-17 — Maths tooling for the kids: `Maths` VS Code profile + `mathkit`
 
+> **Superseded 2026-11-20.** The VS Code `Maths` profile, the Maths Studio
+> launcher with its own extension folder, JupyterLab and the home-manager
+> kernelspec described below were all removed; the kids' maths workspace is now a
+> direnv project. See `2026-11-20-maths-workspace-direnv.md`. The `mathkit`
+> library, the notebooks, SolveSpace, the Discovery notes and the test findings
+> below still stand.
+
 ## Locked-in preferences (this session)
 
 - **No AI for maths.** The kids may use AI for programming, not for maths.

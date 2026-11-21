@@ -18,6 +18,13 @@ sudo nixos-rebuild switch --flake .#pb-x1
 # Rebuild user environment
 home-manager switch --flake .#'p@pb-x1'
 
+# After ANY `nix flake update` / nixpkgs bump: move the kids' maths
+# environment (maths/flake.lock, a separate flake) onto the same nixpkgs
+# and commit both lock files together. Without this their Python stays on
+# the old pin. (The kids' laptops rebuild it themselves the first time the
+# folder is used after a week; see flake-modules/math-tools.nix.)
+./scripts/sync-maths-lock.sh
+
 # Format (the path argument is required: `nix fmt` with no path hangs,
 # because formatter.nix binds a bare pkgs.nixpkgs-fmt which then blocks
 # reading stdin)

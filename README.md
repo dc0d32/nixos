@@ -90,6 +90,9 @@ hm_win --setup
 
 # Update all inputs
 nix flake update
+# ...then move the kids' maths environment (its own flake, maths/) onto the
+# same nixpkgs, and commit both lock files together:
+./scripts/sync-maths-lock.sh
 
 # Evaluate everything without building
 nix flake check
